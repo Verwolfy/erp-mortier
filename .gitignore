@@ -1,0 +1,21 @@
+# .gitignore
+
+# Secrets et configuration locale (NE JAMAIS COMMIT)
+.streamlit/secrets.toml
+credentials.json
+*.pem
+
+# Environnements virtuels Python
+venv/
+env/
+.env/
+
+# Fichiers caches et compilés Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Fichiers OS
+.DS_Store
+Thumbs.db
