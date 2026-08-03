@@ -48,6 +48,9 @@ def main():
         menu_options = {}
         if "Administration" in allowed_modules:
             menu_options["Administration"] = "⚙️ Administration"
+            # Ajout automatique de la gestion de sécurité pour les administrateurs
+            menu_options["Securite"] = "🔐 Utilisateurs & Sécurité"
+
         if "Achats" in allowed_modules:
             menu_options["Achats"] = "🛒 Achats & Appro."
         if "Stocks" in allowed_modules:
@@ -76,6 +79,9 @@ def main():
     if choix_menu == "Administration":
         from modules.admin.views import show_admin_page
         show_admin_page()
+    elif choix_menu == "Securite":
+        from modules.admin.views import show_user_management
+        show_user_management()
     elif choix_menu == "Achats":
         from modules.achats.views import show_achats_page
         show_achats_page()
