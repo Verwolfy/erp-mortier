@@ -37,9 +37,8 @@ def create_opportunite(prospect_nom: str, contact: str, statut: str, commercial_
         "date_creation": date_jour,
         "date_derniere_action": date_jour
     }
-    cols_opp = ["opportunite_id", "prospect_nom", "contact", "statut", "commercial_id", "valeur_estimee", "probabilite_pct", "date_creation", "date_derniere_action"]
 
-    insert_hybrid("pipeline", "crm", "Pipeline", data_opp, cols_opp)
+    insert_hybrid("pipeline", data_opp)
     return opp_id
 
 def create_interaction(client_id: str, type_action: str, notes: str, date_rappel: str):
@@ -58,7 +57,6 @@ def create_interaction(client_id: str, type_action: str, notes: str, date_rappel
         "date_rappel": date_rappel,
         "statut_rappel": "EN_ATTENTE"
     }
-    cols_int = ["interaction_id", "client_id", "date_creation", "type_action", "notes", "date_rappel", "statut_rappel"]
 
-    insert_hybrid("interactions", "crm", "Interactions", data_int, cols_int)
+    insert_hybrid("interactions", data_int)
     return int_id

@@ -28,9 +28,8 @@ def creer_compte(nom_compte: str, type_compte: str, numero_compte: str, solde_in
         "compte_id": compte_id, "nom_compte": nom_compte, "type_compte": type_compte,
         "numero_compte": numero_compte, "solde_initial": solde_initial, "statut": "OUI"
     }
-    cols_compte = ["compte_id", "nom_compte", "type_compte", "numero_compte", "solde_initial", "statut"]
 
-    insert_hybrid("comptes", "finance", "Comptes", data_compte, cols_compte)
+    insert_hybrid("comptes", data_compte)
     return compte_id
 
 def enregistrer_reglement(date_reglement: str, type_flux: str, partenaire_id: str, compte_id: str, mode_paiement: str, reference_trace: str, montant_total: float) -> str:
@@ -43,9 +42,8 @@ def enregistrer_reglement(date_reglement: str, type_flux: str, partenaire_id: st
         "reference_trace": reference_trace, "montant_total": montant_total, "montant_alloue": 0.0,
         "statut": "VALIDE"
     }
-    cols_reg = ["reglement_id", "date_reglement", "type_flux", "partenaire_id", "compte_id", "mode_paiement", "reference_trace", "montant_total", "montant_alloue", "statut"]
 
-    insert_hybrid("reglements", "finance", "Reglements", data_reg, cols_reg)
+    insert_hybrid("reglements", data_reg)
     return reglement_id
 
 def enregistrer_lettrage(reglement_id: str, document_id: str, type_document: str, montant_applique: float):
@@ -78,7 +76,6 @@ def enregistrer_lettrage(reglement_id: str, document_id: str, type_document: str
         "lettrage_id": lettrage_id, "date": date_jour, "reglement_id": reglement_id,
         "document_id": document_id, "type_document": type_document, "montant_applique": montant_applique
     }
-    cols_lettrage = ["lettrage_id", "date", "reglement_id", "document_id", "type_document", "montant_applique"]
 
     # 2. Mise à jour de la facture
     if type_document == "FactureClient":
@@ -90,14 +87,14 @@ def enregistrer_lettrage(reglement_id: str, document_id: str, type_document: str
             nouveau_paye = m_paye + montant_applique
             nouveau_statut_facture = "PAYEE" if nouveau_paye >= (m_ttc - 1.0) else "PARTIELLE" # Tolérance 1 DZD
 
-            update_hybrid("factures", "ventes", "Factures", "facture_id", document_id, {
+            update_hybrid("factures", "facture_id", document_id, {
                 "montant_paye": nouveau_paye,
                 "statut": nouveau_statut_facture
             })
 
     # 3. Mise à jour du règlement & écriture du lettrage
-    update_hybrid("reglements", "finance", "Reglements", "reglement_id", reglement_id, {
+    update_hybrid("reglements", "reglement_id", reglement_id, {
         "montant_alloue": montant_alloue + montant_applique
     })
 
-    insert_hybrid("lettrage", "finance", "Lettrage", data_lettrage, cols_lettrage)
+    insert_hybrid("lettrage", data_lettrage)

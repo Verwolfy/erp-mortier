@@ -27,7 +27,7 @@ def create_commande_achat(fournisseur_id: str, type_achat: str, devise: str, tau
     montant_total_devise = sum(item["total_devise"] for item in panier)
     montant_total_local = montant_total_devise * float(taux_change)
 
-    # Préparation de l'en-tête (ordre exact des colonnes)
+    # Préparation de l'en-tête
     data_cmd = {
         "commande_achat_id": cmd_id, "date_commande": date_cmd, "fournisseur_id": fournisseur_id,
         "type_achat": type_achat, "devise": devise, "taux_change": taux_change,
@@ -35,13 +35,11 @@ def create_commande_achat(fournisseur_id: str, type_achat: str, devise: str, tau
         "mode_paiement": mode_paiement, "delai_paiement": delai_paiement,
         "date_voulue": str(date_voulue), "statut": "EN_ATTENTE"
     }
-    cols_cmd = ["commande_achat_id", "date_commande", "fournisseur_id", "type_achat", "devise", "taux_change", "montant_total_devise", "montant_total_local", "mode_paiement", "delai_paiement", "date_voulue", "statut"]
 
-    # Insertion groupée via API Hybride (Supabase d'abord, puis Sheets)
-    insert_hybrid("commandes_achats", "achats", "CommandesAchats", data_cmd, cols_cmd)
+    # Insertion groupée via API Hybride (Supabase d'abord, puis Sheets avec déduction automatique)
+    insert_hybrid("commandes_achats", data_cmd)
 
     # Préparation et insertion des lignes d'achats
-    cols_ligne = ["ligne_achat_id", "commande_achat_id", "mp_id", "unite_cond", "qte_cond", "qte_totale", "prix_unitaire", "total_devise"]
     for item in panier:
         # ID Technique (UUID) préfixé LAC
         ligne_id = generate_technical_id("LAC")
@@ -52,6 +50,6 @@ def create_commande_achat(fournisseur_id: str, type_achat: str, devise: str, tau
             "qte_totale": item["qte_totale"], "prix_unitaire": item["prix_unitaire"],
             "total_devise": item["total_devise"]
         }
-        insert_hybrid("lignes_achats", "achats", "LignesAchats", data_ligne, cols_ligne)
+        insert_hybrid("lignes_achats", data_ligne)
 
     return cmd_id

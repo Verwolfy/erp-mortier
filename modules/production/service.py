@@ -30,18 +30,16 @@ def create_recette(pf_id: str, version: str, rendement_unite: float, instruction
         "rendement_unite": rendement_unite, "instructions": instructions,
         "date_effet": date_effet, "actif": "OUI"
     }
-    cols_recette = ["recette_id", "pf_id", "version", "rendement_unite", "instructions", "date_effet", "actif"]
 
-    insert_hybrid("recettes", "production", "Recettes", data_recette, cols_recette)
+    insert_hybrid("recettes", data_recette)
 
-    cols_lignes = ["ligne_recette_id", "recette_id", "mp_id", "quantite_par_unite"]
     for item in panier_lignes:
         ligne_id = generate_technical_id("LRC")
         data_ligne = {
             "ligne_recette_id": ligne_id, "recette_id": recette_id,
             "mp_id": item["mp_id"], "quantite_par_unite": item["quantite_par_unite"]
         }
-        insert_hybrid("lignes_recette", "production", "LignesRecette", data_ligne, cols_lignes)
+        insert_hybrid("lignes_recette", data_ligne)
 
     return recette_id
 
@@ -56,9 +54,8 @@ def create_ordre_fabrication(pf_id: str, recette_id: str, sku_id: str, quantite_
         "date_planification": date_planification, "date_debut": "", "date_fin": "",
         "statut": "PLANIFIE", "cout_total": 0.0, "notes": notes
     }
-    cols_of = ["of_id", "pf_id", "recette_id", "sku_id", "quantite_prevue", "quantite_produite", "date_planification", "date_debut", "date_fin", "statut", "cout_total", "notes"]
 
-    insert_hybrid("ordres_fabrication", "production", "OrdresFabrication", data_of, cols_of)
+    insert_hybrid("ordres_fabrication", data_of)
     return of_id
 
 def changer_statut_of(of_id: str, nouveau_statut: str):
@@ -71,7 +68,7 @@ def changer_statut_of(of_id: str, nouveau_statut: str):
     elif nouveau_statut in ["TERMINE", "REJETE"]:
         updates["date_fin"] = date_jour
 
-    update_hybrid("ordres_fabrication", "production", "OrdresFabrication", "of_id", of_id, updates)
+    update_hybrid("ordres_fabrication", "of_id", of_id, updates)
 
 def enregistrer_controle_qualite(
     of_id: str,
@@ -97,8 +94,8 @@ def enregistrer_controle_qualite(
         "qc_id": cq_id, "of_id": of_id, "date": date_jour,
         "conforme": conforme, "remarques": remarques, "controleur": controleur
     }
-    cols_cq = ["qc_id", "of_id", "date", "conforme", "remarques", "controleur"]
-    insert_hybrid("controle_qualite", "production", "ControleQualite", data_cq, cols_cq)
+
+    insert_hybrid("controle_qualite", data_cq)
 
     if conforme == "OUI":
         df_ofs = get_ordres_fabrication()
@@ -159,7 +156,7 @@ def enregistrer_controle_qualite(
         enregistrer_entree_pf(sku_id, quantite_produite, cout_unitaire_pf, f"Production OF {of_id}", date_peremption)
 
         # Clôture de l'OF
-        update_hybrid("ordres_fabrication", "production", "OrdresFabrication", "of_id", of_id, {
+        update_hybrid("ordres_fabrication", "of_id", of_id, {
             "statut": "TERMINE",
             "date_fin": get_local_now().strftime("%Y-%m-%d"),
             "quantite_produite": quantite_produite,

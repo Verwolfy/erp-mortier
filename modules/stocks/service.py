@@ -34,14 +34,12 @@ def enregistrer_entree_mp(mp_id: str, quantite: float, prix_entree: float, refer
         "date_creation": date_jour, "date_peremption": date_peremption,
         "quantite_initiale": quantite, "quantite_restante": quantite, "statut": "ACTIF"
     }
-    cols_lot = ["lot_id", "item_id", "type_item", "date_creation", "date_peremption", "quantite_initiale", "quantite_restante", "statut"]
 
     data_mouv = {
         "mouvement_id": mvt_id, "date": date_jour, "type_mouvement": "ENTREE",
         "mp_id": mp_id, "quantite": quantite, "reference": reference,
         "lot_id": lot_id, "prix_entree": prix_entree
     }
-    cols_mouv = ["mouvement_id", "date", "type_mouvement", "mp_id", "quantite", "reference", "lot_id", "prix_entree"]
 
     df_stock = get_stock_actuel_mp()
     stock_existant = df_stock[df_stock["mp_id"] == mp_id] if not df_stock.empty and "mp_id" in df_stock.columns else pd.DataFrame()
@@ -55,7 +53,7 @@ def enregistrer_entree_mp(mp_id: str, quantite: float, prix_entree: float, refer
         nouvelle_qte_totale = qte_actuelle + quantite
         nouveau_cmp = (valeur_totale_actuelle + valeur_nouvelle_entree) / nouvelle_qte_totale if nouvelle_qte_totale > 0 else 0
 
-        update_hybrid("stock_actuel", "stocks", "StockActuel", "mp_id", mp_id, {
+        update_hybrid("stock_actuel", "mp_id", mp_id, {
             "quantite_disponible": nouvelle_qte_totale,
             "cmp_actuel": round(nouveau_cmp, 2),
             "derniere_maj": date_jour
@@ -65,11 +63,10 @@ def enregistrer_entree_mp(mp_id: str, quantite: float, prix_entree: float, refer
             "mp_id": mp_id, "quantite_disponible": quantite,
             "cmp_actuel": round(prix_entree, 2), "derniere_maj": date_jour
         }
-        cols_stock = ["mp_id", "quantite_disponible", "cmp_actuel", "derniere_maj"]
-        insert_hybrid("stock_actuel", "stocks", "StockActuel", data_stock, cols_stock)
+        insert_hybrid("stock_actuel", data_stock)
 
-    insert_hybrid("lots", "stocks", "Lots", data_lot, cols_lot)
-    insert_hybrid("mouvements", "stocks", "Mouvements", data_mouv, cols_mouv)
+    insert_hybrid("lots", data_lot)
+    insert_hybrid("mouvements", data_mouv)
 
 def enregistrer_sortie_mp(mp_id: str, quantite: float, reference: str) -> float:
     """Décrémente le stock MP et applique la règle FIFO sur les lots."""
@@ -133,20 +130,19 @@ def enregistrer_sortie_mp(mp_id: str, quantite: float, reference: str) -> float:
         raise ValueError(f"Incohérence des lots : stock physique insuffisant pour {mp_id}. Manque {qte_a_deduire}.")
 
     # 2. Exécution des écritures
-    update_hybrid("stock_actuel", "stocks", "StockActuel", "mp_id", mp_id, {
+    update_hybrid("stock_actuel", "mp_id", mp_id, {
         "quantite_disponible": qte_actuelle - quantite,
         "derniere_maj": date_jour
     })
 
     for ltu in lots_to_update:
-        update_hybrid("lots", "stocks", "Lots", "lot_id", ltu["lot_id"], {
+        update_hybrid("lots", "lot_id", ltu["lot_id"], {
             "quantite_restante": ltu["quantite_restante"],
             "statut": ltu["statut"]
         })
 
-    cols_mouv = ["mouvement_id", "date", "type_mouvement", "mp_id", "quantite", "reference", "lot_id", "prix_entree"]
     for mvt in mouvements_to_insert:
-        insert_hybrid("mouvements", "stocks", "Mouvements", mvt, cols_mouv)
+        insert_hybrid("mouvements", mvt)
 
     return cout_total
 
@@ -161,14 +157,12 @@ def enregistrer_entree_pf(sku_id: str, quantite: float, cout_unitaire: float, re
         "date_creation": date_jour, "date_peremption": date_peremption,
         "quantite_initiale": quantite, "quantite_restante": quantite, "statut": "ACTIF"
     }
-    cols_lot = ["lot_id", "item_id", "type_item", "date_creation", "date_peremption", "quantite_initiale", "quantite_restante", "statut"]
 
     data_mouv = {
         "mouvement_pf_id": mvt_id, "date": date_jour, "type_mouvement": "ENTREE",
         "sku_id": sku_id, "quantite": quantite, "reference": reference,
         "lot_id": lot_id, "cout_unitaire": cout_unitaire
     }
-    cols_mouv = ["mouvement_pf_id", "date", "type_mouvement", "sku_id", "quantite", "reference", "lot_id", "cout_unitaire"]
 
     df_stock = get_stock_actuel_pf()
     stock_existant = df_stock[df_stock["sku_id"] == sku_id] if not df_stock.empty and "sku_id" in df_stock.columns else pd.DataFrame()
@@ -182,7 +176,7 @@ def enregistrer_entree_pf(sku_id: str, quantite: float, cout_unitaire: float, re
         nouvelle_qte_totale = qte_actuelle + quantite
         nouveau_cout = (valeur_totale_actuelle + valeur_nouvelle_entree) / nouvelle_qte_totale if nouvelle_qte_totale > 0 else 0
 
-        update_hybrid("stock_actuel_pf", "stocks", "StockActuelPf", "sku_id", sku_id, {
+        update_hybrid("stock_actuel_pf", "sku_id", sku_id, {
             "quantite_disponible": nouvelle_qte_totale,
             "cout_revient": round(nouveau_cout, 2),
             "derniere_maj": date_jour
@@ -192,11 +186,10 @@ def enregistrer_entree_pf(sku_id: str, quantite: float, cout_unitaire: float, re
             "sku_id": sku_id, "quantite_disponible": quantite,
             "cout_revient": round(cout_unitaire, 2), "derniere_maj": date_jour
         }
-        cols_stock = ["sku_id", "quantite_disponible", "cout_revient", "derniere_maj"]
-        insert_hybrid("stock_actuel_pf", "stocks", "StockActuelPf", data_stock, cols_stock)
+        insert_hybrid("stock_actuel_pf", data_stock)
 
-    insert_hybrid("lots", "stocks", "Lots", data_lot, cols_lot)
-    insert_hybrid("mouvements_pf", "stocks", "MouvementsPf", data_mouv, cols_mouv)
+    insert_hybrid("lots", data_lot)
+    insert_hybrid("mouvements_pf", data_mouv)
 
 def enregistrer_sortie_pf(sku_id: str, quantite: float, reference: str):
     """Décrémente le stock de produit fini, applique le FIFO et trace les lots."""
@@ -257,17 +250,16 @@ def enregistrer_sortie_pf(sku_id: str, quantite: float, reference: str):
         raise ValueError(f"Incohérence des lots : stock physique insuffisant pour {sku_id}. Manque {qte_a_deduire}.")
 
     # 2. Exécution des écritures
-    update_hybrid("stock_actuel_pf", "stocks", "StockActuelPf", "sku_id", sku_id, {
+    update_hybrid("stock_actuel_pf", "sku_id", sku_id, {
         "quantite_disponible": qte_actuelle - quantite,
         "derniere_maj": date_jour
     })
 
     for ltu in lots_to_update:
-        update_hybrid("lots", "stocks", "Lots", "lot_id", ltu["lot_id"], {
+        update_hybrid("lots", "lot_id", ltu["lot_id"], {
             "quantite_restante": ltu["quantite_restante"],
             "statut": ltu["statut"]
         })
 
-    cols_mouv = ["mouvement_pf_id", "date", "type_mouvement", "sku_id", "quantite", "reference", "lot_id", "cout_unitaire"]
     for mvt in mouvements_to_insert:
-        insert_hybrid("mouvements_pf", "stocks", "MouvementsPf", mvt, cols_mouv)
+        insert_hybrid("mouvements_pf", mvt)

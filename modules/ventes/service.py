@@ -7,7 +7,7 @@ Lecture Supabase, Écriture hybride (Supabase + Google Sheets).
 import time
 import pandas as pd
 import streamlit as st
-from core.db_service import fetch_data, insert_hybrid, update_hybrid
+from core.db_service import fetch_data, insert_hybrid, update_hybrid, get_supabase_client
 from core.utils import generate_technical_id, get_local_now
 from modules.stocks.service import enregistrer_sortie_pf
 
@@ -16,34 +16,36 @@ try:
 except ImportError:
     num2words = None
 
+
 def get_factures() -> pd.DataFrame:
     return pd.DataFrame(fetch_data("factures"))
 
+
 def generer_numero_facture_legal(type_document: str) -> str:
-    """Génère un numéro séquentiel strict pour FactureClient ou FactureAvoir via Supabase."""
-    max_retries = 5
-    for attempt in range(max_retries):
-        df_compteurs = pd.DataFrame(fetch_data("compteurs"))
-        if df_compteurs.empty or type_document not in df_compteurs["type_document"].values:
-            raise ValueError(f"Le compteur {type_document} n'est pas initialisé dans la base de données.")
+    """Génère un numéro séquentiel strict pour FactureClient ou FactureAvoir via Supabase RPC."""
+    # 1. On récupère le préfixe et l'année (lecture simple)
+    df_compteurs = pd.DataFrame(fetch_data("compteurs"))
+    if df_compteurs.empty or type_document not in df_compteurs["type_document"].values:
+        raise ValueError(f"Le compteur {type_document} n'est pas initialisé dans la base de données.")
 
-        row = df_compteurs[df_compteurs["type_document"] == type_document].iloc[0]
-        prefixe = str(row.get("prefixe", "FAC"))
-        annee = str(row.get("annee", get_local_now().year))
-        dernier_numero = int(row.get("dernier_numero", 0))
+    row = df_compteurs[df_compteurs["type_document"] == type_document].iloc[0]
+    prefixe = str(row.get("prefixe", "FAC"))
+    annee = str(row.get("annee", get_local_now().year))
 
-        nouveau_numero = dernier_numero + 1
+    # 2. Appel de la fonction SQL atomique (zéro risque de doublon)
+    try:
+        supabase = get_supabase_client()
+        response = supabase.rpc("increment_compteur", {"p_type_document": type_document}).execute()
+        nouveau_numero = response.data
 
-        # Mise à jour hybride du compteur
-        res = update_hybrid("compteurs", "referentiels", "Compteurs", "type_document", type_document, {"dernier_numero": nouveau_numero})
+        # 3. Sauvegarde miroir dans Google Sheets
+        update_hybrid("compteurs", "type_document", type_document, {"dernier_numero": nouveau_numero})
 
-        if res is not None:
-            return f"{prefixe}-{annee}-{str(nouveau_numero).zfill(6)}"
-        else:
-            time.sleep(1)
-            continue
+        return f"{prefixe}-{annee}-{str(nouveau_numero).zfill(6)}"
 
-    raise Exception(f"Collision détectée : impossible de générer un numéro unique pour {type_document}.")
+    except Exception as e:
+        raise Exception(f"Erreur critique lors de la génération du numéro légal : {e}")
+
 
 def calculer_montants_facture(panier: list, remise_globale: float = 0.0, paiement_especes: bool = False) -> dict:
     """Intègre les remises par ligne, la remise globale, et le calcul du timbre fiscal."""
@@ -92,10 +94,11 @@ def calculer_montants_facture(panier: list, remise_globale: float = 0.0, paiemen
         "montant_lettres": lettres.capitalize()
     }
 
+
 def create_facture(client_id: str, date_echeance: str, panier: list, remise_globale: float = 0.0, paiement_especes: bool = False, is_avoir: bool = False, facture_origine_id: str = "") -> str:
     """
     Crée une facture ou un avoir.
-    Déclenche la sortie de stock si c'est une vente normale.
+    Déclenche la sortie de stock si c'est une vente normale (avec vérification atomique).
     Persiste toutes les colonnes selon le schéma de référence.
     """
     type_doc = "FactureAvoir" if is_avoir else "FactureClient"
@@ -104,6 +107,23 @@ def create_facture(client_id: str, date_echeance: str, panier: list, remise_glob
 
     # 1. Déduction des stocks physiques (Uniquement pour les factures, pas les avoirs)
     if not is_avoir:
+        # --- PASSE 1 : Vérification des disponibilités globales ---
+        df_stocks = pd.DataFrame(fetch_data("stocks_pf"))
+        if not df_stocks.empty:
+            df_stocks = df_stocks.set_index("sku_id")
+
+        for item in panier:
+            sku = item["sku_id"]
+            qte_demandee = float(item["quantite"])
+
+            if df_stocks.empty or sku not in df_stocks.index:
+                raise ValueError(f"Erreur d'atomicité : L'article {sku} est introuvable en stock. Facturation annulée.")
+
+            qte_dispo = float(df_stocks.loc[sku, "quantite_actuelle"])
+            if qte_dispo < qte_demandee:
+                raise ValueError(f"Erreur d'atomicité : Stock insuffisant pour {sku}. Demandé : {qte_demandee}, Disponible : {qte_dispo}. Facturation annulée.")
+
+        # --- PASSE 2 : Déduction effective une fois tout le panier validé ---
         for item in panier:
             enregistrer_sortie_pf(item["sku_id"], item["quantite"], facture_id)
 
@@ -119,7 +139,7 @@ def create_facture(client_id: str, date_echeance: str, panier: list, remise_glob
     if is_avoir:
         montant_ht, montant_tva, montant_ttc = -montant_ht, -montant_tva, -montant_ttc
 
-    # 3. Préparation des données Facture (15 colonnes)
+    # 3. Préparation des données Facture
     data_facture = {
         "facture_id": facture_id, "commande_vente_id": "", "client_id": client_id,
         "date": date_jour, "montant_ht": montant_ht, "taux_tva": taux_tva,
@@ -128,10 +148,8 @@ def create_facture(client_id: str, date_echeance: str, panier: list, remise_glob
         "montant_timbre": timbre_fiscal, "type_facture": type_doc,
         "facture_origine_id": facture_origine_id, "remise_globale": remise_globale
     }
-    cols_facture = ["facture_id", "commande_vente_id", "client_id", "date", "montant_ht", "taux_tva", "montant_tva", "montant_ttc", "montant_paye", "statut", "date_echeance", "montant_timbre", "type_facture", "facture_origine_id", "remise_globale"]
 
-    # 4. Préparation des LignesFacture (7 colonnes)
-    cols_lignes = ["ligne_facture_id", "facture_id", "sku_id", "quantite", "prix_unitaire", "remise_ligne", "total_ligne_ht"]
+    # 4. Préparation des LignesFacture
     lignes_a_inserer = []
 
     for item in panier:
@@ -142,9 +160,9 @@ def create_facture(client_id: str, date_echeance: str, panier: list, remise_glob
             "remise_ligne": item.get("remise", 0.0), "total_ligne_ht": item.get("total_ht", 0.0)
         })
 
-    # 5. Écriture finale (Hybride)
-    insert_hybrid("factures", "ventes", "Factures", data_facture, cols_facture)
+    # 5. Écriture finale
+    insert_hybrid("factures", data_facture)
     for ligne in lignes_a_inserer:
-        insert_hybrid("lignes_facture", "ventes", "LignesFacture", ligne, cols_lignes)
+        insert_hybrid("lignes_facture", ligne)
 
     return facture_id

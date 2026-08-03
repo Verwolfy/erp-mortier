@@ -1,13 +1,22 @@
-streamlit
-gspread
-google-auth
-pandas
-plotly
-openpyxl
-python-dateutil
-tenacity
-bcrypt
-fpdf2
-pytz
-num2words
-supabase
+# --- Interface ---
+streamlit>=1.35.0
+plotly>=5.18.0
+
+# --- Base de données & APIs ---
+supabase==2.5.0
+gspread>=6.1.0
+google-auth>=2.29.0
+
+# --- Traitement de données ---
+pandas>=2.2.0
+openpyxl>=3.1.2
+python-dateutil>=2.9.0
+
+# --- Sécurité & Stabilité ---
+bcrypt==4.1.2
+tenacity>=8.2.3
+
+# --- Utilitaires ---
+fpdf2==2.7.9
+pytz>=2024.1
+num2words==0.3.13

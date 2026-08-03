@@ -37,9 +37,8 @@ def create_employe(nom: str, poste: str, service: str, manager_id: str, date_emb
         "date_embauche": str(date_embauche),
         "actif": "OUI"
     }
-    cols_emp = ["employe_id", "nom", "poste", "service", "manager_id", "date_embauche", "actif"]
 
-    insert_hybrid("employes", "rh", "Employes", data_emp, cols_emp)
+    insert_hybrid("employes", data_emp)
     return emp_id
 
 
@@ -57,7 +56,6 @@ def create_demande_conge(employe_id: str, date_debut: str, date_fin: str, motif:
         "motif": motif,
         "statut": "EN_ATTENTE"
     }
-    cols_conge = ["demande_conge_id", "employe_id", "date_debut", "date_fin", "motif", "statut"]
 
-    insert_hybrid("demandes_conges", "rh", "DemandesConges", data_conge, cols_conge)
+    insert_hybrid("demandes_conges", data_conge)
     return conge_id
