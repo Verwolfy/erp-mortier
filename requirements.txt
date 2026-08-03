@@ -1,10 +1,17 @@
 streamlit==1.32.0
 gspread==6.0.0
 google-auth==2.28.2
-streamlit-authenticator==0.3.1
 pandas==2.2.1
 plotly==5.19.0
-reportlab==4.1.0
 openpyxl==3.1.2
 python-dateutil==2.9.0
 tenacity==8.2.3
+pyarrow==15.0.2
+numpy<2.0
+
+# Nouvelles dépendances ajoutées suite à la refonte :
+bcrypt==4.1.2
+fpdf2==2.7.9
+pytz==2024.1
+num2words==0.1.4
+supabase==2.3.0
