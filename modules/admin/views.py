@@ -9,7 +9,8 @@ from config.roles import has_permission
 from core.listes_service import get_liste, liste_to_dict
 from modules.admin.service import (
     get_dataframe, add_fournisseur, add_matiere_premiere,
-    add_produit, add_sku, add_client, sauvegarder_modifications
+    add_produit, add_sku, add_client, sauvegarder_modifications,
+    add_user, add_permission, get_users, get_permissions
 )
 
 # --- FALLBACKS SÉCURISÉS (Tirés de docs/schema_reference.md) ---
@@ -331,7 +332,6 @@ def show_admin_page():
 
                         st.markdown("**Informations techniques (Production & Stocks)**")
                         c3, c4 = st.columns(2)
-                        # Le champ texte devient un menu déroulant pointant sur les MP d'emballage
                         emballage_mp_id = c3.selectbox("Emballage principal", options=[""] + list(liste_emballage.keys()), format_func=lambda x: liste_emballage.get(x, "Aucun" if x == "" else x))
                         poids_net = c4.number_input("Poids net (Kg/L)", min_value=0.01, step=1.0)
 
@@ -351,7 +351,6 @@ def show_admin_page():
             else:
                 st.warning("Créez d'abord un produit actif.")
 
-        # Configuration robuste pour la sélection de Produits dans les SKU (Sécurisé pour les tables vides)
         df_produits = get_dataframe("Produits")
         pf_opts = []
         if not df_produits.empty and "pf_id" in df_produits.columns:
@@ -368,3 +367,96 @@ def show_admin_page():
             "unite_vente": unite_opts
         }
         render_editable_dataframe("SkuConditionnement", "sku_id", can_write, config_sku)
+
+# ==========================================
+# PAGE DE GESTION DES UTILISATEURS
+# ==========================================
+def show_user_management():
+    """Affiche l'interface de gestion des accès et de la sécurité."""
+    st.title("🔐 Sécurité & Utilisateurs")
+
+    # Vérification des permissions
+    user_role = st.session_state.get("user", {}).get("role", "")
+    can_write = has_permission(user_role, "Administration", "ecriture")
+
+    if not can_write:
+        st.error("Vous n'avez pas les droits d'administration pour accéder à cette page.")
+        return
+
+    tab1, tab2, tab3 = st.tabs(["Créer un Utilisateur", "Définir les Permissions", "Annuaire Existant"])
+
+    # ONGLET 1 : Création de compte
+    with tab1:
+        st.subheader("Ajouter un nouvel accès")
+        with st.form("form_add_user", clear_on_submit=True):
+            col1, col2 = st.columns(2)
+            with col1:
+                nom = st.text_input("Nom complet de l'employé *")
+                login = st.text_input("Identifiant de connexion (ex: jdupont) *")
+            with col2:
+                role = st.text_input("Rôle (ex: ADMIN, COMMERCIAL, MAGASINIER) *").upper()
+                mdp = st.text_input("Mot de passe temporaire *", type="password")
+
+            submit_user = st.form_submit_button("Enregistrer l'utilisateur", use_container_width=True)
+
+            if submit_user:
+                if nom and login and role and mdp:
+                    try:
+                        nouveau_id = add_user(nom, login, mdp, role)
+                        st.success(f"Utilisateur {nom} ({nouveau_id}) créé avec succès ! Le mot de passe a été crypté.")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Une erreur est survenue : {e}")
+                else:
+                    st.warning("Veuillez remplir tous les champs obligatoires (*).")
+
+    # ONGLET 2 : Gestion des permissions
+    with tab2:
+        st.subheader("Attribuer des droits d'accès à un rôle")
+        st.info("Rappel : Les statuts doivent s'écrire 'OUI' ou 'NON'.")
+
+        with st.form("form_add_perm", clear_on_submit=True):
+            role_cible = st.text_input("Rôle concerné (ex: COMMERCIAL) *").upper()
+
+            # Liste exacte des modules
+            modules_disponibles = ["Administration", "Achats", "Stocks", "Production", "Ventes", "Finance", "CRM", "RH", "Logs"]
+            module_cible = st.selectbox("Module de l'ERP", modules_disponibles)
+
+            col_l, col_e = st.columns(2)
+            with col_l:
+                droit_lecture = st.selectbox("Peut lire les données ?", ["OUI", "NON"], index=0)
+            with col_e:
+                droit_ecriture = st.selectbox("Peut modifier/créer des données ?", ["OUI", "NON"], index=1)
+
+            submit_perm = st.form_submit_button("Ajouter la permission", use_container_width=True)
+
+            if submit_perm:
+                if role_cible:
+                    try:
+                        add_permission(role_cible, module_cible, droit_lecture, droit_ecriture)
+                        st.success(f"La permission sur le module '{module_cible}' a été ajoutée au rôle '{role_cible}'.")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Une erreur est survenue : {e}")
+                else:
+                    st.warning("Veuillez saisir un nom de rôle.")
+
+    # ONGLET 3 : Consultation rapide
+    with tab3:
+        st.subheader("Annuaire des Utilisateurs")
+        df_users = get_users()
+        if not df_users.empty:
+            # On masque le hash_mdp pour l'affichage pour plus de sécurité visuelle
+            cols_a_afficher = [col for col in df_users.columns if col != "hash_mdp"]
+            st.dataframe(df_users[cols_a_afficher], use_container_width=True, hide_index=True)
+        else:
+            st.write("Aucun utilisateur trouvé.")
+
+        st.subheader("Matrice des Permissions")
+        df_perms = get_permissions()
+        if not df_perms.empty:
+            st.dataframe(df_perms, use_container_width=True, hide_index=True)
+        else:
+            st.write("Aucune permission trouvée.")
