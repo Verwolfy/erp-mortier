@@ -1,18 +1,21 @@
 """
 Interface utilisateur du module Ventes.
-Fusion du module Facturation (Avoirs, Remises, Timbre fiscal).
-Intègre la génération unifiée de PDF, le lien avec les Stocks, et le cycle de vie (Brouillon/Valide/Annule).
+Intègre la génération de PDF, le cycle de vie (Brouillon/Valide/Annule),
+et le pont direct vers la Production (Make-to-Order) en cas de rupture de stock.
 """
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
+from core.db_service import fetch_data
 from modules.ventes.service import (
     create_facture_brouillon,
     valider_facture,
     annuler_facture,
     get_factures,
+    get_lignes_facture,
     calculer_montants_facture
 )
+from modules.production.service import auto_create_of_from_vente
 from modules.admin.service import get_dataframe
 from core.utils import get_local_now
 from core.pdf_generator import generer_document_standard
@@ -82,6 +85,21 @@ def show_ventes_page():
                     liste_skus[sku_id] = f"{nom_produit} - {format_val} ({sku_id})"
 
                 sku_choisi = c_sku.selectbox("Produit", options=list(liste_skus.keys()), format_func=lambda x: liste_skus[x])
+
+                # --- Affichage du stock en direct ---
+                stock_actuel = 0.0
+                df_stocks = pd.DataFrame(fetch_data("stock_actuel_pf"))
+                if sku_choisi and not df_stocks.empty and "sku_id" in df_stocks.columns:
+                    stock_row = df_stocks[df_stocks["sku_id"] == sku_choisi]
+                    if not stock_row.empty:
+                        stock_actuel = float(stock_row.iloc[0].get("quantite_disponible", 0.0))
+
+                if stock_actuel > 0:
+                    c_sku.success(f"📦 En stock : {stock_actuel:,.2f}")
+                else:
+                    c_sku.warning("⚠️ Rupture : nécessitera une production")
+                # ------------------------------------
+
                 prix_defaut = float(df_skus[df_skus["sku_id"] == sku_choisi]["prix_vente_defaut"].iloc[0]) if sku_choisi else 0.0
 
                 qte = c_qte.number_input("Quantité", min_value=1.0, step=1.0)
@@ -120,10 +138,8 @@ def show_ventes_page():
 
                 st.info(f"**Total HT Bruts:** {totaux['total_ht']:,.2f} | **Total Remises:** {totaux['total_remise']:,.2f} | **Net à Payer HT:** {totaux['net_a_payer']:,.2f} | **TVA:** {totaux['total_tva']:,.2f} | **Timbre Fiscal:** {totaux['timbre_fiscal']:,.2f} | **TTC Final:** {totaux['total_ttc']:,.2f} DZD")
 
-                # Changement du bouton pour refléter l'action (Création de brouillon)
                 if st.button("📝 Enregistrer le Brouillon", type="primary"):
                     try:
-                        # Appel du nouveau service : ne déduit PAS le stock
                         doc_id = create_facture_brouillon(client_choisi, str(date_echeance), st.session_state["panier_vente"], remise_globale, paiement_especes, is_avoir, facture_origine_id)
 
                         client_row = df_clients[df_clients["client_id"] == client_choisi].iloc[0]
@@ -174,7 +190,7 @@ def show_ventes_page():
                     st.session_state["panier_vente"] = []
                     st.rerun()
 
-    # --- ONGLET 2 : WORKFLOW (VALIDATION / ANNULATION) ---
+    # --- ONGLET 2 : WORKFLOW (VALIDATION / ANNULATION / MAKE TO ORDER) ---
     with tab2:
         st.subheader("📚 Registre des Factures (Workflow)")
         if not df_f.empty:
@@ -188,21 +204,60 @@ def show_ventes_page():
                 facture_choisie = st.selectbox("Sélectionnez une facture", df_f_sorted["facture_id"].tolist())
 
                 if facture_choisie:
-                    statut_actuel = df_f_sorted[df_f_sorted["facture_id"] == facture_choisie].iloc[0]["statut"]
+                    facture_row = df_f_sorted[df_f_sorted["facture_id"] == facture_choisie].iloc[0]
+                    statut_actuel = facture_row["statut"]
+                    is_avoir = (facture_row.get("type_facture") == "FactureAvoir")
+
                     st.info(f"Statut actuel : **{statut_actuel}**")
 
                     col1, col2 = st.columns(2)
 
                     with col1:
                         if statut_actuel == "BROUILLON":
-                            if st.button("✅ VALIDER LA FACTURE (Déduire les stocks)", type="primary", use_container_width=True):
-                                try:
-                                    valider_facture(facture_choisie)
-                                    st.success(f"La facture {facture_choisie} a été validée avec succès !")
-                                    st.cache_data.clear()
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erreur de validation : {e}")
+                            # --- VÉRIFICATION DES RUPTURES AVANT VALIDATION ---
+                            ruptures = []
+                            if not is_avoir: # Les avoirs ne déduisent pas le stock, pas de rupture possible
+                                df_stocks_check = pd.DataFrame(fetch_data("stock_actuel_pf"))
+                                lignes_fact = get_lignes_facture(facture_choisie)
+
+                                for ligne in lignes_fact:
+                                    sku = ligne["sku_id"]
+                                    qte_demandee = float(ligne["quantite"])
+                                    qte_dispo = 0.0
+
+                                    if not df_stocks_check.empty and "sku_id" in df_stocks_check.columns:
+                                        stock_row = df_stocks_check[df_stocks_check["sku_id"] == sku]
+                                        if not stock_row.empty:
+                                            qte_dispo = float(stock_row.iloc[0].get("quantite_disponible", 0.0))
+
+                                    if qte_dispo < qte_demandee:
+                                        ruptures.append({"sku_id": sku, "manquant": qte_demandee - qte_dispo})
+
+                            if not ruptures:
+                                # Le stock est suffisant (ou c'est un Avoir)
+                                if st.button("✅ VALIDER LA FACTURE (Déduire les stocks)", type="primary", use_container_width=True):
+                                    try:
+                                        valider_facture(facture_choisie)
+                                        st.success(f"La facture {facture_choisie} a été validée avec succès !")
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erreur de validation : {e}")
+                            else:
+                                # RUPTURE DÉTECTÉE !
+                                st.warning("⚠️ Impossible de valider : Stock insuffisant.")
+                                for r in ruptures:
+                                    st.write(f"- Manque {r['manquant']} unité(s) de **{r['sku_id']}**")
+
+                                if st.button("🏭 Lancer en Production (Auto OF)", type="primary", use_container_width=True):
+                                    try:
+                                        for r in ruptures:
+                                            auto_create_of_from_vente(r["sku_id"], r["manquant"], facture_choisie)
+                                        st.success("✅ Ordres de fabrication générés ! Allez dans le module Production pour les traiter.")
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Erreur lors de la création de l'OF : {e}")
                         else:
                             st.button("✅ VALIDER LA FACTURE", disabled=True, use_container_width=True, help="Uniquement pour les brouillons.")
 
