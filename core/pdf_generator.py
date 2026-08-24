@@ -183,4 +183,5 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
         pdf.multi_cell(0, 6, f"Arrêté le présent document à la somme de : {montant_lettres}")
 
     pdf.cleanup()
-    return pdf.output(dest="S").encode("latin-1")
+    # Retourne les bytes directement compatibles avec Streamlit
+    return bytes(pdf.output())
