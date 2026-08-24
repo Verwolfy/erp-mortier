@@ -134,7 +134,6 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     if col_montant in df_cmd.columns:
         df_cmd[col_montant] = pd.to_numeric(df_cmd[col_montant], errors="coerce").fillna(0)
 
-    # Sécurisation de l'extraction des colonnes de dates pour éviter les retours string qui causent NaTType
     col_date = "date_commande" if "date_commande" in df_cmd.columns else (df_cmd.columns[1] if len(df_cmd.columns) > 1 else df_cmd.columns[0])
     df_cmd["date_obj"] = pd.to_datetime(df_cmd[col_date], errors="coerce").dt.tz_localize(None)
 
@@ -178,7 +177,12 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
     lots_expirants = pd.DataFrame()
 
     if not df_stock.empty and "item_id" in df_stock.columns and "cmp_actuel" in df_stock.columns:
-        df_stock["qte"] = pd.to_numeric(df_stock.get("quantite_disponible", 0), errors="coerce").fillna(0)
+        # Sécurisation pandas : vérification explicite de la colonne
+        if "quantite_disponible" in df_stock.columns:
+            df_stock["qte"] = pd.to_numeric(df_stock["quantite_disponible"], errors="coerce").fillna(0)
+        else:
+            df_stock["qte"] = 0.0
+
         df_stock["cmp"] = pd.to_numeric(df_stock["cmp_actuel"], errors="coerce").fillna(0)
         df_stock["valeur"] = df_stock["qte"] * df_stock["cmp"]
 
@@ -200,9 +204,20 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
         now = pd.Timestamp(get_local_now()).tz_localize(None)
         limite = now + timedelta(days=jours_alerte_peremption)
         df_lots["date_peremption_obj"] = pd.to_datetime(df_lots["date_peremption"], errors="coerce").dt.tz_localize(None)
-        df_lots["qte_lot"] = pd.to_numeric(df_lots.get("quantite_actuelle", 0), errors="coerce").fillna(0)
+
+        # Sécurisation pandas : utilisation du vrai nom de la colonne (quantite_restante)
+        if "quantite_restante" in df_lots.columns:
+            df_lots["qte_lot"] = pd.to_numeric(df_lots["quantite_restante"], errors="coerce").fillna(0)
+        else:
+            df_lots["qte_lot"] = 0.0
+
         mask_lots = (df_lots["qte_lot"] > 0) & (df_lots["date_peremption_obj"] >= now) & (df_lots["date_peremption_obj"] <= limite)
-        lots_expirants = df_lots[mask_lots][["lot_id", "item_id", "date_peremption", "quantite_actuelle"]].copy()
+
+        cols_to_select = ["lot_id", "item_id", "date_peremption"]
+        if "quantite_restante" in df_lots.columns:
+            cols_to_select.append("quantite_restante")
+
+        lots_expirants = df_lots[mask_lots][cols_to_select].copy()
 
     return {"valeur_mp": valeur_mp, "valeur_pf": valeur_pf, "valeur_totale": valeur_mp + valeur_pf, "sous_seuil": sous_seuil, "lots_expirants": lots_expirants}
 
@@ -311,7 +326,12 @@ def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
 
     repartition_comptes = pd.DataFrame()
     if not df_cpt.empty:
-        df_cpt["solde"] = pd.to_numeric(df_cpt.get("solde_initial", 0), errors="coerce").fillna(0)
+        # Sécurisation pandas
+        if "solde_initial" in df_cpt.columns:
+            df_cpt["solde"] = pd.to_numeric(df_cpt["solde_initial"], errors="coerce").fillna(0)
+        else:
+            df_cpt["solde"] = 0.0
+
         if "nom_compte" in df_cpt.columns and "type_compte" in df_cpt.columns:
             repartition_comptes = df_cpt[["nom_compte", "solde", "type_compte"]].copy()
 
@@ -320,8 +340,16 @@ def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     taux_lettrage = 0.0
 
     if not df_reg.empty:
-        df_reg["montant_total"] = pd.to_numeric(df_reg.get("montant_total", 0), errors="coerce").fillna(0)
-        df_reg["montant_alloue"] = pd.to_numeric(df_reg.get("montant_alloue", 0), errors="coerce").fillna(0)
+        # Sécurisation pandas
+        if "montant_total" in df_reg.columns:
+            df_reg["montant_total"] = pd.to_numeric(df_reg["montant_total"], errors="coerce").fillna(0)
+        else:
+            df_reg["montant_total"] = 0.0
+
+        if "montant_alloue" in df_reg.columns:
+            df_reg["montant_alloue"] = pd.to_numeric(df_reg["montant_alloue"], errors="coerce").fillna(0)
+        else:
+            df_reg["montant_alloue"] = 0.0
 
         col_date = "date_reglement" if "date_reglement" in df_reg.columns else (df_reg.columns[1] if len(df_reg.columns) > 1 else df_reg.columns[0])
         df_reg["date_obj"] = pd.to_datetime(df_reg[col_date], errors="coerce").dt.tz_localize(None)
