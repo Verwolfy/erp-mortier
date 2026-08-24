@@ -164,3 +164,38 @@ def enregistrer_controle_qualite(
         })
     else:
         changer_statut_of(of_id, "REJETE")
+
+
+# ==========================================
+# PONT ENTRE VENTES ET PRODUCTION (Nouveau)
+# ==========================================
+def auto_create_of_from_vente(sku_id: str, quantite_manquante: float, facture_id: str) -> str:
+    """Génère automatiquement un OF depuis le module Ventes pour combler une rupture de stock."""
+    # 1. Trouver le Produit Fini (pf_id) lié à ce SKU
+    df_skus = pd.DataFrame(fetch_data("sku_conditionnement"))
+    if df_skus.empty or "sku_id" not in df_skus.columns:
+        raise ValueError("Catalogue des SKU introuvable.")
+
+    sku_row = df_skus[df_skus["sku_id"] == sku_id]
+    if sku_row.empty:
+        raise ValueError(f"SKU {sku_id} introuvable.")
+
+    pf_id = sku_row.iloc[0]["pf_id"]
+
+    # 2. Trouver la recette active pour ce Produit Fini
+    df_recettes = get_recettes()
+    if df_recettes.empty:
+        raise ValueError("Aucune recette disponible dans le système.")
+
+    recettes_compatibles = df_recettes[(df_recettes["pf_id"] == pf_id) & (df_recettes["actif"] == "OUI")]
+    if recettes_compatibles.empty:
+        raise ValueError(f"Impossible de lancer la production : Aucune recette active configurée pour le produit {pf_id}.")
+
+    recette_id = recettes_compatibles.iloc[0]["recette_id"]
+
+    # 3. Créer l'OF automatiquement
+    notes = f"Urgence : OF généré automatiquement pour satisfaire le document de vente {facture_id}"
+    date_planif = get_local_now().strftime("%Y-%m-%d")
+
+    # Appel de ta fonction existante
+    return create_ordre_fabrication(pf_id, recette_id, sku_id, quantite_manquante, date_planif, notes)
