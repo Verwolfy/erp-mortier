@@ -1,12 +1,16 @@
 """
-Interface utilisateur pour le module Achats (Commandes Fournisseurs).
+Interface utilisateur pour le module Achats (Commandes Fournisseurs & Réceptions).
 """
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
 from core.listes_service import get_liste, liste_to_dict
 from core.db_service import fetch_data
-from modules.achats.service import create_commande_achat, get_commandes
+from modules.achats.service import (
+    create_commande_achat, get_commandes, get_lignes_achats,
+    creer_bon_reception, get_bons_reception
+)
+from core.utils import get_local_now
 
 def get_fournisseurs_actifs():
     df = pd.DataFrame(fetch_data("fournisseurs"))
@@ -25,8 +29,9 @@ def show_achats_page():
     if "panier_achats" not in st.session_state:
         st.session_state["panier_achats"] = []
 
-    tab1, tab2 = st.tabs(["➕ Nouvelle Commande", "📋 Historique des Commandes"])
+    tab1, tab2, tab3 = st.tabs(["➕ Nouvelle Commande", "📦 Réception & Entrée Stock", "📋 Historique & Suivi"])
 
+    # --- TAB 1 : NOUVELLE COMMANDE ---
     with tab1:
         if not can_write:
             st.info("🔒 Accès en lecture seule. Création de commande désactivée.")
@@ -37,7 +42,6 @@ def show_achats_page():
             if df_fournisseurs.empty or df_mp.empty:
                 st.warning("Veuillez d'abord configurer des Fournisseurs et Matières Premières actifs dans l'Administration.")
             else:
-                # --- EN-TÊTE ---
                 st.subheader("1. Informations Fournisseur")
                 col1, col2 = st.columns(2)
                 liste_fournisseurs = {row["fournisseur_id"]: f"{row['fournisseur_id']} - {row['nom']}" for _, row in df_fournisseurs.iterrows()}
@@ -47,7 +51,6 @@ def show_achats_page():
 
                 col3, col4, col5 = st.columns(3)
 
-                # Devise
                 dict_devise = liste_to_dict(get_liste("Devise"))
                 if not dict_devise:
                     dict_devise = {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
@@ -58,7 +61,6 @@ def show_achats_page():
 
                 st.divider()
 
-                # --- PANIER (LIGNES D'ACHATS) ---
                 st.subheader("2. Lignes de Commande")
                 with st.expander("➕ Ajouter un article", expanded=True):
                     c_mp, c_qte, c_prix, c_btn = st.columns([3, 1, 1, 1])
@@ -92,17 +94,14 @@ def show_achats_page():
 
                 st.divider()
 
-                # --- VALIDATION ---
                 st.subheader("3. Modalités & Validation")
                 c_mode, c_delai, c_valider = st.columns(3)
 
-                # Mode de paiement
                 dict_mode = liste_to_dict(get_liste("ModePaiement"))
                 if not dict_mode:
                     dict_mode = {"Virement": "Virement", "Chèque": "Chèque", "Espèces": "Espèces"}
                 mode_paiement = c_mode.selectbox("Mode de paiement", options=list(dict_mode.keys()), format_func=lambda x: dict_mode.get(x, x))
 
-                # Délai de paiement
                 dict_delai = liste_to_dict(get_liste("ConditionPaiement"))
                 if not dict_delai:
                     dict_delai = {"Comptant": "Comptant", "30 jours": "30 jours", "60 jours": "60 jours"}
@@ -116,14 +115,91 @@ def show_achats_page():
                         panier=st.session_state["panier_achats"]
                     )
                     st.session_state["panier_achats"] = []
-                    st.success(f"Commande {cmd_id} validée !")
+                    st.success(f"Commande {cmd_id} enregistrée avec succès !")
                     st.cache_data.clear()
                     st.rerun()
 
+    # --- TAB 2 : RÉCEPTION & ENTRÉE STOCK ---
     with tab2:
-        st.subheader("Suivi des Commandes")
+        st.subheader("Générer un Bon de Réception (BR)")
+        df_commandes = get_commandes()
+
+        if not can_write:
+            st.info("🔒 Mode lecture seule.")
+        elif df_commandes.empty:
+            st.info("Aucune commande enregistrée.")
+        else:
+            df_en_attente = df_commandes[df_commandes["statut"] == "EN_ATTENTE"]
+            if df_en_attente.empty:
+                st.success("Toutes les commandes d'achats ont été réceptionnées !")
+            else:
+                liste_cmds = {row["commande_achat_id"]: f"{row['commande_achat_id']} - Fournisseur: {row['fournisseur_id']} ({row['date_commande']})" for _, row in df_en_attente.iterrows()}
+                cmd_choisie = st.selectbox("Sélectionnez la commande à réceptionner", options=list(liste_cmds.keys()), format_func=lambda x: liste_cmds[x])
+
+                if cmd_choisie:
+                    df_lignes = get_lignes_achats(cmd_choisie)
+                    st.markdown("**Contenu de la commande :**")
+
+                    items_recus = []
+                    with st.form("form_reception"):
+                        c1, c2 = st.columns(2)
+                        date_rec = c1.date_input("Date de réception", value=get_local_now())
+                        conformite = c2.radio("Contrôle de conformité", ["CONFORME", "RESERVE", "NON_CONFORME"], horizontal=True)
+
+                        c3, c4 = st.columns(2)
+                        remarques = c3.text_input("Remarques / Observation")
+                        date_peremp = c4.date_input("Date de péremption des produits")
+
+                        st.divider()
+                        st.markdown("**Quantités réceptionnées :**")
+
+                        for idx, row in df_lignes.iterrows():
+                            mp_id = row["mp_id"]
+                            qte_commandee = float(row["qte_totale"])
+                            prix_u = float(row.get("prix_unitaire", 0.0))
+
+                            qte_r = st.number_input(
+                                f"Article {mp_id} (Commandé : {qte_commandee})",
+                                min_value=0.0,
+                                value=qte_commandee,
+                                step=1.0,
+                                key=f"rec_{idx}"
+                            )
+                            items_recus.append({
+                                "mp_id": mp_id,
+                                "quantite_recue": qte_r,
+                                "prix_unitaire": prix_u
+                            })
+
+                        if st.form_submit_button("📦 Valider la réception & Alimenter les stocks", type="primary"):
+                            try:
+                                br_id = creer_bon_reception(
+                                    commande_achat_id=cmd_choisie,
+                                    date_reception=str(date_rec),
+                                    controle_conformite=conformite,
+                                    remarques=remarques,
+                                    items_recus=items_recus,
+                                    date_peremption=str(date_peremp)
+                                )
+                                st.success(f"✅ Bon de Réception {br_id} généré ! Les stocks ont été automatiquement mis à jour.")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Erreur lors de la réception : {e}")
+
+    # --- TAB 3 : HISTORIQUE ET SUIVI ---
+    with tab3:
+        st.subheader("Commandes d'Achats")
         df_commandes = get_commandes()
         if not df_commandes.empty:
-            st.dataframe(df_commandes, use_container_width=True)
+            st.dataframe(df_commandes.sort_values(by="date_commande", ascending=False), use_container_width=True, hide_index=True)
         else:
-            st.info("Aucune commande enregistrée pour le moment.")
+            st.info("Aucune commande enregistrée.")
+
+        st.divider()
+        st.subheader("Bons de Réception (BR)")
+        df_br = get_bons_reception()
+        if not df_br.empty:
+            st.dataframe(df_br.sort_values(by="date_reception", ascending=False), use_container_width=True, hide_index=True)
+        else:
+            st.info("Aucun bon de réception généré pour le moment.")
