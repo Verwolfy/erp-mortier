@@ -132,3 +132,12 @@ def add_permission(role: str, module: str, lecture: str, ecriture: str):
     }
 
     insert_hybrid("permissions", data_perm)
+
+def get_audit_logs() -> pd.DataFrame:
+    """Récupère l'historique des actions (logs) classé du plus récent au plus ancien."""
+    df = pd.DataFrame(fetch_data("logs"))
+    if not df.empty and "date_action" in df.columns:
+        # Conversion en format date et tri décroissant
+        df["date_action"] = pd.to_datetime(df["date_action"])
+        df = df.sort_values(by="date_action", ascending=False)
+    return df

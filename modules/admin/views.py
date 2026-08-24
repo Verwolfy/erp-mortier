@@ -10,7 +10,7 @@ from core.listes_service import get_liste, liste_to_dict
 from modules.admin.service import (
     get_dataframe, add_fournisseur, add_matiere_premiere,
     add_produit, add_sku, add_client, sauvegarder_modifications,
-    add_user, add_permission, get_users, get_permissions
+    add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
 
 # --- FALLBACKS SÉCURISÉS (Tirés de docs/schema_reference.md) ---
@@ -372,7 +372,7 @@ def show_admin_page():
 # PAGE DE GESTION DES UTILISATEURS
 # ==========================================
 def show_user_management():
-    """Affiche l'interface de gestion des accès et de la sécurité."""
+    """Affiche l'interface de gestion des accès, de la sécurité et des logs."""
     st.title("🔐 Sécurité & Utilisateurs")
 
     # Vérification des permissions
@@ -383,7 +383,7 @@ def show_user_management():
         st.error("Vous n'avez pas les droits d'administration pour accéder à cette page.")
         return
 
-    tab1, tab2, tab3 = st.tabs(["Créer un Utilisateur", "Définir les Permissions", "Annuaire Existant"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Créer un Utilisateur", "Définir les Permissions", "Annuaire Existant", "Piste d'Audit (Logs)"])
 
     # ONGLET 1 : Création de compte
     with tab1:
@@ -460,3 +460,18 @@ def show_user_management():
             st.dataframe(df_perms, use_container_width=True, hide_index=True)
         else:
             st.write("Aucune permission trouvée.")
+
+    # ONGLET 4 : Piste d'audit (Logs)
+    with tab4:
+        st.subheader("Historique des Actions (Audit Trail)")
+        st.info("Traçabilité complète et automatique des modifications de la base de données.")
+
+        # Bouton pour rafraîchir manuellement les logs
+        if st.button("🔄 Rafraîchir les logs"):
+            st.cache_data.clear()
+
+        df_logs = get_audit_logs()
+        if not df_logs.empty:
+            st.dataframe(df_logs, use_container_width=True, hide_index=True)
+        else:
+            st.write("Aucune activité enregistrée pour le moment.")
