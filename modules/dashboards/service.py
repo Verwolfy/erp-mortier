@@ -69,6 +69,73 @@ def get_kpis_direction() -> dict:
 
     return {"ca_mois": ca_mois, "tresorerie": treso_dispo, "impayes_30j": impayes_30j, "alertes_stock": alertes_stock}
 
+def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
+    """Calcule le Compte de Résultat (P&L) : CA, Marge Brute, OPEX et EBITDA."""
+    df_fac = charger_donnees("factures")
+    df_lignes_fac = charger_donnees("lignes_facture")
+    df_pf = charger_donnees("stock_actuel_pf")
+    df_reg = charger_donnees("reglements")
+    df_frn = charger_donnees("fournisseurs")
+    df_paie = charger_donnees("fiches_de_paie")
+
+    # 1. CHIFFRE D'AFFAIRES (CA HT)
+    ca_ht = 0.0
+    df_fac_periode = pd.DataFrame()
+    if not df_fac.empty and "date" in df_fac.columns:
+        df_fac["date_obj"] = pd.to_datetime(df_fac["date"], errors="coerce").dt.tz_localize(None)
+        mask_periode = (df_fac["date_obj"] >= date_debut) & (df_fac["date_obj"] <= date_fin)
+        type_col = "type_document" if "type_document" in df_fac.columns else "type_facture"
+        mask_clients = df_fac.get(type_col, "FactureClient") == "FactureClient"
+        df_fac_periode = df_fac[mask_periode & mask_clients]
+        ca_ht = pd.to_numeric(df_fac_periode["montant_ht"], errors="coerce").fillna(0).sum()
+
+    # 2. COGS (Coût des marchandises vendues)
+    cogs = 0.0
+    if not df_fac_periode.empty and not df_lignes_fac.empty and not df_pf.empty:
+        lignes_periode = df_lignes_fac[df_lignes_fac["facture_id"].isin(df_fac_periode["facture_id"])]
+        if not lignes_periode.empty:
+            merged = pd.merge(lignes_periode, df_pf, on="sku_id", how="left")
+            merged["qte"] = pd.to_numeric(merged["quantite"], errors="coerce").fillna(0)
+            merged["cout_unitaire"] = pd.to_numeric(merged.get("cout_revient", 0), errors="coerce").fillna(0)
+            cogs = (merged["qte"] * merged["cout_unitaire"]).sum()
+
+    marge_brute = ca_ht - cogs
+
+    # 3. OPEX (Fournisseurs d'exploitation)
+    opex_fournisseurs = 0.0
+    if not df_reg.empty and not df_frn.empty:
+        col_date_reg = "date_reglement" if "date_reglement" in df_reg.columns else df_reg.columns[1]
+        df_reg["date_obj"] = pd.to_datetime(df_reg[col_date_reg], errors="coerce").dt.tz_localize(None)
+        mask_reg = (df_reg["date_obj"] >= date_debut) & (df_reg["date_obj"] <= date_fin) & (df_reg["type_flux"] == "DECAISSEMENT")
+        df_decaissements = df_reg[mask_reg]
+
+        if not df_decaissements.empty:
+            merged_opex = pd.merge(df_decaissements, df_frn, left_on="partenaire_id", right_on="fournisseur_id", how="inner")
+            if "categorie" in merged_opex.columns:
+                mask_cat = merged_opex["categorie"].astype(str).str.upper().str.contains("OPEX", na=False)
+                merged_opex["montant"] = pd.to_numeric(merged_opex["montant_total"], errors="coerce").fillna(0)
+                opex_fournisseurs = merged_opex[mask_cat]["montant"].sum()
+
+    # 4. OPEX (Salaires)
+    opex_salaires = 0.0
+    if not df_paie.empty:
+        df_paie["net"] = pd.to_numeric(df_paie.get("net_a_payer", 0), errors="coerce").fillna(0)
+        opex_salaires = df_paie["net"].sum()
+
+    total_opex = opex_fournisseurs + opex_salaires
+    ebitda = marge_brute - total_opex
+
+    return {
+        "ca_ht": ca_ht,
+        "cogs": cogs,
+        "marge_brute": marge_brute,
+        "taux_marge_brute": (marge_brute / ca_ht * 100) if ca_ht > 0 else 0.0,
+        "opex_fournisseurs": opex_fournisseurs,
+        "opex_salaires": opex_salaires,
+        "ebitda": ebitda,
+        "taux_ebitda": (ebitda / ca_ht * 100) if ca_ht > 0 else 0.0
+    }
+
 def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_fac = charger_donnees("factures")
     if df_fac.empty or "facture_id" not in df_fac.columns:
@@ -170,7 +237,6 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     return {"montant_total": montant_total, "commandes_retard": len(df_cmd[mask_retard]), "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
 
 def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
-    """Consulte correctement stock_actuel (MP) et stock_actuel_pf (PF)."""
     df_stock_mp = charger_donnees("stock_actuel")
     df_stock_pf = charger_donnees("stock_actuel_pf")
     df_lots = charger_donnees("lots")
@@ -179,7 +245,6 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
     valeur_mp, valeur_pf, sous_seuil = 0.0, 0.0, 0
     lots_expirants = pd.DataFrame()
 
-    # 1. Calcul Valeur Matières Premières & Seuil Mini
     if not df_stock_mp.empty and "quantite_disponible" in df_stock_mp.columns:
         df_stock_mp["qte"] = pd.to_numeric(df_stock_mp["quantite_disponible"], errors="coerce").fillna(0)
         df_stock_mp["cmp"] = pd.to_numeric(df_stock_mp.get("cmp_actuel", 0), errors="coerce").fillna(0)
@@ -191,13 +256,11 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
                 merged["mini"] = pd.to_numeric(merged["stock_mini"], errors="coerce").fillna(0)
                 sous_seuil = len(merged[merged["qte"] < merged["mini"]])
 
-    # 2. Calcul Valeur Produits Finis (SKU)
     if not df_stock_pf.empty and "quantite_disponible" in df_stock_pf.columns:
         df_stock_pf["qte"] = pd.to_numeric(df_stock_pf["quantite_disponible"], errors="coerce").fillna(0)
         df_stock_pf["cout"] = pd.to_numeric(df_stock_pf.get("cout_revient", 0), errors="coerce").fillna(0)
         valeur_pf = (df_stock_pf["qte"] * df_stock_pf["cout"]).sum()
 
-    # 3. Lots à périmer
     if not df_lots.empty and "date_peremption" in df_lots.columns:
         now = pd.Timestamp(get_local_now()).tz_localize(None)
         limite = now + timedelta(days=jours_alerte_peremption)
@@ -221,7 +284,6 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
     }
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    """Agrège les métriques de la table ordres_fabrication et controle_qualite."""
     df_of = charger_donnees("ordres_fabrication")
     df_cq = charger_donnees("controle_qualite")
 

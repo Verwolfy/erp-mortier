@@ -7,7 +7,7 @@ import pandas as pd
 import datetime
 from config.roles import has_permission
 from modules.dashboards.service import (
-    get_kpis_direction, get_kpis_ventes, get_kpis_achats,
+    get_kpis_direction, get_kpis_pnl, get_kpis_ventes, get_kpis_achats,
     get_kpis_stocks, get_kpis_production, get_kpis_crm,
     get_kpis_rh, get_kpis_finance
 )
@@ -22,8 +22,9 @@ def show_dashboards_page():
         st.error("🔒 Vous n'avez pas accès en lecture à ce module.")
         return
 
+    # L'onglet Rentabilité a été ajouté en deuxième position
     onglets = st.tabs([
-        "👑 Vue Direction", "🛒 Ventes & Facturation", "📦 Achats",
+        "👑 Vue Direction", "📈 Rentabilité (P&L)", "🛒 Ventes & Facturation", "📦 Achats",
         "🏭 Stocks", "⚙️ Production", "🤝 CRM", "👥 RH", "🏦 Finance"
     ])
 
@@ -39,8 +40,34 @@ def show_dashboards_page():
         col4.metric("Alertes Stock", str(kpis['alertes_stock']), delta="Critique" if kpis['alertes_stock'] > 0 else "Normal", delta_color="inverse")
         st.divider()
 
-    # --- 2. VENTES & FACTURATION ---
+    # --- 2. RENTABILITÉ (P&L) ---
     with onglets[1]:
+        st.subheader("Compte de Résultat Simplifié (P&L)")
+        c_deb_pnl, c_fin_pnl = st.columns(2)
+        date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl")
+        date_fin_pnl = c_fin_pnl.date_input("Date de fin", datetime.date.today(), key="f_pnl")
+
+        if date_deb_pnl <= date_fin_pnl:
+            ts_deb_pnl, ts_fin_pnl = pd.Timestamp(date_deb_pnl), pd.Timestamp(date_fin_pnl) + pd.Timedelta(days=1, seconds=-1)
+            pnl = get_kpis_pnl(ts_deb_pnl, ts_fin_pnl)
+
+            col_pnl1, col_pnl2, col_pnl3 = st.columns(3)
+            col_pnl1.metric("Chiffre d'Affaires (CA HT)", f"{pnl['ca_ht']:,.2f} DZD")
+            col_pnl2.metric("Marge Brute", f"{pnl['marge_brute']:,.2f} DZD", f"{pnl['taux_marge_brute']:.1f} %")
+            col_pnl3.metric("EBITDA (Résultat d'Exploitation)", f"{pnl['ebitda']:,.2f} DZD", f"{pnl['taux_ebitda']:.1f} %")
+
+            st.divider()
+            st.markdown("### Détail de la cascade des coûts")
+
+            df_cascade = pd.DataFrame({
+                "Catégorie": ["1. Revenus (CA HT)", "2. Coût des Marchandises (COGS)", "3. OPEX (Services & Loyer)", "4. OPEX (Salaires)", "5. EBITDA"],
+                "Montant (DZD)": [pnl['ca_ht'], -pnl['cogs'], -pnl['opex_fournisseurs'], -pnl['opex_salaires'], pnl['ebitda']]
+            })
+            st.dataframe(df_cascade, use_container_width=True, hide_index=True)
+            st.info("💡 Astuce : Pour que vos frais généraux (électricité, loyer) apparaissent ici, créez vos fournisseurs dans le module Administration avec une catégorie contenant le mot 'OPEX', puis enregistrez leurs paiements dans la Trésorerie.")
+
+    # --- 3. VENTES & FACTURATION ---
+    with onglets[2]:
         st.subheader("Analyse des Ventes & Recouvrement")
         c_deb, c_fin = st.columns(2)
         date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v")
@@ -67,8 +94,8 @@ def show_dashboards_page():
                 if not kpis_v["top_clients"].empty:
                     st.dataframe(kpis_v["top_clients"], use_container_width=True, hide_index=True)
 
-    # --- 3. ACHATS ---
-    with onglets[2]:
+    # --- 4. ACHATS ---
+    with onglets[3]:
         st.subheader("Analyse des Achats & Fournisseurs")
         c_deb_a, c_fin_a = st.columns(2)
         date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a")
@@ -96,8 +123,8 @@ def show_dashboards_page():
                     mp_choisie = st.selectbox("Sélectionnez une Matière", options=df_evo["mp_id"].unique().tolist())
                     st.line_chart(df_evo[df_evo["mp_id"] == mp_choisie].sort_values(by="date_obj").set_index("date_obj")["prix_unitaire"])
 
-    # --- 4. STOCKS ---
-    with onglets[3]:
+    # --- 5. STOCKS ---
+    with onglets[4]:
         st.subheader("Analyse Financière des Stocks")
         jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7)
         kpis_s = get_kpis_stocks(jours_alerte_peremption=jours)
@@ -116,8 +143,8 @@ def show_dashboards_page():
             st.markdown("**Détail des lots à risque**")
             st.dataframe(kpis_s["lots_expirants"], use_container_width=True, hide_index=True) if not kpis_s["lots_expirants"].empty else st.success("Aucun risque.")
 
-    # --- 5. PRODUCTION ---
-    with onglets[4]:
+    # --- 6. PRODUCTION ---
+    with onglets[5]:
         st.subheader("Performance de Production")
         c_deb_p, c_fin_p = st.columns(2)
         date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p")
@@ -136,8 +163,8 @@ def show_dashboards_page():
             if not kpis_p["repartition_statut"].empty:
                 st.bar_chart(kpis_p["repartition_statut"].set_index("Statut"))
 
-    # --- 6. CRM ---
-    with onglets[5]:
+    # --- 7. CRM ---
+    with onglets[6]:
         st.subheader("Performance Commerciale & Pipeline")
         c_deb_c, c_fin_c = st.columns(2)
         date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c")
@@ -158,10 +185,10 @@ def show_dashboards_page():
             else:
                 st.info("Aucune opportunité gagnée sur cette période.")
 
-    # --- 7. RH ---
-    with onglets[6]:
+    # --- 8. RH ---
+    with onglets[7]:
         st.subheader("Ressources Humaines")
-        kpis_r = get_kpis_rh(pd.Timestamp("2000-01-01"), pd.Timestamp("2100-01-01")) # L'effectif est global
+        kpis_r = get_kpis_rh(pd.Timestamp("2000-01-01"), pd.Timestamp("2100-01-01"))
 
         cr1, cr2 = st.columns(2)
         cr1.metric("Effectif Actif", str(kpis_r["effectif_actif"]))
@@ -174,8 +201,8 @@ def show_dashboards_page():
         else:
             st.info("Aucune donnée d'employés.")
 
-    # --- 8. FINANCE ---
-    with onglets[7]:
+    # --- 9. FINANCE ---
+    with onglets[8]:
         st.subheader("Flux de Trésorerie & Rapprochement")
         c_deb_f, c_fin_f = st.columns(2)
         date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f")
