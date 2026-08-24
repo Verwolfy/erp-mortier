@@ -1,21 +1,22 @@
 """
 Logique métier du module Dashboards.
 Agrège les données pour les indicateurs clés (KPIs) et graphiques.
+Interroge désormais directement Supabase (SQL) pour une fiabilité et des performances maximales.
 """
 import pandas as pd
 from datetime import timedelta
-from core.sheets_service import get_all_records
+from core.db_service import fetch_data
 from core.utils import get_local_now
 
-def charger_donnees(dossier: str, onglet: str) -> pd.DataFrame:
-    """Fonction utilitaire pour charger un onglet sous forme de DataFrame sécurisé."""
-    return pd.DataFrame(get_all_records(dossier, onglet))
+def charger_donnees(table_name: str) -> pd.DataFrame:
+    """Fonction utilitaire pour charger une table SQL sous forme de DataFrame sécurisé."""
+    return pd.DataFrame(fetch_data(table_name))
 
 def get_kpis_direction() -> dict:
     now = get_local_now()
 
     # 1. CA & Impayés
-    df_fac = charger_donnees("ventes", "Factures")
+    df_fac = charger_donnees("factures")
     ca_mois = 0.0
     impayes_30j = 0.0
 
@@ -24,7 +25,7 @@ def get_kpis_direction() -> dict:
             if col in df_fac.columns:
                 df_fac[col] = pd.to_numeric(df_fac[col], errors="coerce").fillna(0)
 
-        col_date = "date_jour" if "date_jour" in df_fac.columns else df_fac.columns[4]
+        col_date = "date" if "date" in df_fac.columns else df_fac.columns[3]
         df_fac["date_obj"] = pd.to_datetime(df_fac[col_date], errors="coerce")
 
         mask_mois = (df_fac["date_obj"].dt.month == now.month) & (df_fac["date_obj"].dt.year == now.year)
@@ -38,12 +39,12 @@ def get_kpis_direction() -> dict:
         limite_30j = pd.Timestamp(now - timedelta(days=30)).tz_localize(None)
         if "date_echeance" in df_fac.columns and "statut" in df_fac.columns:
             df_fac["date_echeance_obj"] = pd.to_datetime(df_fac["date_echeance"], errors="coerce").dt.tz_localize(None)
-            mask_impayes = (df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE"])) & (df_fac["date_echeance_obj"] < limite_30j)
+            mask_impayes = (df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE", "VALIDE", "BROUILLON"])) & (df_fac["date_echeance_obj"] < limite_30j)
             impayes_30j = (df_fac[mask_impayes]["montant_ttc"] - df_fac[mask_impayes]["montant_paye"]).sum()
 
     # 2. Trésorerie
-    df_cpt = charger_donnees("finance", "Comptes")
-    df_reg = charger_donnees("finance", "Reglements")
+    df_cpt = charger_donnees("comptes")
+    df_reg = charger_donnees("reglements")
     treso_dispo = 0.0
 
     if not df_cpt.empty and "solde_initial" in df_cpt.columns:
@@ -55,8 +56,8 @@ def get_kpis_direction() -> dict:
         treso_dispo -= df_reg[df_reg["type_flux"] == "DECAISSEMENT"]["montant_total"].sum()
 
     # 3. Alertes Stock
-    df_stock_mp = charger_donnees("stocks", "StockActuel")
-    df_ref_mp = charger_donnees("referentiels", "MatieresPremieres")
+    df_stock_mp = charger_donnees("stock_actuel")
+    df_ref_mp = charger_donnees("matieres_premieres")
     alertes_stock = 0
 
     if not df_stock_mp.empty and not df_ref_mp.empty and "mp_id" in df_stock_mp.columns:
@@ -69,7 +70,7 @@ def get_kpis_direction() -> dict:
     return {"ca_mois": ca_mois, "tresorerie": treso_dispo, "impayes_30j": impayes_30j, "alertes_stock": alertes_stock}
 
 def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_fac = charger_donnees("ventes", "Factures")
+    df_fac = charger_donnees("factures")
     if df_fac.empty or "facture_id" not in df_fac.columns:
         return {"ca_ht": 0.0, "ca_ttc": 0.0, "timbre_fiscal": 0.0, "panier_moyen": 0.0, "taux_avoirs": 0.0, "nb_factures": 0, "balance_agee": {}, "top_clients": pd.DataFrame()}
 
@@ -77,7 +78,7 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
         if col in df_fac.columns:
             df_fac[col] = pd.to_numeric(df_fac[col], errors="coerce").fillna(0)
 
-    col_date = "date_jour" if "date_jour" in df_fac.columns else df_fac.columns[4]
+    col_date = "date" if "date" in df_fac.columns else df_fac.columns[3]
     df_fac["date_obj"] = pd.to_datetime(df_fac[col_date], errors="coerce").dt.tz_localize(None)
 
     mask_periode = (df_fac["date_obj"] >= date_debut) & (df_fac["date_obj"] <= date_fin)
@@ -96,7 +97,7 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_fac["date_echeance_obj"] = pd.to_datetime(df_fac.get("date_echeance", df_fac["date_obj"]), errors="coerce").dt.tz_localize(None)
 
     if "statut" in df_fac.columns:
-        mask_ouvertes = df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE"])
+        mask_ouvertes = df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE", "VALIDE", "BROUILLON"])
     else:
         mask_ouvertes = pd.Series([False] * len(df_fac))
 
@@ -124,8 +125,8 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     }
 
 def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_cmd = charger_donnees("achats", "CommandesAchats")
-    df_lignes = charger_donnees("achats", "LignesAchats")
+    df_cmd = charger_donnees("commandes_achats")
+    df_lignes = charger_donnees("lignes_achats")
 
     if df_cmd.empty:
         return {"montant_total": 0.0, "commandes_retard": 0, "repartition_fournisseurs": pd.DataFrame(), "evolution_prix": pd.DataFrame()}
@@ -159,25 +160,24 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     repartition = df_periode.groupby("fournisseur_id")[col_montant].sum().reset_index().sort_values(by=col_montant, ascending=False) if not df_periode.empty and "fournisseur_id" in df_periode.columns else pd.DataFrame()
 
     evolution_prix = pd.DataFrame()
-    if not df_lignes.empty and "commande_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
+    if not df_lignes.empty and "commande_achat_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
         df_lignes["prix_unitaire"] = pd.to_numeric(df_lignes["prix_unitaire"], errors="coerce").fillna(0)
-        if "commande_id" in df_cmd.columns:
-            df_merge = pd.merge(df_lignes, df_cmd[["commande_id", "date_obj"]], on="commande_id", how="inner")
+        if "commande_achat_id" in df_cmd.columns:
+            df_merge = pd.merge(df_lignes, df_cmd[["commande_achat_id", "date_obj"]], on="commande_achat_id", how="inner")
             if not df_merge.empty:
                 evolution_prix = df_merge[["date_obj", "mp_id", "prix_unitaire"]].dropna()
 
     return {"montant_total": montant_total, "commandes_retard": len(df_cmd[mask_retard]), "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
 
 def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
-    df_stock = charger_donnees("stocks", "StockActuel")
-    df_lots = charger_donnees("stocks", "Lots")
-    df_ref_mp = charger_donnees("referentiels", "MatieresPremieres")
+    df_stock = charger_donnees("stock_actuel")
+    df_lots = charger_donnees("lots")
+    df_ref_mp = charger_donnees("matieres_premieres")
 
     valeur_mp, valeur_pf, sous_seuil = 0.0, 0.0, 0
     lots_expirants = pd.DataFrame()
 
     if not df_stock.empty and "item_id" in df_stock.columns and "cmp_actuel" in df_stock.columns:
-        # Sécurisation pandas : vérification explicite de la colonne
         if "quantite_disponible" in df_stock.columns:
             df_stock["qte"] = pd.to_numeric(df_stock["quantite_disponible"], errors="coerce").fillna(0)
         else:
@@ -205,7 +205,6 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
         limite = now + timedelta(days=jours_alerte_peremption)
         df_lots["date_peremption_obj"] = pd.to_datetime(df_lots["date_peremption"], errors="coerce").dt.tz_localize(None)
 
-        # Sécurisation pandas : utilisation du vrai nom de la colonne (quantite_restante)
         if "quantite_restante" in df_lots.columns:
             df_lots["qte_lot"] = pd.to_numeric(df_lots["quantite_restante"], errors="coerce").fillna(0)
         else:
@@ -213,17 +212,17 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
 
         mask_lots = (df_lots["qte_lot"] > 0) & (df_lots["date_peremption_obj"] >= now) & (df_lots["date_peremption_obj"] <= limite)
 
-        cols_to_select = ["lot_id", "item_id", "date_peremption"]
-        if "quantite_restante" in df_lots.columns:
-            cols_to_select.append("quantite_restante")
+        # SÉCURISATION MAXIMALE : Ne sélectionner que les colonnes qui existent vraiment
+        colonnes_ideales = ["lot_id", "item_id", "date_peremption", "quantite_restante"]
+        cols_to_select = [col for col in colonnes_ideales if col in df_lots.columns]
 
         lots_expirants = df_lots[mask_lots][cols_to_select].copy()
 
     return {"valeur_mp": valeur_mp, "valeur_pf": valeur_pf, "valeur_totale": valeur_mp + valeur_pf, "sous_seuil": sous_seuil, "lots_expirants": lots_expirants}
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_of = charger_donnees("production", "OrdresFabrication")
-    df_cq = charger_donnees("production", "ControleQualite")
+    df_of = charger_donnees("ordres_fabrication")
+    df_cq = charger_donnees("controle_qualite")
 
     if df_of.empty:
         return {"total_ofs": 0, "repartition_statut": pd.DataFrame(), "taux_rejet": 0.0}
@@ -250,7 +249,7 @@ def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dic
     return {"total_ofs": total_ofs, "repartition_statut": repartition, "taux_rejet": taux_rejet}
 
 def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_opp = charger_donnees("crm", "Pipeline")
+    df_opp = charger_donnees("pipeline")
 
     if df_opp.empty:
         return {"pipeline_pondere": 0.0, "taux_conversion": 0.0, "performance_commerciaux": pd.DataFrame()}
@@ -295,8 +294,8 @@ def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     return {"pipeline_pondere": pipeline_pondere, "taux_conversion": taux_conversion, "performance_commerciaux": perf}
 
 def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_emp = charger_donnees("rh", "Employes")
-    df_conges = charger_donnees("rh", "DemandesConges")
+    df_emp = charger_donnees("employes")
+    df_conges = charger_donnees("demandes_conges")
 
     effectif_actif = 0
     repart_service = pd.DataFrame()
@@ -321,12 +320,11 @@ def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     return {"effectif_actif": effectif_actif, "repartition_service": repart_service, "conges_attente": conges_attente}
 
 def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_cpt = charger_donnees("finance", "Comptes")
-    df_reg = charger_donnees("finance", "Reglements")
+    df_cpt = charger_donnees("comptes")
+    df_reg = charger_donnees("reglements")
 
     repartition_comptes = pd.DataFrame()
     if not df_cpt.empty:
-        # Sécurisation pandas
         if "solde_initial" in df_cpt.columns:
             df_cpt["solde"] = pd.to_numeric(df_cpt["solde_initial"], errors="coerce").fillna(0)
         else:
@@ -340,7 +338,6 @@ def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     taux_lettrage = 0.0
 
     if not df_reg.empty:
-        # Sécurisation pandas
         if "montant_total" in df_reg.columns:
             df_reg["montant_total"] = pd.to_numeric(df_reg["montant_total"], errors="coerce").fillna(0)
         else:
