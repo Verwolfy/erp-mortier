@@ -1,7 +1,7 @@
 """
 Interface utilisateur du module Production.
-Intègre le Bilan de Masse dynamique, la gestion sécurisée des stocks,
-la sélection ergonomique des OF et la déclaration d'emballage.
+Intègre le Bilan de Masse dynamique, la déclaration d'emballages
+et la consultation des consommations de matières premières par OF.
 """
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,8 @@ from config.roles import has_permission
 from core.db_service import fetch_data
 from modules.production.service import (
     create_recette, create_ordre_fabrication, get_recettes,
-    get_ordres_fabrication, changer_statut_of, enregistrer_controle_qualite
+    get_ordres_fabrication, changer_statut_of, enregistrer_controle_qualite,
+    get_consommations_of, get_controles_qualite
 )
 
 def get_produits_actifs():
@@ -33,15 +34,16 @@ def show_production_page():
     if "panier_recette" not in st.session_state:
         st.session_state["panier_recette"] = []
 
-    tab1, tab2, tab3 = st.tabs(["📝 Créer une Recette", "⚙️ Lancer un OF", "📊 Suivi Production"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📝 Créer une Recette", "⚙️ Lancer un OF", "📊 Suivi Production", "🔍 Historique Consommations & CQ"])
 
     df_pf = get_produits_actifs()
     df_mp = get_mp_actives()
     df_skus = get_skus_actifs()
 
+    # --- TAB 1 : RECETTES ---
     with tab1:
         st.subheader("Nouvelle Nomenclature (Recette du Vrac)")
-        st.info("La recette concerne uniquement les composants chimiques. L'emballage sera géré au niveau du SKU.")
+        st.info("La recette concerne uniquement les composants chimiques. L'emballage est géré au niveau du SKU.")
         if not can_write:
             st.info("🔒 Mode lecture seule.")
         elif df_pf.empty or df_mp.empty:
@@ -50,7 +52,7 @@ def show_production_page():
             c_pf, c_ver, c_rend = st.columns(3)
             liste_pf = {row["pf_id"]: f"{row['pf_id']} - {row['nom']}" for _, row in df_pf.iterrows()}
             pf_choisi = c_pf.selectbox("Produit Fini Vrac", options=list(liste_pf.keys()), format_func=lambda x: liste_pf[x])
-            version = c_ver.text_input("Version (ex: v1.0, Été 2024)", value="v1.0")
+            version = c_ver.text_input("Version (ex: v1.0, Été 2026)", value="v1.0")
             rendement = c_rend.number_input("Rendement (Quantité produite par batch)", min_value=1.0, value=1000.0, step=10.0)
 
             instructions = st.text_area("Instructions de fabrication")
@@ -58,11 +60,7 @@ def show_production_page():
             st.markdown(f"**Nomenclature (Matières requises pour {rendement} unités de vrac) :**")
             with st.expander("➕ Ajouter un composant chimique", expanded=True):
                 c_mp, c_qte, c_btn = st.columns([3, 1, 1])
-                # On exclut idéalement les emballages de la recette vrac pour éviter la double déduction
-                if "categorie_mp" in df_mp.columns:
-                    df_mp_vrac = df_mp[df_mp["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
-                else:
-                    df_mp_vrac = df_mp
+                df_mp_vrac = df_mp[df_mp["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"] if "categorie_mp" in df_mp.columns else df_mp
 
                 liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp_vrac.iterrows()}
                 mp_choisie = c_mp.selectbox("Matière Première", options=list(liste_mp.keys()), format_func=lambda x: liste_mp[x])
@@ -79,8 +77,7 @@ def show_production_page():
             if st.session_state["panier_recette"]:
                 st.dataframe(pd.DataFrame(st.session_state["panier_recette"])[["mp_id", "nom_mp", "quantite_par_unite"]], use_container_width=True)
 
-                # --- BILAN DE MASSE ---
-                st.markdown("### ⚖️ Bilan de Masse (Cohérence de la recette)")
+                st.markdown("### ⚖️ Bilan de Masse")
                 somme_ingredients = sum(item["quantite_par_unite"] for item in st.session_state["panier_recette"])
                 ecart = somme_ingredients - rendement
 
@@ -94,10 +91,10 @@ def show_production_page():
                     st.success("✅ La recette est parfaitement équilibrée.")
                 elif ecart > 0:
                     col_m3.metric("Surplus (Perte technique)", f"+{ecart:.2f}", delta_color="inverse")
-                    st.warning(f"⚠️ La somme des matières dépasse le rendement de {ecart:.2f}. C'est acceptable si vous prévoyez une évaporation/perte.")
+                    st.warning(f"⚠️ La somme des matières dépasse le rendement de {ecart:.2f}.")
                 else:
                     col_m3.metric("Manquant", f"{ecart:.2f}", delta_color="inverse")
-                    st.error(f"❌ Il manque {-ecart:.2f} de matières pour atteindre le rendement visé. Veuillez ajuster les quantités.")
+                    st.error(f"❌ Il manque {-ecart:.2f} de matières pour atteindre le rendement visé.")
                     btn_desactive = True
 
                 c_action1, c_action2 = st.columns(2)
@@ -112,6 +109,7 @@ def show_production_page():
                     st.cache_data.clear()
                     st.rerun()
 
+    # --- TAB 2 : LANCER OF ---
     with tab2:
         st.subheader("Lancer un Ordre de Fabrication (OF)")
         df_recettes = get_recettes()
@@ -123,7 +121,6 @@ def show_production_page():
         elif df_skus.empty or df_pf.empty:
             st.warning("Veuillez configurer des Produits et SKU actifs.")
         else:
-            # 1. Sélection du SKU
             dict_produits = {row["pf_id"]: row["nom"] for _, row in df_pf.iterrows()}
             liste_skus = {}
             for _, row in df_skus.iterrows():
@@ -133,11 +130,8 @@ def show_production_page():
                 liste_skus[sku_id] = f"{nom_produit} - {format_val} ({sku_id})"
 
             sku_choisi = st.selectbox("1. Produit fini à conditionner (SKU)", options=list(liste_skus.keys()), format_func=lambda x: liste_skus[x])
-
-            # Identification du pf_id rattaché au SKU choisi
             pf_id_cible = df_skus[df_skus["sku_id"] == sku_choisi]["pf_id"].iloc[0] if sku_choisi else None
 
-            # Filtrage des recettes correspondantes
             recettes_compatibles = {}
             if pf_id_cible:
                 df_recettes_pf = df_recettes[(df_recettes["pf_id"] == pf_id_cible) & (df_recettes["actif"] == "OUI")]
@@ -145,14 +139,13 @@ def show_production_page():
                     recettes_compatibles[row["recette_id"]] = f"Version {row['version']} (Rendement: {row['rendement_unite']})"
 
             if not recettes_compatibles:
-                st.error("❌ Aucune recette active trouvée pour ce produit. Veuillez créer une recette d'abord.")
+                st.error("❌ Aucune recette active trouvée pour ce produit.")
             else:
-                # 2. Formulaire des paramètres de production
                 with st.form("form_of"):
                     st.markdown("**2. Détails de l'Ordre de Fabrication**")
                     c1, c2 = st.columns(2)
                     recette_choisie = c1.selectbox("Recette à utiliser", options=list(recettes_compatibles.keys()), format_func=lambda x: recettes_compatibles[x])
-                    quantite = c2.number_input("Unités prévues (ex: 40 sacs)", min_value=1.0, step=1.0)
+                    quantite = c2.number_input("Unités prévues", min_value=1.0, step=1.0)
 
                     c3, c4 = st.columns(2)
                     date_planif = c3.date_input("Date planifiée")
@@ -164,29 +157,27 @@ def show_production_page():
                             st.success(f"OF {of_id} généré avec succès !")
                             st.cache_data.clear()
                             st.rerun()
-                        else:
-                            st.error("Veuillez sélectionner une recette et un SKU valides.")
 
+    # --- TAB 3 : SUIVI ET EXÉCUTION ---
     with tab3:
         st.subheader("Suivi et Exécution des OF")
         df_ofs = get_ordres_fabrication()
 
         if df_ofs.empty:
-            st.info("Aucun Ordre de Fabrication en cours.")
+            st.info("Aucun Ordre de Fabrication enregistrer.")
         else:
-            st.dataframe(df_ofs.sort_values(by="date_planification", ascending=False), use_container_width=True)
+            st.dataframe(df_ofs.sort_values(by="date_planification", ascending=False), use_container_width=True, hide_index=True)
 
             st.divider()
             st.subheader("⚙️ Agir sur un OF")
-
             ofs_actifs = df_ofs[~df_ofs["statut"].isin(["TERMINE", "REJETE"])]
 
             if not can_write:
-                st.warning("🔒 Mode lecture seule. Vous ne pouvez pas faire progresser les OF.")
+                st.warning("🔒 Mode lecture seule.")
             elif ofs_actifs.empty:
                 st.success("Tous les OF sont terminés !")
             else:
-                liste_ofs = {row["of_id"]: f"{row['of_id']} - {row['statut']}" for _, row in ofs_actifs.iterrows()}
+                liste_ofs = {row["of_id"]: f"{row['of_id']} - Statut: {row['statut']}" for _, row in ofs_actifs.iterrows()}
                 of_choisi = st.selectbox("Sélectionner un OF à traiter", options=list(liste_ofs.keys()), format_func=lambda x: liste_ofs[x])
 
                 if of_choisi:
@@ -205,7 +196,7 @@ def show_production_page():
                             st.rerun()
 
                     elif statut_actuel == "EN_COURS":
-                        if st.button("⏸️ Déclarer production terminée (Passer en CONTRÔLE QUALITÉ)", type="primary"):
+                        if st.button("⏸️ Passer en CONTRÔLE QUALITÉ", type="primary"):
                             changer_statut_of(of_choisi, "CONTROLE_QUALITE")
                             st.success("L'OF est prêt pour le contrôle qualité.")
                             st.cache_data.clear()
@@ -214,7 +205,6 @@ def show_production_page():
                     elif statut_actuel == "CONTROLE_QUALITE":
                         st.markdown("### 🔬 Formulaire de Clôture & Contrôle Qualité")
 
-                        # Récupération de l'emballage lié au SKU
                         emballage_id = ""
                         nom_emballage = "Aucun emballage configuré sur ce SKU"
                         if not df_skus.empty and "emballage_mp_id" in df_skus.columns:
@@ -237,16 +227,11 @@ def show_production_page():
                             controleur = st.text_input("Nom du contrôleur")
 
                             st.markdown("**2. Déclaration logistique (Si Conforme)**")
-                            st.info("Déclarez les quantités réelles pour ajuster précisément les stocks.")
                             c1, c2 = st.columns(2)
-                            qte_produite = c1.number_input("Quantité réellement produite (SKU)", min_value=0.0, max_value=float(qte_prevue*1.5), value=float(qte_prevue))
+                            qte_produite = c1.number_input("Quantité réellement produite (SKU)", min_value=0.0, value=float(qte_prevue))
+                            qte_emballage = c2.number_input(f"Emballage consommé: {nom_emballage}", min_value=0.0, value=float(qte_prevue) if emballage_id else 0.0, disabled=not emballage_id)
 
-                            st.write(f"*{nom_emballage}*")
-                            qte_emballage = c2.number_input("Quantité d'emballages consommée (pertes incluses)", min_value=0.0, value=float(qte_prevue) if emballage_id else 0.0, disabled=not emballage_id)
-
-                            submit = st.form_submit_button("Valider le Contrôle & Clôturer l'OF", type="primary")
-
-                            if submit:
+                            if st.form_submit_button("Valider le Contrôle & Clôturer l'OF", type="primary"):
                                 if not controleur:
                                     st.error("Le nom du contrôleur est obligatoire.")
                                 else:
@@ -255,13 +240,29 @@ def show_production_page():
                                             of_choisi, conforme, remarques, controleur,
                                             qte_produite, emballage_id, qte_emballage
                                         )
-                                        if conforme == "OUI":
-                                            st.success("✅ OF Clôturé avec succès. Vrac et Emballages ont été déduits des stocks !")
-                                        else:
-                                            st.error("❌ OF Rejeté. Aucun mouvement de stock n'a été généré.")
+                                        st.success("✅ OF Clôturé avec succès. Les consommations et entrées PF ont été enregistrées !")
                                         st.cache_data.clear()
                                         st.rerun()
-                                    except ValueError as ve:
-                                        st.error(f"❌ Impossible de clôturer l'OF : {ve}")
                                     except Exception as e:
-                                        st.error(f"❌ Une erreur système est survenue : {e}")
+                                        st.error(f"❌ Erreur lors de la clôture : {e}")
+
+    # --- TAB 4 : TRAÇABILITÉ DES CONSUMMATIONS & CQ ---
+    with tab4:
+        st.subheader("🔍 Piste de Traçabilité (Consommations & Contrôles Qualité)")
+
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.markdown("**1. Registre des Consommations de Matières (`consommations_of`)**")
+            df_cnof = get_consommations_of()
+            if not df_cnof.empty:
+                st.dataframe(df_cnof.sort_values(by="consommation_id", ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune consommation enregistrée.")
+
+        with col_t2:
+            st.markdown("**2. Registre des Contrôles Qualité (`controle_qualite`)**")
+            df_cq_all = get_controles_qualite()
+            if not df_cq_all.empty:
+                st.dataframe(df_cq_all.sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucun contrôle qualité enregistré.")

@@ -1,9 +1,7 @@
 """
 Logique métier du module Production.
-Gère les Recettes, LignesRecette, et les OF (Machine à états & CQ).
-Intègre la décrémentation des emballages logistiques liés au SKU.
-Lecture via Supabase, Écriture hybride (Supabase + Google Sheets).
-Conforme au schéma docs/schema_reference.md.
+Gère les Recettes, LignesRecette, les OF (Machine à états & CQ) et la traçabilité des consommations.
+Conforme au schéma officiel docs/schema_donnees.md.
 """
 import pandas as pd
 from core.db_service import fetch_data, insert_hybrid, update_hybrid
@@ -11,17 +9,38 @@ from core.utils import generate_unique_id, generate_technical_id, get_local_now
 from modules.stocks.service import enregistrer_sortie_mp, enregistrer_entree_pf, get_stock_actuel_mp
 
 def get_recettes() -> pd.DataFrame:
+    """Récupère toutes les recettes depuis Supabase."""
     return pd.DataFrame(fetch_data("recettes"))
 
-def get_lignes_recette() -> pd.DataFrame:
-    return pd.DataFrame(fetch_data("lignes_recette"))
+def get_lignes_recette(recette_id: str = None) -> pd.DataFrame:
+    """Récupère les lignes de recette."""
+    df = pd.DataFrame(fetch_data("lignes_recette"))
+    if recette_id and not df.empty and "recette_id" in df.columns:
+        return df[df["recette_id"] == recette_id]
+    return df
 
 def get_ordres_fabrication() -> pd.DataFrame:
+    """Récupère tous les ordres de fabrication."""
     return pd.DataFrame(fetch_data("ordres_fabrication"))
 
+def get_consommations_of(of_id: str = None) -> pd.DataFrame:
+    """Récupère les consommations de matières par OF."""
+    df = pd.DataFrame(fetch_data("consommations_of"))
+    if of_id and not df.empty and "of_id" in df.columns:
+        return df[df["of_id"] == of_id]
+    return df
+
+def get_controles_qualite(of_id: str = None) -> pd.DataFrame:
+    """Récupère le registre des contrôles qualité."""
+    df = pd.DataFrame(fetch_data("controle_qualite"))
+    if of_id and not df.empty and "of_id" in df.columns:
+        return df[df["of_id"] == of_id]
+    return df
+
 def create_recette(pf_id: str, version: str, rendement_unite: float, instructions: str, panier_lignes: list) -> str:
+    """Crée une nouvelle nomenclature/recette et ses lignes de composants."""
     df_recettes = get_recettes()
-    exist_ids = df_recettes["recette_id"].tolist() if not df_recettes.empty else []
+    exist_ids = df_recettes["recette_id"].tolist() if not df_recettes.empty and "recette_id" in df_recettes.columns else []
     recette_id = generate_unique_id("REC", exist_ids)
     date_effet = get_local_now().strftime("%Y-%m-%d")
 
@@ -30,7 +49,6 @@ def create_recette(pf_id: str, version: str, rendement_unite: float, instruction
         "rendement_unite": rendement_unite, "instructions": instructions,
         "date_effet": date_effet, "actif": "OUI"
     }
-
     insert_hybrid("recettes", data_recette)
 
     for item in panier_lignes:
@@ -44,8 +62,9 @@ def create_recette(pf_id: str, version: str, rendement_unite: float, instruction
     return recette_id
 
 def create_ordre_fabrication(pf_id: str, recette_id: str, sku_id: str, quantite_prevue: float, date_planification: str, notes: str) -> str:
+    """Génère un Ordre de Fabrication (OF) avec préfixe OF-XXXX."""
     df_ofs = get_ordres_fabrication()
-    exist_ids = df_ofs["of_id"].tolist() if not df_ofs.empty else []
+    exist_ids = df_ofs["of_id"].tolist() if not df_ofs.empty and "of_id" in df_ofs.columns else []
     of_id = generate_unique_id("OF", exist_ids)
 
     data_of = {
@@ -54,12 +73,11 @@ def create_ordre_fabrication(pf_id: str, recette_id: str, sku_id: str, quantite_
         "date_planification": date_planification, "date_debut": "", "date_fin": "",
         "statut": "PLANIFIE", "cout_total": 0.0, "notes": notes
     }
-
     insert_hybrid("ordres_fabrication", data_of)
     return of_id
 
 def changer_statut_of(of_id: str, nouveau_statut: str):
-    """Met à jour le statut et horodate l'OF selon sa phase."""
+    """Met à jour le statut et horodate l'OF selon sa phase de production."""
     updates = {"statut": nouveau_statut}
     date_jour = get_local_now().strftime("%Y-%m-%d")
 
@@ -80,9 +98,10 @@ def enregistrer_controle_qualite(
     emballage_consomme: float = 0.0
 ):
     """
-    Inscrit le CQ. S'il est conforme, exécute la clôture de façon atomique (en 2 passes) :
-    1. Simulation pour s'assurer que tout le stock MP (vrac + emballages) est suffisant.
-    2. Sortie réelle FIFO des MP -> Entrée du PF avec calcul de coût.
+    Enregistre le CQ et clôture l'OF si conforme :
+    1. Validation des stocks disponibles.
+    2. Enregistrement des consommations détaillées (consommations_of).
+    3. Déduction FIFO des matières et entrée en stock du produit fini.
     """
     if conforme == "OUI" and quantite_produite <= 0:
         raise ValueError("Pour déclarer un OF conforme, la quantité produite doit être supérieure à zéro.")
@@ -94,7 +113,6 @@ def enregistrer_controle_qualite(
         "qc_id": cq_id, "of_id": of_id, "date": date_jour,
         "conforme": conforme, "remarques": remarques, "controleur": controleur
     }
-
     insert_hybrid("controle_qualite", data_cq)
 
     if conforme == "OUI":
@@ -107,21 +125,18 @@ def enregistrer_controle_qualite(
         df_lignes = get_lignes_recette()
         lignes_recette = df_lignes[df_lignes["recette_id"] == recette_id]
 
-        # --- PASSE 1 : VÉRIFICATION (Simulation Vrac + Emballage) ---
+        # --- PASSE 1 : SIMULATION DE DISPONIBILITÉ ---
         df_stock_mp = get_stock_actuel_mp()
         besoins_of = []
 
-        # 1A. Besoins Vrac (Chimique)
         for _, ligne in lignes_recette.iterrows():
             qte_necessaire = float(ligne["quantite_par_unite"]) * quantite_produite
             mp_id = ligne["mp_id"]
             besoins_of.append((mp_id, qte_necessaire))
 
-        # 1B. Besoins Emballage (Logistique)
-        if emballage_mp_id and emballage_mp_id.strip() and emballage_consomme > 0:
+        if emballage_mp_id and str(emballage_mp_id).strip() and emballage_consomme > 0:
             besoins_of.append((emballage_mp_id, emballage_consomme))
 
-        # 1C. Contrôle de disponibilité globale
         besoins_consolides = {}
         for mp_id, qte in besoins_of:
             besoins_consolides[mp_id] = besoins_consolides.get(mp_id, 0.0) + qte
@@ -135,27 +150,48 @@ def enregistrer_controle_qualite(
             if qte_actuelle < qte_necessaire:
                 raise ValueError(f"Stock insuffisant pour {mp_id}. Requis: {qte_necessaire}, Disponible: {qte_actuelle}")
 
-        # --- PASSE 2 : EXÉCUTION RÉELLE ---
+        # --- PASSE 2 : EXÉCUTION & TRAÇABILITÉ DES CONSUMMATIONS ---
         cout_total_mp = 0.0
 
-        # Sortie Vrac
+        # Sortie Vrac Chimie + Traçabilité dans consommations_of
         for _, ligne in lignes_recette.iterrows():
+            mp_id = ligne["mp_id"]
             qte = float(ligne["quantite_par_unite"]) * quantite_produite
-            cout = enregistrer_sortie_mp(ligne["mp_id"], qte, f"Consommation Vrac OF {of_id}")
+            cout = enregistrer_sortie_mp(mp_id, qte, f"Consommation Vrac OF {of_id}")
             cout_total_mp += cout
 
-        # Sortie Emballage
-        if emballage_mp_id and emballage_mp_id.strip() and emballage_consomme > 0:
+            # Traçabilité consommations_of
+            cnof_id = generate_technical_id("CNOF")
+            data_consommation = {
+                "consommation_id": cnof_id,
+                "of_id": of_id,
+                "mp_id": mp_id,
+                "lot_id": f"FIFO-{of_id}",
+                "quantite_consommee": qte
+            }
+            insert_hybrid("consommations_of", data_consommation)
+
+        # Sortie Emballage Logistique + Traçabilité
+        if emballage_mp_id and str(emballage_mp_id).strip() and emballage_consomme > 0:
             cout_emb = enregistrer_sortie_mp(emballage_mp_id, emballage_consomme, f"Consommation Emballage OF {of_id}")
             cout_total_mp += cout_emb
 
+            cnof_emb_id = generate_technical_id("CNOF")
+            data_consommation_emb = {
+                "consommation_id": cnof_emb_id,
+                "of_id": of_id,
+                "mp_id": emballage_mp_id,
+                "lot_id": f"EMB-{of_id}",
+                "quantite_consommee": emballage_consomme
+            }
+            insert_hybrid("consommations_of", data_consommation_emb)
+
         cout_unitaire_pf = cout_total_mp / quantite_produite if quantite_produite > 0 else 0.0
 
-        # Entrée en stock du Produit Fini
-        date_peremption = ""
-        enregistrer_entree_pf(sku_id, quantite_produite, cout_unitaire_pf, f"Production OF {of_id}", date_peremption)
+        # Entrée du Produit Fini en Stock
+        enregistrer_entree_pf(sku_id, quantite_produite, cout_unitaire_pf, f"Production OF {of_id}", "")
 
-        # Clôture de l'OF
+        # Clôture finale de l'OF
         update_hybrid("ordres_fabrication", "of_id", of_id, {
             "statut": "TERMINE",
             "date_fin": get_local_now().strftime("%Y-%m-%d"),
@@ -165,13 +201,8 @@ def enregistrer_controle_qualite(
     else:
         changer_statut_of(of_id, "REJETE")
 
-
-# ==========================================
-# PONT ENTRE VENTES ET PRODUCTION (Nouveau)
-# ==========================================
 def auto_create_of_from_vente(sku_id: str, quantite_manquante: float, facture_id: str) -> str:
     """Génère automatiquement un OF depuis le module Ventes pour combler une rupture de stock."""
-    # 1. Trouver le Produit Fini (pf_id) lié à ce SKU
     df_skus = pd.DataFrame(fetch_data("sku_conditionnement"))
     if df_skus.empty or "sku_id" not in df_skus.columns:
         raise ValueError("Catalogue des SKU introuvable.")
@@ -181,21 +212,16 @@ def auto_create_of_from_vente(sku_id: str, quantite_manquante: float, facture_id
         raise ValueError(f"SKU {sku_id} introuvable.")
 
     pf_id = sku_row.iloc[0]["pf_id"]
-
-    # 2. Trouver la recette active pour ce Produit Fini
     df_recettes = get_recettes()
     if df_recettes.empty:
         raise ValueError("Aucune recette disponible dans le système.")
 
     recettes_compatibles = df_recettes[(df_recettes["pf_id"] == pf_id) & (df_recettes["actif"] == "OUI")]
     if recettes_compatibles.empty:
-        raise ValueError(f"Impossible de lancer la production : Aucune recette active configurée pour le produit {pf_id}.")
+        raise ValueError(f"Impossible de lancer la production : Aucune recette active pour le produit {pf_id}.")
 
     recette_id = recettes_compatibles.iloc[0]["recette_id"]
-
-    # 3. Créer l'OF automatiquement
-    notes = f"Urgence : OF généré automatiquement pour satisfaire le document de vente {facture_id}"
+    notes = f"Urgence : OF automatique pour le document de vente {facture_id}"
     date_planif = get_local_now().strftime("%Y-%m-%d")
 
-    # Appel de ta fonction existante
     return create_ordre_fabrication(pf_id, recette_id, sku_id, quantite_manquante, date_planif, notes)
