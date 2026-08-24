@@ -1,6 +1,6 @@
 """
 Interface utilisateur du module Stocks.
-Affiche les stocks et mouvements des Matières Premières (MP) ET des Produits Finis (PF).
+Sépare clairement les Matières Premières (Vrac), les Emballages et les Produits Finis (PF).
 """
 import streamlit as st
 import pandas as pd
@@ -28,26 +28,44 @@ def show_stocks_page():
     user_role = st.session_state.get("user", {}).get("role", "")
     can_write = has_permission(user_role, "Stocks", "ecriture")
 
-    tab1, tab2, tab3 = st.tabs(["📊 État des Stocks", "🔄 Entrée Manuelle (MP)", "📋 Historique des Mouvements"])
+    tab1, tab2, tab3 = st.tabs(["📊 État des Stocks", "🔄 Entrée Manuelle (Achats)", "📋 Historique des Mouvements"])
+
+    df_mp_global = get_mp_actives()
 
     # --- ONGLET 1 : ÉTAT DES STOCKS ---
     with tab1:
         st.subheader("Consultation des stocks actuels")
 
-        sous_tab_mp, sous_tab_pf = st.tabs(["🧪 Matières Premières (Vrac & Emballages)", "🛍️ Produits Finis (Conditionnés)"])
+        # Séparation en 3 onglets distincts
+        sous_tab_vrac, sous_tab_emb, sous_tab_pf = st.tabs(["🧪 Matières Premières (Vrac)", "📦 Emballages", "🛍️ Produits Finis"])
 
-        with sous_tab_mp:
-            df_stock = get_stock_actuel_mp()
-            df_mp = get_mp_actives()
+        df_stock = get_stock_actuel_mp()
 
-            if not df_stock.empty and not df_mp.empty:
-                df_display = pd.merge(df_stock, df_mp[['mp_id', 'nom', 'unite_stock', 'stock_mini']], on='mp_id', how='left')
+        if not df_stock.empty and not df_mp_global.empty:
+            df_display = pd.merge(df_stock, df_mp_global[['mp_id', 'nom', 'unite_stock', 'stock_mini', 'categorie_mp']], on='mp_id', how='left')
+            df_vrac = df_display[df_display["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
+            df_emb = df_display[df_display["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+        else:
+            df_vrac = pd.DataFrame()
+            df_emb = pd.DataFrame()
+
+        with sous_tab_vrac:
+            if not df_vrac.empty:
                 st.dataframe(
-                    df_display[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
+                    df_vrac[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
                     use_container_width=True, hide_index=True
                 )
             else:
-                st.info("Aucun stock actuel disponible pour les Matières Premières.")
+                st.info("Aucun stock actuel disponible pour les Matières Premières (Vrac).")
+
+        with sous_tab_emb:
+            if not df_emb.empty:
+                st.dataframe(
+                    df_emb[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
+                    use_container_width=True, hide_index=True
+                )
+            else:
+                st.info("Aucun stock actuel disponible pour les Emballages.")
 
         with sous_tab_pf:
             df_stock_pf = get_stock_actuel_pf()
@@ -55,7 +73,6 @@ def show_stocks_page():
             df_prods = get_produits()
 
             if not df_stock_pf.empty and not df_skus.empty and not df_prods.empty:
-                # Jointure pour afficher les noms clairs des produits finis
                 df_skus_prods = pd.merge(df_skus, df_prods[['pf_id', 'nom']], on='pf_id', how='left')
                 df_skus_prods['nom_complet'] = df_skus_prods['nom'] + " - " + df_skus_prods['format'].fillna("")
 
@@ -73,23 +90,31 @@ def show_stocks_page():
         st.subheader("Ajustement / Entrée manuelle")
         st.info("Les entrées de Produits Finis se font uniquement via le module de Production (Clôture d'OF).")
 
-        df_mp = get_mp_actives()
-
         if not can_write:
             st.warning("🔒 Mode lecture seule : vous n'avez pas les droits de modification des stocks.")
-        else:
-            if not df_mp.empty:
+        elif not df_mp_global.empty:
+            # Sélecteur pour faciliter la recherche du magasinier
+            type_entree = st.radio("Que souhaitez-vous approvisionner ?", ["🧪 Matière Première (Vrac)", "📦 Emballage"], horizontal=True)
+
+            if "Emballage" in type_entree:
+                df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+            else:
+                df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
+
+            if df_mp_filtre.empty:
+                st.warning(f"Aucun article de type '{type_entree}' n'a été trouvé dans le référentiel.")
+            else:
                 with st.form("form_entree_stock"):
                     c1, c2 = st.columns(2)
-                    liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
-                    mp_choisie = c1.selectbox("Matière Première", options=list(liste_mp.keys()), format_func=lambda x: liste_mp[x])
+                    liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp_filtre.iterrows()}
+                    mp_choisie = c1.selectbox("Article sélectionné", options=list(liste_mp.keys()), format_func=lambda x: liste_mp[x])
 
-                    quantite = c2.number_input("Quantité", min_value=0.1, step=1.0)
+                    quantite = c2.number_input("Quantité réceptionnée", min_value=0.1, step=1.0)
                     prix_entree = c1.number_input("Prix d'entrée unitaire (DZD)", min_value=0.0, step=10.0)
                     reference = c2.text_input("Référence (ex: BL Fournisseur, Ajustement)")
                     date_peremption = c1.date_input("Date de péremption")
 
-                    if st.form_submit_button("Valider l'entrée en stock (MP)", type="primary"):
+                    if st.form_submit_button("Valider l'entrée en stock", type="primary"):
                         if reference:
                             enregistrer_entree_mp(mp_choisie, quantite, prix_entree, reference, str(date_peremption))
                             st.success(f"Stock mis à jour pour {liste_mp[mp_choisie]}.")
@@ -97,25 +122,39 @@ def show_stocks_page():
                             st.rerun()
                         else:
                             st.error("Veuillez saisir une référence.")
-            else:
-                st.warning("Aucune matière première active trouvée dans le référentiel.")
+        else:
+            st.warning("Aucun article actif trouvé dans le référentiel.")
 
     # --- ONGLET 3 : HISTORIQUE DES MOUVEMENTS ---
     with tab3:
         st.subheader("Historique des mouvements")
 
-        sous_tab_hist_mp, sous_tab_hist_pf = st.tabs(["Mouvements MP", "Mouvements PF (Production/Ventes)"])
+        sous_tab_hist_vrac, sous_tab_hist_emb, sous_tab_hist_pf = st.tabs(["🧪 Mouvements Vrac", "📦 Mouvements Emballages", "🛍️ Mouvements PF"])
 
-        with sous_tab_hist_mp:
-            df_mouv = get_mouvements()
-            if not df_mouv.empty:
-                st.dataframe(df_mouv.sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
+        df_mouv = get_mouvements()
+        if not df_mouv.empty and not df_mp_global.empty:
+            df_mouv_detail = pd.merge(df_mouv, df_mp_global[['mp_id', 'categorie_mp']], on='mp_id', how='left')
+            df_mouv_vrac = df_mouv_detail[df_mouv_detail["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
+            df_mouv_emb = df_mouv_detail[df_mouv_detail["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+        else:
+            df_mouv_vrac = pd.DataFrame()
+            df_mouv_emb = pd.DataFrame()
+
+        with sous_tab_hist_vrac:
+            if not df_mouv_vrac.empty:
+                st.dataframe(df_mouv_vrac.drop(columns=["categorie_mp"]).sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
             else:
-                st.info("Aucun mouvement enregistré pour les MP.")
+                st.info("Aucun mouvement enregistré pour le Vrac.")
+
+        with sous_tab_hist_emb:
+            if not df_mouv_emb.empty:
+                st.dataframe(df_mouv_emb.drop(columns=["categorie_mp"]).sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucun mouvement enregistré pour les Emballages.")
 
         with sous_tab_hist_pf:
             df_mouv_pf = get_mouvements_pf()
             if not df_mouv_pf.empty:
                 st.dataframe(df_mouv_pf.sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
             else:
-                st.info("Aucun mouvement enregistré pour les PF.")
+                st.info("Aucun mouvement enregistré pour les Produits Finis.")
