@@ -1,7 +1,7 @@
 """
 Interface utilisateur du module Ventes.
-Intègre la génération de PDF, le cycle de vie (Brouillon/Valide/Annule),
-et le pont direct vers la Production (Make-to-Order) en cas de rupture de stock.
+Intègre la création de factures, la génération de PDF, la traçabilité des expéditions (BL)
+et le pont direct vers la Production (Make-to-Order).
 """
 import streamlit as st
 import pandas as pd
@@ -13,12 +13,16 @@ from modules.ventes.service import (
     annuler_facture,
     get_factures,
     get_lignes_facture,
-    calculer_montants_facture
+    calculer_montants_facture,
+    creer_bon_livraison,
+    get_bons_livraison,
+    get_lignes_bons_livraison
 )
 from modules.production.service import auto_create_of_from_vente
 from modules.admin.service import get_dataframe
 from core.utils import get_local_now
 from core.pdf_generator import generer_document_standard
+
 
 def show_ventes_page():
     st.title("🧾 Ventes & Facturation")
@@ -29,14 +33,14 @@ def show_ventes_page():
     if "panier_vente" not in st.session_state:
         st.session_state["panier_vente"] = []
 
-    tab1, tab2 = st.tabs(["➕ Nouveau Document", "📋 Historique & Validation"])
+    tab1, tab2, tab3 = st.tabs(["➕ Nouveau Document", "🚚 Expéditions & Bons de Livraison", "📋 Historique & Workflow"])
 
     df_clients = get_dataframe("Clients", only_active=True)
     df_skus = get_dataframe("SkuConditionnement", only_active=True)
     df_produits = get_dataframe("Produits", only_active=True)
     df_f = get_factures()
 
-    # --- ONGLET 1 : CRÉATION (BROUILLON) ---
+    # --- TAB 1 : CRÉATION (BROUILLON) ---
     with tab1:
         st.subheader("Préparer une Facture / Avoir (Brouillon)")
 
@@ -86,7 +90,6 @@ def show_ventes_page():
 
                 sku_choisi = c_sku.selectbox("Produit", options=list(liste_skus.keys()), format_func=lambda x: liste_skus[x])
 
-                # --- Affichage du stock en direct ---
                 stock_actuel = 0.0
                 df_stocks = pd.DataFrame(fetch_data("stock_actuel_pf"))
                 if sku_choisi and not df_stocks.empty and "sku_id" in df_stocks.columns:
@@ -98,7 +101,6 @@ def show_ventes_page():
                     c_sku.success(f"📦 En stock : {stock_actuel:,.2f}")
                 else:
                     c_sku.warning("⚠️ Rupture : nécessitera une production")
-                # ------------------------------------
 
                 prix_defaut = float(df_skus[df_skus["sku_id"] == sku_choisi]["prix_vente_defaut"].iloc[0]) if sku_choisi else 0.0
 
@@ -129,14 +131,13 @@ def show_ventes_page():
                 df_panier = pd.DataFrame(st.session_state["panier_vente"])
                 st.dataframe(df_panier[["sku_id", "nom_produit", "quantite", "prix_unitaire", "remise", "total_ht"]], use_container_width=True)
 
-                st.markdown("**Options de facturation globales :**")
                 col_remise, col_especes = st.columns(2)
                 remise_globale = col_remise.number_input("Remise globale supplémentaire (DZD)", min_value=0.0, step=100.0)
                 paiement_especes = col_especes.checkbox("Paiement en espèces (Applique le timbre fiscal)")
 
                 totaux = calculer_montants_facture(st.session_state["panier_vente"], remise_globale, paiement_especes)
 
-                st.info(f"**Total HT Bruts:** {totaux['total_ht']:,.2f} | **Total Remises:** {totaux['total_remise']:,.2f} | **Net à Payer HT:** {totaux['net_a_payer']:,.2f} | **TVA:** {totaux['total_tva']:,.2f} | **Timbre Fiscal:** {totaux['timbre_fiscal']:,.2f} | **TTC Final:** {totaux['total_ttc']:,.2f} DZD")
+                st.info(f"**Total HT:** {totaux['total_ht']:,.2f} | **Remises:** {totaux['total_remise']:,.2f} | **Net HT:** {totaux['net_a_payer']:,.2f} | **TVA:** {totaux['total_tva']:,.2f} | **Timbre:** {totaux['timbre_fiscal']:,.2f} | **TTC:** {totaux['total_ttc']:,.2f} DZD")
 
                 if st.button("📝 Enregistrer le Brouillon", type="primary"):
                     try:
@@ -157,7 +158,7 @@ def show_ventes_page():
                             "entreprise_tel": "0555 00 00 00",
                             "devise": "DZD",
                             "doc_couleur": "#0047AB",
-                            "doc_footer": "SARL MON ENTREPRISE - Capital 1.000.000 DZD - RIB : 000 0000 000000 00"
+                            "doc_footer": "SARL MON ENTREPRISE - Capital 1.000.000 DZD"
                         }
 
                         date_jour = get_local_now().strftime("%Y-%m-%d")
@@ -182,26 +183,92 @@ def show_ventes_page():
                         st.rerun()
 
                     except ValueError as e:
-                        st.error(f"❌ Impossible d'enregistrer le document : {e}")
+                        st.error(f"❌ Erreur : {e}")
                     except Exception as e:
-                        st.error(f"❌ Une erreur système est survenue : {e}")
+                        st.error(f"❌ Erreur système : {e}")
 
                 if st.button("🗑️ Vider le panier"):
                     st.session_state["panier_vente"] = []
                     st.rerun()
 
-    # --- ONGLET 2 : WORKFLOW (VALIDATION / ANNULATION / MAKE TO ORDER) ---
+    # --- TAB 2 : EXPÉDITIONS & BONS DE LIVRAISON (BL) ---
     with tab2:
+        st.subheader("🚚 Générer un Bon de Livraison (BL)")
+        if not df_f.empty:
+            df_valides = df_f[(df_f["statut"] == "VALIDE") & (df_f.get("type_facture", "FactureClient") == "FactureClient")]
+
+            if not can_write:
+                st.info("🔒 Mode lecture seule.")
+            elif df_valides.empty:
+                st.info("Aucune facture client validée en attente d'expédition.")
+            else:
+                liste_facs = {row["facture_id"]: f"{row['facture_id']} - Client: {row['client_id']} ({row['date']})" for _, row in df_valides.iterrows()}
+                fac_choisie = st.selectbox("Sélectionnez la facture à expédier", options=list(liste_facs.keys()), format_func=lambda x: liste_facs[x])
+
+                if fac_choisie:
+                    lignes_fact = get_lignes_facture(fac_choisie)
+                    df_lots_pf = pd.DataFrame(fetch_data("lots"))
+                    df_lots_dispo = df_lots_pf[df_lots_pf["statut"] == "VALIDE"] if not df_lots_pf.empty and "statut" in df_lots_pf.columns else pd.DataFrame()
+
+                    with st.form("form_bl"):
+                        c_trans, c_zone = st.columns(2)
+                        transporteur = c_trans.text_input("Transporteur / Chauffeur", value="Transport Interne")
+                        zone_livraison = c_zone.text_input("Zone / Adresse de livraison", value="Zone Industrielle")
+
+                        st.divider()
+                        st.markdown("**Articles à expédier & Traçabilité des Lots :**")
+
+                        items_expedition = []
+                        for idx, ligne in enumerate(lignes_fact):
+                            sku_id = ligne["sku_id"]
+                            qte_facturee = float(ligne["quantite"])
+
+                            col_a, col_b, col_c = st.columns([2, 1, 2])
+                            col_a.write(f"**Article :** {sku_id}")
+                            qte_expediee = col_b.number_input("Qté livrée", min_value=0.0, value=qte_facturee, key=f"bl_qte_{idx}")
+
+                            options_lots = ["DEFAUT"]
+                            if not df_lots_dispo.empty and "item_id" in df_lots_dispo.columns:
+                                matching_lots = df_lots_dispo[df_lots_dispo["item_id"] == sku_id]["lot_id"].tolist()
+                                if matching_lots:
+                                    options_lots = matching_lots
+
+                            lot_selectionne = col_c.selectbox("Lot expédié", options=options_lots, key=f"bl_lot_{idx}")
+
+                            items_expedition.append({
+                                "sku_id": sku_id,
+                                "quantite_livree": qte_expediee,
+                                "lot_id": lot_selectionne
+                            })
+
+                        if st.form_submit_button("📦 Valider l'expédition & Déduire le stock PF", type="primary"):
+                            try:
+                                bl_id = creer_bon_livraison(
+                                    commande_vente_id=fac_choisie,
+                                    transporteur=transporteur,
+                                    zone=zone_livraison,
+                                    items_livraison=items_expedition
+                                )
+                                st.success(f"✅ Bon de Livraison {bl_id} créé avec succès ! Stock déduit.")
+                                st.cache_data.clear()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Échec de l'expédition : {e}")
+        else:
+            st.info("Aucun document émis pour le moment.")
+
+    # --- TAB 3 : HISTORIQUE & WORKFLOW ---
+    with tab3:
         st.subheader("📚 Registre des Factures (Workflow)")
         if not df_f.empty:
             df_f_sorted = df_f.sort_values(by="date", ascending=False)
-            st.dataframe(df_f_sorted[["facture_id", "date", "client_id", "montant_ttc", "statut"]], use_container_width=True)
+            st.dataframe(df_f_sorted[["facture_id", "date", "client_id", "montant_ttc", "statut"]], use_container_width=True, hide_index=True)
 
             if can_write:
                 st.divider()
                 st.markdown("### ⚡ Actions sur les documents")
 
-                facture_choisie = st.selectbox("Sélectionnez une facture", df_f_sorted["facture_id"].tolist())
+                facture_choisie = st.selectbox("Sélectionnez une facture à traiter", df_f_sorted["facture_id"].tolist())
 
                 if facture_choisie:
                     facture_row = df_f_sorted[df_f_sorted["facture_id"] == facture_choisie].iloc[0]
@@ -214,9 +281,8 @@ def show_ventes_page():
 
                     with col1:
                         if statut_actuel == "BROUILLON":
-                            # --- VÉRIFICATION DES RUPTURES AVANT VALIDATION ---
                             ruptures = []
-                            if not is_avoir: # Les avoirs ne déduisent pas le stock, pas de rupture possible
+                            if not is_avoir:
                                 df_stocks_check = pd.DataFrame(fetch_data("stock_actuel_pf"))
                                 lignes_fact = get_lignes_facture(facture_choisie)
 
@@ -234,8 +300,7 @@ def show_ventes_page():
                                         ruptures.append({"sku_id": sku, "manquant": qte_demandee - qte_dispo})
 
                             if not ruptures:
-                                # Le stock est suffisant (ou c'est un Avoir)
-                                if st.button("✅ VALIDER LA FACTURE (Déduire les stocks)", type="primary", use_container_width=True):
+                                if st.button("✅ VALIDER LA FACTURE", type="primary", use_container_width=True):
                                     try:
                                         valider_facture(facture_choisie)
                                         st.success(f"La facture {facture_choisie} a été validée avec succès !")
@@ -244,7 +309,6 @@ def show_ventes_page():
                                     except Exception as e:
                                         st.error(f"Erreur de validation : {e}")
                             else:
-                                # RUPTURE DÉTECTÉE !
                                 st.warning("⚠️ Impossible de valider : Stock insuffisant.")
                                 for r in ruptures:
                                     st.write(f"- Manque {r['manquant']} unité(s) de **{r['sku_id']}**")
@@ -253,25 +317,31 @@ def show_ventes_page():
                                     try:
                                         for r in ruptures:
                                             auto_create_of_from_vente(r["sku_id"], r["manquant"], facture_choisie)
-                                        st.success("✅ Ordres de fabrication générés ! Allez dans le module Production pour les traiter.")
+                                        st.success("✅ Ordres de fabrication générés ! Allez dans le module Production.")
                                         st.cache_data.clear()
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erreur lors de la création de l'OF : {e}")
                         else:
-                            st.button("✅ VALIDER LA FACTURE", disabled=True, use_container_width=True, help="Uniquement pour les brouillons.")
+                            st.button("✅ VALIDER LA FACTURE", disabled=True, use_container_width=True)
 
                     with col2:
                         if statut_actuel == "VALIDE":
                             if st.button("❌ ANNULER LA FACTURE (Réinjecter les stocks)", type="secondary", use_container_width=True):
                                 try:
                                     annuler_facture(facture_choisie)
-                                    st.warning(f"La facture {facture_choisie} a été annulée. Les stocks ont été réajustés.")
+                                    st.warning(f"La facture {facture_choisie} a été annulée.")
                                     st.cache_data.clear()
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erreur d'annulation : {e}")
                         else:
-                            st.button("❌ ANNULER LA FACTURE", disabled=True, use_container_width=True, help="Uniquement pour les factures validées.")
+                            st.button("❌ ANNULER LA FACTURE", disabled=True, use_container_width=True)
+
+        st.divider()
+        st.subheader("🚚 Registre des Bons de Livraison (BL)")
+        df_bl = get_bons_livraison()
+        if not df_bl.empty:
+            st.dataframe(df_bl.sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
         else:
-            st.info("Aucun document émis pour le moment.")
+            st.info("Aucun Bon de Livraison généré pour le moment.")
