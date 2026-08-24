@@ -9,9 +9,11 @@ from supabase import create_client, Client
 from core.sheets_service import append_rows_batch, update_multiple_cells_by_id
 from core.logger import log_error
 from config.roles import has_permission
+from core.utils import get_local_now
 
 # ==========================================
 # DICTIONNAIRE CENTRAL DU SCHÉMA DE DONNÉES
+# Strictement conforme à docs/schema_donnees.md
 # ==========================================
 SCHEMA_CONFIG = {
     # --- REFERENTIELS ---
@@ -34,7 +36,9 @@ SCHEMA_CONFIG = {
     "appels_offres": {"module": "achats", "sheet": "AppelsOffres", "cols": ["ao_id", "besoin_description", "mp_id", "date_limite", "statut"]},
     "reponses_appels_offres": {"module": "achats", "sheet": "ReponsesAppelsOffres", "cols": ["reponse_ao_id", "ao_id", "fournisseur_id", "prix_propose", "delai_propose", "date_reponse"]},
     "bons_reception": {"module": "achats", "sheet": "BonsReception", "cols": ["bon_reception_id", "commande_achat_id", "date_reception", "controle_conformite", "remarques"]},
+    "lignes_bons_reception": {"module": "achats", "sheet": "LignesBonsReception", "cols": ["ligne_br_id", "bon_reception_id", "mp_id", "quantite_recue", "lot_attribue_id"]},
     "factures_fournisseurs": {"module": "achats", "sheet": "FacturesFournisseurs", "cols": ["facture_fournisseur_id", "commande_achat_id", "fournisseur_id", "reference_facture_fournisseur", "date", "montant_ht", "taux_tva", "montant_tva", "montant_ttc", "statut_paiement"]},
+    "lignes_factures_fournisseurs": {"module": "achats", "sheet": "LignesFacturesFournisseurs", "cols": ["ligne_ff_id", "facture_fournisseur_id", "mp_id_ou_service", "quantite", "prix_unitaire", "taux_tva", "total_ht"]},
 
     # --- STOCKS ---
     "mouvements": {"module": "stocks", "sheet": "Mouvements", "cols": ["mouvement_id", "date", "type_mouvement", "mp_id", "quantite", "reference", "lot_id", "prix_entree"]},
@@ -47,6 +51,7 @@ SCHEMA_CONFIG = {
     "recettes": {"module": "production", "sheet": "Recettes", "cols": ["recette_id", "pf_id", "version", "rendement_unite", "instructions", "date_effet", "actif"]},
     "lignes_recette": {"module": "production", "sheet": "LignesRecette", "cols": ["ligne_recette_id", "recette_id", "mp_id", "quantite_par_unite"]},
     "ordres_fabrication": {"module": "production", "sheet": "OrdresFabrication", "cols": ["of_id", "pf_id", "recette_id", "sku_id", "quantite_prevue", "quantite_produite", "date_planification", "date_debut", "date_fin", "statut", "cout_total", "notes"]},
+    "consommations_of": {"module": "production", "sheet": "ConsommationsOf", "cols": ["consommation_id", "of_id", "mp_id", "lot_id", "quantite_consommee"]},
     "controle_qualite": {"module": "production", "sheet": "ControleQualite", "cols": ["qc_id", "of_id", "date", "conforme", "remarques", "controleur"]},
 
     # --- VENTES ---
@@ -55,11 +60,13 @@ SCHEMA_CONFIG = {
     "commandes_ventes": {"module": "ventes", "sheet": "CommandesVentes", "cols": ["commande_vente_id", "devis_id", "client_id", "date", "statut"]},
     "lignes_commande_ventes": {"module": "ventes", "sheet": "LignesCommandeVentes", "cols": ["ligne_commande_vente_id", "commande_vente_id", "sku_id", "quantite", "prix_unitaire"]},
     "bons_livraison": {"module": "ventes", "sheet": "BonsLivraison", "cols": ["bl_id", "commande_vente_id", "date", "transporteur", "zone", "statut"]},
+    "lignes_bons_livraison": {"module": "ventes", "sheet": "LignesBonsLivraison", "cols": ["ligne_bl_id", "bl_id", "sku_id", "quantite_livree", "lot_id"]},
     "factures": {"module": "ventes", "sheet": "Factures", "cols": ["facture_id", "commande_vente_id", "client_id", "date", "montant_ht", "taux_tva", "montant_tva", "montant_ttc", "montant_paye", "statut", "date_echeance", "montant_timbre", "type_facture", "facture_origine_id", "remise_globale"]},
     "lignes_facture": {"module": "ventes", "sheet": "LignesFacture", "cols": ["ligne_facture_id", "facture_id", "sku_id", "quantite", "prix_unitaire", "remise_ligne", "total_ligne_ht"]},
 
     # --- FINANCE ---
     "comptes": {"module": "finance", "sheet": "Comptes", "cols": ["compte_id", "nom_compte", "type_compte", "numero_compte", "solde_initial", "statut"]},
+    "ecritures_comptables": {"module": "finance", "sheet": "EcrituresComptables", "cols": ["ecriture_id", "date_ecriture", "compte_id", "document_source_id", "libelle", "debit", "credit", "lettrage_id"]},
     "reglements": {"module": "finance", "sheet": "Reglements", "cols": ["reglement_id", "date_reglement", "type_flux", "partenaire_id", "compte_id", "mode_paiement", "reference_trace", "montant_total", "montant_alloue", "statut"]},
     "lettrage": {"module": "finance", "sheet": "Lettrage", "cols": ["lettrage_id", "date", "reglement_id", "document_id", "type_document", "montant_applique"]},
 
@@ -73,6 +80,7 @@ SCHEMA_CONFIG = {
     "projets": {"module": "rh", "sheet": "Projets", "cols": ["projet_id", "nom", "client_id", "date_debut", "date_fin_prevue", "statut"]},
     "taches": {"module": "rh", "sheet": "Taches", "cols": ["tache_id", "projet_id", "assigne_a", "statut", "date_echeance"]},
     "feuilles_de_temps": {"module": "rh", "sheet": "FeuillesDeTemps", "cols": ["feuille_temps_id", "employe_id", "tache_id", "date", "heures"]},
+    "fiches_de_paie": {"module": "rh", "sheet": "FichesDePaie", "cols": ["fiche_paie_id", "employe_id", "mois", "annee", "salaire_base", "primes", "retenues", "net_a_payer", "statut_paiement"]},
 
     # --- LOGS ---
     "audit_trail": {"module": "logs", "sheet": "AuditTrail", "cols": ["timestamp", "user_id", "module", "action", "detail"]},
@@ -87,38 +95,51 @@ def get_supabase_client() -> Client:
     return create_client(url, key)
 
 def check_server_permission(table_name: str) -> bool:
-    """NOUVEAU : Vérifie côté serveur si l'utilisateur a le droit d'écriture sur le module cible."""
+    """Vérifie côté serveur si l'utilisateur a le droit d'écriture sur le module cible."""
     if not hasattr(st, "session_state") or "user" not in st.session_state:
         return False
 
-    if table_name not in SCHEMA_CONFIG:
-        return False # Sécurité absolue : si table non configurée, on bloque.
+    user = st.session_state.get("user")
+    if not user:
+        return False
 
-    # Mapping spécifique pour faire le lien entre le nom du module DB et vos rôles
+    user_role = str(user.get("role", "")).strip()
+
+    # Bypass automatique pour les administrateurs
+    if user_role.upper() in ["ADMIN", "ADMINISTRATEUR", "SUPERADMIN"]:
+        return True
+
+    if table_name not in SCHEMA_CONFIG:
+        return False
+
     module_cible = SCHEMA_CONFIG[table_name]["module"]
     if module_cible in ["referentiels", "logs"]:
         module_cible = "Administration"
     else:
         module_cible = module_cible.capitalize()
 
-    user_role = st.session_state["user"].get("role", "")
     return has_permission(user_role, module_cible, "ecriture")
 
 def log_action(action: str, table_name: str, details: str):
-    """Enregistre silencieusement une trace d'action dans la table logs."""
+    """Enregistre silencieusement une trace d'action dans la table audit_trail du schéma."""
     try:
         supabase = get_supabase_client()
         if not supabase:
             return
-        user_id = st.session_state.get("user", {}).get("user_id", "SYSTEM") if hasattr(st, "session_state") else "SYSTEM"
-        supabase.table("logs").insert({
+
+        user = st.session_state.get("user") if hasattr(st, "session_state") else None
+        user_id = user.get("user_id", "SYSTEM") if user else "SYSTEM"
+        timestamp = get_local_now().strftime("%Y-%m-%d %H:%M:%S")
+
+        supabase.table("audit_trail").insert({
+            "timestamp": timestamp,
             "user_id": user_id,
+            "module": table_name,
             "action": action,
-            "table_name": table_name,
-            "details": str(details)
+            "detail": str(details)
         }).execute()
     except Exception as e:
-        print(f"⚠️ Échec d'enregistrement du log : {e}")
+        print(f"⚠️ Échec d'enregistrement de la piste d'audit : {e}")
 
 def fetch_data(table_name: str) -> list:
     """Lit toutes les données d'une table Supabase."""
