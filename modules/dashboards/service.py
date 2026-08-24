@@ -1,7 +1,7 @@
 """
 Logique métier du module Dashboards.
 Agrège les données pour les indicateurs clés (KPIs) et graphiques.
-Interroge désormais directement Supabase (SQL) pour une fiabilité et des performances maximales.
+Interroge directement Supabase (SQL) pour une fiabilité et des performances maximales.
 """
 import pandas as pd
 from datetime import timedelta
@@ -55,7 +55,7 @@ def get_kpis_direction() -> dict:
         treso_dispo += df_reg[df_reg["type_flux"] == "ENCAISSEMENT"]["montant_total"].sum()
         treso_dispo -= df_reg[df_reg["type_flux"] == "DECAISSEMENT"]["montant_total"].sum()
 
-    # 3. Alertes Stock
+    # 3. Alertes Stock (Matières Premières sous seuil)
     df_stock_mp = charger_donnees("stock_actuel")
     df_ref_mp = charger_donnees("matieres_premieres")
     alertes_stock = 0
@@ -170,67 +170,72 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     return {"montant_total": montant_total, "commandes_retard": len(df_cmd[mask_retard]), "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
 
 def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
-    df_stock = charger_donnees("stock_actuel")
+    """Consulte correctement stock_actuel (MP) et stock_actuel_pf (PF)."""
+    df_stock_mp = charger_donnees("stock_actuel")
+    df_stock_pf = charger_donnees("stock_actuel_pf")
     df_lots = charger_donnees("lots")
     df_ref_mp = charger_donnees("matieres_premieres")
 
     valeur_mp, valeur_pf, sous_seuil = 0.0, 0.0, 0
     lots_expirants = pd.DataFrame()
 
-    if not df_stock.empty and "item_id" in df_stock.columns and "cmp_actuel" in df_stock.columns:
-        if "quantite_disponible" in df_stock.columns:
-            df_stock["qte"] = pd.to_numeric(df_stock["quantite_disponible"], errors="coerce").fillna(0)
-        else:
-            df_stock["qte"] = 0.0
-
-        df_stock["cmp"] = pd.to_numeric(df_stock["cmp_actuel"], errors="coerce").fillna(0)
-        df_stock["valeur"] = df_stock["qte"] * df_stock["cmp"]
-
-        mask_mp = df_stock["item_id"].str.startswith("MP", na=False)
-        mask_pf = df_stock["item_id"].str.startswith("SKU", na=False) | df_stock["item_id"].str.startswith("PF", na=False)
-
-        valeur_mp = df_stock[mask_mp]["valeur"].sum()
-        valeur_pf = df_stock[mask_pf]["valeur"].sum()
+    # 1. Calcul Valeur Matières Premières & Seuil Mini
+    if not df_stock_mp.empty and "quantite_disponible" in df_stock_mp.columns:
+        df_stock_mp["qte"] = pd.to_numeric(df_stock_mp["quantite_disponible"], errors="coerce").fillna(0)
+        df_stock_mp["cmp"] = pd.to_numeric(df_stock_mp.get("cmp_actuel", 0), errors="coerce").fillna(0)
+        valeur_mp = (df_stock_mp["qte"] * df_stock_mp["cmp"]).sum()
 
         if not df_ref_mp.empty and "mp_id" in df_ref_mp.columns:
-            df_stock_mp = df_stock[mask_mp].copy()
-            col_id = "mp_id" if "mp_id" in df_stock_mp.columns else "item_id"
-            merged = pd.merge(df_stock_mp, df_ref_mp, left_on=col_id, right_on="mp_id", how="inner")
+            merged = pd.merge(df_stock_mp, df_ref_mp, on="mp_id", how="inner")
             if "stock_mini" in merged.columns:
                 merged["mini"] = pd.to_numeric(merged["stock_mini"], errors="coerce").fillna(0)
                 sous_seuil = len(merged[merged["qte"] < merged["mini"]])
 
+    # 2. Calcul Valeur Produits Finis (SKU)
+    if not df_stock_pf.empty and "quantite_disponible" in df_stock_pf.columns:
+        df_stock_pf["qte"] = pd.to_numeric(df_stock_pf["quantite_disponible"], errors="coerce").fillna(0)
+        df_stock_pf["cout"] = pd.to_numeric(df_stock_pf.get("cout_revient", 0), errors="coerce").fillna(0)
+        valeur_pf = (df_stock_pf["qte"] * df_stock_pf["cout"]).sum()
+
+    # 3. Lots à périmer
     if not df_lots.empty and "date_peremption" in df_lots.columns:
         now = pd.Timestamp(get_local_now()).tz_localize(None)
         limite = now + timedelta(days=jours_alerte_peremption)
         df_lots["date_peremption_obj"] = pd.to_datetime(df_lots["date_peremption"], errors="coerce").dt.tz_localize(None)
 
-        if "quantite_restante" in df_lots.columns:
-            df_lots["qte_lot"] = pd.to_numeric(df_lots["quantite_restante"], errors="coerce").fillna(0)
-        else:
-            df_lots["qte_lot"] = 0.0
+        col_qte = "quantite_restante" if "quantite_restante" in df_lots.columns else "quantite_initiale"
+        df_lots["qte_lot"] = pd.to_numeric(df_lots.get(col_qte, 0), errors="coerce").fillna(0)
 
         mask_lots = (df_lots["qte_lot"] > 0) & (df_lots["date_peremption_obj"] >= now) & (df_lots["date_peremption_obj"] <= limite)
 
-        # SÉCURISATION MAXIMALE : Ne sélectionner que les colonnes qui existent vraiment
-        colonnes_ideales = ["lot_id", "item_id", "date_peremption", "quantite_restante"]
+        colonnes_ideales = ["lot_id", "item_id", "date_peremption", col_qte]
         cols_to_select = [col for col in colonnes_ideales if col in df_lots.columns]
-
         lots_expirants = df_lots[mask_lots][cols_to_select].copy()
 
-    return {"valeur_mp": valeur_mp, "valeur_pf": valeur_pf, "valeur_totale": valeur_mp + valeur_pf, "sous_seuil": sous_seuil, "lots_expirants": lots_expirants}
+    return {
+        "valeur_mp": valeur_mp,
+        "valeur_pf": valeur_pf,
+        "valeur_totale": valeur_mp + valeur_pf,
+        "sous_seuil": sous_seuil,
+        "lots_expirants": lots_expirants
+    }
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
+    """Agrège les métriques de la table ordres_fabrication et controle_qualite."""
     df_of = charger_donnees("ordres_fabrication")
     df_cq = charger_donnees("controle_qualite")
 
     if df_of.empty:
         return {"total_ofs": 0, "repartition_statut": pd.DataFrame(), "taux_rejet": 0.0}
 
-    col_date = "date_planification" if "date_planification" in df_of.columns else df_of.columns[6]
+    col_date = "date_planification" if "date_planification" in df_of.columns else df_of.columns[0]
     df_of["date_obj"] = pd.to_datetime(df_of[col_date], errors="coerce").dt.tz_localize(None)
+
     mask_periode = (df_of["date_obj"] >= date_debut) & (df_of["date_obj"] <= date_fin)
     df_periode = df_of[mask_periode].copy()
+
+    if df_periode.empty:
+        df_periode = df_of.copy()
 
     total_ofs = len(df_periode)
     repartition = pd.DataFrame()
@@ -239,12 +244,18 @@ def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dic
         repartition.columns = ["Statut", "Volume"]
 
     taux_rejet = 0.0
-    if not df_cq.empty and "conforme" in df_cq.columns and "date_controle" in df_cq.columns:
-        df_cq["date_obj"] = pd.to_datetime(df_cq["date_controle"], errors="coerce").dt.tz_localize(None)
-        mask_cq = (df_cq["date_obj"] >= date_debut) & (df_cq["date_obj"] <= date_fin)
-        df_cq_periode = df_cq[mask_cq]
+    if not df_cq.empty and "conforme" in df_cq.columns:
+        col_date_cq = "date" if "date" in df_cq.columns else "date_controle"
+        if col_date_cq in df_cq.columns:
+            df_cq["date_obj"] = pd.to_datetime(df_cq[col_date_cq], errors="coerce").dt.tz_localize(None)
+            mask_cq = (df_cq["date_obj"] >= date_debut) & (df_cq["date_obj"] <= date_fin)
+            df_cq_periode = df_cq[mask_cq] if not df_cq[mask_cq].empty else df_cq
+        else:
+            df_cq_periode = df_cq
+
         if len(df_cq_periode) > 0:
-            taux_rejet = (len(df_cq_periode[df_cq_periode["conforme"] == "NON"]) / len(df_cq_periode)) * 100
+            rejets = len(df_cq_periode[df_cq_periode["conforme"].astype(str).str.upper().isin(["NON", "FALSE", "REJETE"])])
+            taux_rejet = (rejets / len(df_cq_periode)) * 100
 
     return {"total_ofs": total_ofs, "repartition_statut": repartition, "taux_rejet": taux_rejet}
 
