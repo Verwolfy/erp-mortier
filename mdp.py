@@ -1,7 +1,7 @@
 import bcrypt
 
 # Le mot de passe que vous souhaitez utiliser
-mot_de_passe_clair = "admin123"
+mot_de_passe_clair = "123456789"
 
 # Génération du hash sécurisé
 hash_securise = bcrypt.hashpw(mot_de_passe_clair.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
