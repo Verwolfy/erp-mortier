@@ -2,6 +2,7 @@
 Service de base de données hybride (Supabase + Google Sheets).
 Lit depuis Supabase (SQL). Écrit dans Supabase ET Google Sheets (Dual-Write).
 Le schéma est centralisé ici pour éviter les erreurs de frappe dans les modules métier.
+Intègre une piste d'audit automatique (Activity Log).
 """
 import streamlit as st
 from supabase import create_client, Client
@@ -87,6 +88,26 @@ def get_supabase_client() -> Client:
     return create_client(url, key)
 
 
+def log_action(action: str, table_name: str, details: str):
+    """Enregistre silencieusement une trace d'action dans la table logs."""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            return
+
+        # Récupération de l'ID utilisateur s'il est connecté, sinon "SYSTEM"
+        user_id = st.session_state.get("user", {}).get("user_id", "SYSTEM") if hasattr(st, "session_state") else "SYSTEM"
+        
+        supabase.table("logs").insert({
+            "user_id": user_id,
+            "action": action,
+            "table_name": table_name,
+            "details": str(details)
+        }).execute()
+    except Exception as e:
+        print(f"⚠️ Échec d'enregistrement du log : {e}")
+
+
 def fetch_data(table_name: str) -> list:
     """Lit toutes les données d'une table Supabase."""
     supabase = get_supabase_client()
@@ -121,6 +142,9 @@ def insert_hybrid(table_name: str, data: dict):
         except Exception as e:
             log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", str(e))
 
+    # 3. Piste d'audit générale
+    log_action("INSERT", table_name, f"ID/Data: {data}")
+
     return supa_data
 
 
@@ -145,5 +169,8 @@ def update_hybrid(table_name: str, id_col: str, target_id: str, updates: dict):
             update_multiple_cells_by_id(config["module"], config["sheet"], id_col, target_id, updates)
         except Exception as e:
             log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", str(e))
+
+    # 3. Piste d'audit générale
+    log_action("UPDATE", table_name, f"{id_col}={target_id} | Modifs: {updates}")
 
     return supa_data
