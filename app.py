@@ -1,7 +1,8 @@
 """
 Point d'entrée principal de l'application ERP.
-Gère le routage, l'authentification et le menu latéral.
+Gère le routage, l'authentification (avec Timeout de session) et le menu latéral.
 """
+import time
 import streamlit as st
 
 # Configuration de la page (doit être le premier appel Streamlit)
@@ -15,12 +16,27 @@ st.set_page_config(
 from modules.auth.views import show_login_page, logout
 from config.roles import get_allowed_modules
 
+TIMEOUT_SECONDS = 1800  # 30 minutes d'inactivité maximum
+
 def main():
     # Initialisation de l'état de session
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
     if "user" not in st.session_state:
         st.session_state["user"] = None
+    if "last_activity" not in st.session_state:
+        st.session_state["last_activity"] = time.time()
+
+    # --- VÉRIFICATION DU TIMEOUT D'INACTIVITÉ ---
+    if st.session_state["authenticated"]:
+        current_time = time.time()
+        if current_time - st.session_state["last_activity"] > TIMEOUT_SECONDS:
+            st.warning("Votre session a expiré pour cause d'inactivité. Veuillez vous reconnecter.")
+            logout()
+            return
+        else:
+            # L'utilisateur navigue, on met à jour son horloge d'activité
+            st.session_state["last_activity"] = current_time
 
     # Si non authentifié, on force la page de connexion
     if not st.session_state["authenticated"]:
@@ -48,7 +64,6 @@ def main():
         menu_options = {}
         if "Administration" in allowed_modules:
             menu_options["Administration"] = "⚙️ Administration"
-            # Ajout automatique de la gestion de sécurité pour les administrateurs
             menu_options["Securite"] = "🔐 Utilisateurs & Sécurité"
 
         if "Achats" in allowed_modules:

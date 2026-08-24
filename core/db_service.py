@@ -1,17 +1,17 @@
 """
 Service de base de données hybride (Supabase + Google Sheets).
 Lit depuis Supabase (SQL). Écrit dans Supabase ET Google Sheets (Dual-Write).
-Le schéma est centralisé ici pour éviter les erreurs de frappe dans les modules métier.
-Intègre une piste d'audit automatique (Activity Log).
+Le schéma est centralisé ici pour éviter les erreurs de frappe.
+Intègre une piste d'audit automatique ET UN CONTRÔLE DE DROITS SERVEUR.
 """
 import streamlit as st
 from supabase import create_client, Client
 from core.sheets_service import append_rows_batch, update_multiple_cells_by_id
 from core.logger import log_error
+from config.roles import has_permission
 
 # ==========================================
 # DICTIONNAIRE CENTRAL DU SCHÉMA DE DONNÉES
-# Basé strictement sur docs/schema_donnees.md
 # ==========================================
 SCHEMA_CONFIG = {
     # --- REFERENTIELS ---
@@ -79,7 +79,6 @@ SCHEMA_CONFIG = {
     "erreurs": {"module": "logs", "sheet": "Erreurs", "cols": ["timestamp", "module", "message", "contexte"]},
 }
 
-
 @st.cache_resource
 def get_supabase_client() -> Client:
     """Initialise et retourne le client Supabase en utilisant les secrets de Streamlit."""
@@ -87,6 +86,23 @@ def get_supabase_client() -> Client:
     key = st.secrets["supabase"]["key"]
     return create_client(url, key)
 
+def check_server_permission(table_name: str) -> bool:
+    """NOUVEAU : Vérifie côté serveur si l'utilisateur a le droit d'écriture sur le module cible."""
+    if not hasattr(st, "session_state") or "user" not in st.session_state:
+        return False
+
+    if table_name not in SCHEMA_CONFIG:
+        return False # Sécurité absolue : si table non configurée, on bloque.
+
+    # Mapping spécifique pour faire le lien entre le nom du module DB et vos rôles
+    module_cible = SCHEMA_CONFIG[table_name]["module"]
+    if module_cible in ["referentiels", "logs"]:
+        module_cible = "Administration"
+    else:
+        module_cible = module_cible.capitalize()
+
+    user_role = st.session_state["user"].get("role", "")
+    return has_permission(user_role, module_cible, "ecriture")
 
 def log_action(action: str, table_name: str, details: str):
     """Enregistre silencieusement une trace d'action dans la table logs."""
@@ -94,10 +110,7 @@ def log_action(action: str, table_name: str, details: str):
         supabase = get_supabase_client()
         if not supabase:
             return
-
-        # Récupération de l'ID utilisateur s'il est connecté, sinon "SYSTEM"
         user_id = st.session_state.get("user", {}).get("user_id", "SYSTEM") if hasattr(st, "session_state") else "SYSTEM"
-        
         supabase.table("logs").insert({
             "user_id": user_id,
             "action": action,
@@ -106,7 +119,6 @@ def log_action(action: str, table_name: str, details: str):
         }).execute()
     except Exception as e:
         print(f"⚠️ Échec d'enregistrement du log : {e}")
-
 
 def fetch_data(table_name: str) -> list:
     """Lit toutes les données d'une table Supabase."""
@@ -118,14 +130,16 @@ def fetch_data(table_name: str) -> list:
         log_error(f"Erreur de lecture Supabase sur la table {table_name}", str(e))
         return []
 
-
 def insert_hybrid(table_name: str, data: dict):
     """
     Écrit la donnée dans Supabase et déduit la cible Google Sheets automatiquement.
+    Intègre le contrôle de droits côté serveur.
     """
-    supabase = get_supabase_client()
+    if not check_server_permission(table_name):
+        log_error("Accès Refusé", f"Tentative d'INSERT bloquée sur {table_name}")
+        raise PermissionError(f"🔒 Sécurité Serveur : Droit d'écriture refusé pour la table '{table_name}'.")
 
-    # 1. Insertion dans Supabase
+    supabase = get_supabase_client()
     try:
         res = supabase.table(table_name).insert(data).execute()
         supa_data = res.data
@@ -133,7 +147,6 @@ def insert_hybrid(table_name: str, data: dict):
         log_error(f"Erreur d'insertion Supabase ({table_name})", str(e))
         return None
 
-    # 2. Backup dans Google Sheets (Miroir)
     if supa_data and table_name in SCHEMA_CONFIG:
         config = SCHEMA_CONFIG[table_name]
         try:
@@ -142,19 +155,19 @@ def insert_hybrid(table_name: str, data: dict):
         except Exception as e:
             log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", str(e))
 
-    # 3. Piste d'audit générale
     log_action("INSERT", table_name, f"ID/Data: {data}")
-
     return supa_data
-
 
 def update_hybrid(table_name: str, id_col: str, target_id: str, updates: dict):
     """
     Met à jour la donnée dans Supabase et déduit la cible Google Sheets automatiquement.
+    Intègre le contrôle de droits côté serveur.
     """
-    supabase = get_supabase_client()
+    if not check_server_permission(table_name):
+        log_error("Accès Refusé", f"Tentative d'UPDATE bloquée sur {table_name}")
+        raise PermissionError(f"🔒 Sécurité Serveur : Droit d'écriture refusé pour la table '{table_name}'.")
 
-    # 1. Mise à jour dans Supabase
+    supabase = get_supabase_client()
     try:
         res = supabase.table(table_name).update(updates).eq(id_col, target_id).execute()
         supa_data = res.data
@@ -162,7 +175,6 @@ def update_hybrid(table_name: str, id_col: str, target_id: str, updates: dict):
         log_error(f"Erreur de mise à jour Supabase ({table_name}, ID: {target_id})", str(e))
         return None
 
-    # 2. Backup dans Google Sheets
     if supa_data and table_name in SCHEMA_CONFIG:
         config = SCHEMA_CONFIG[table_name]
         try:
@@ -170,7 +182,5 @@ def update_hybrid(table_name: str, id_col: str, target_id: str, updates: dict):
         except Exception as e:
             log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", str(e))
 
-    # 3. Piste d'audit générale
     log_action("UPDATE", table_name, f"{id_col}={target_id} | Modifs: {updates}")
-
     return supa_data

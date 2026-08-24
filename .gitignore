@@ -4,6 +4,7 @@
 .streamlit/secrets.toml
 credentials.json
 *.pem
+.env
 
 # Environnements virtuels Python
 venv/
