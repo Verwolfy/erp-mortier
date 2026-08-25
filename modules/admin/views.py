@@ -2,7 +2,7 @@
 Interface utilisateur de l'Administration.
 Intègre le filtrage en cascade dynamique Pays -> Wilaya.
 Édition directe en tableau (Inline Editing) avec menus déroulants robustes.
-Gestion dynamique des listes de référence.
+Gestion dynamique des listes de référence synchronisées avec import_data.py.
 """
 import streamlit as st
 import pandas as pd
@@ -15,19 +15,21 @@ from modules.admin.service import (
     add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
 
-# --- FALLBACKS SÉCURISÉS ---
-PAYS_FALLBACK = ["DZ", "FR", "CN", "TR", "ES", "IT", "DE", "AE", "EG", "TN", "MA", "LY", "MR", "Autre"]
+# --- FALLBACKS SÉCURISÉS (Directement alignés avec import_data.py) ---
+PAYS_FALLBACK = ["DZ", "CN", "TR", "IT", "FR", "ES", "DE", "AE", "SA", "IN", "EG", "TN", "MA", "PT", "BE", "KR", "Autre"]
 WILAYA_FALLBACK = [str(i).zfill(2) for i in range(1, 59)]
-CAT_CLIENT_FALLBACK = ["PARTICULIER", "PRO_BTP", "REVENDEUR", "NEGOCE", "PROMOTEUR", "ENTREPRISE_CONSTRUCTION", "MARCHE_PUBLIC", "EXPORT"]
-UNITE_FALLBACK = ["Kg", "Litre", "Sac", "Palette", "Unité", "Fût", "Seau", "Tonne"]
-CAT_MP_FALLBACK = ["LIANT", "GRANULAT", "ADJUVANT_CHIMIQUE", "RESINE_LIANT_POLYMERE", "PIGMENT_COLORANT", "SOLVANT", "ADDITIF_PEINTURE", "FIBRE", "EMBALLAGE_CONSOMMABLE"]
-CAT_PF_FALLBACK = ["ENDUIT_MONOCOUCHE", "ENDUIT_PAREMENT", "MORTIER_SCELLEMENT", "MORTIER_REPARATION", "CHAPE_FLUIDE_AUTONIVELANTE", "RAGREAGE_AUTOLISSANT", "CIMENT_COLLE", "MORTIER_BATARD", "MORTIER_REFRACTAIRE", "MORTIER_JOINT_ASSISE", "SUPERPLASTIFIANT", "PLASTIFIANT_REDUCTEUR_EAU", "PEINTURE_BATIMENT_INTERIEUR", "PEINTURE_FACADE_EXTERIEUR", "VERNIS"]
-HS_CODE_FALLBACK = ["2523.10", "2523.21", "2523.29", "2523.30", "2523.90", "2521.00", "3824.40", "3824.50", "3208", "3209", "3210", "3206", "6810"]
+CAT_CLIENT_FALLBACK = ["DISTRIB", "DROGUERIE", "ENT_BTP", "PROMO", "APPLIC", "CENTRALE", "MARCHE_PUB", "B2C"]
+UNITE_FALLBACK = ["KG", "T", "G", "L", "ML", "U", "SAC", "SEAU", "FUT", "IBC", "PAL", "M"]
+CAT_MP_FALLBACK = ["LIANT_HYD", "CHARGE_MIN", "RESINE_AQ", "RESINE_SOLV", "ADD_RHEO", "ADD_BETO", "PIGMENT_BL", "PIGMENT_COL", "SOLVANT", "BIOCIDE", "AGENT_SURF", "EMBALLAGE"]
+CAT_PF_FALLBACK = ["MORT_COLLE", "MORT_JOINTS", "END_FACADE", "END_LISS", "MORT_TECH", "ADJ_PLAST", "ADJ_PRISE", "ADJ_HYDRO", "ADJ_CURE", "PEINT_INT", "PEINT_EXT", "PEINT_TECH", "ETANCHEITE", "PRIMAIRE"]
+HS_CODE_FALLBACK = ["250510", "252220", "252329", "253090", "282110", "283650", "291816", "320611", "320649", "320820", "320910", "381600", "382440", "382450", "390529", "390690", "391239", "392321"]
+
 
 def get_opts(liste_code: str, fallback: list) -> list:
     """Extrait les clés de la liste de référence, ou utilise le fallback si vide."""
     res = liste_to_dict(get_liste(liste_code))
     return [str(k) for k in res.keys()] if res else fallback
+
 
 def gerer_listes_reference():
     """Interface pour ajouter et modifier les catégories, pays, wilayas, etc."""
@@ -35,7 +37,6 @@ def gerer_listes_reference():
 
     df_listes = pd.DataFrame(fetch_data("listes_reference"))
 
-    # 1. Identifier les listes existantes
     listes_existantes = []
     if not df_listes.empty and "liste_code" in df_listes.columns:
         listes_existantes = sorted(df_listes["liste_code"].dropna().unique().tolist())
@@ -50,18 +51,16 @@ def gerer_listes_reference():
         else:
             st.info("Aucune liste configurée.")
     else:
-        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CAT_CLIENT)").strip().upper()
+        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CAT_CLIENT, CAT_MP)").strip().upper()
 
-    # 2. Affichage et Formulaire d'ajout
     if liste_cible:
         st.divider()
         st.markdown(f"### Éléments de la liste : `{liste_cible}`")
 
-        # --- FORMULAIRE D'AJOUT ---
         with st.form(f"form_add_{liste_cible}"):
             c1, c2, c3 = st.columns([1, 2, 1])
-            val_code = c1.text_input("Code court (ex: DZA, 31, VIP)")
-            val_libelle = c2.text_input("Libellé affiché (ex: Algérie, Oran, Client VIP)")
+            val_code = c1.text_input("Code court (ex: DZA, 31, MORT_COLLE)")
+            val_libelle = c2.text_input("Libellé affiché (ex: Algérie, Oran, Mortiers Colles)")
             ordre = c3.number_input("Ordre d'affichage", min_value=1, value=1, step=1)
 
             if st.form_submit_button("➕ Ajouter l'élément", type="primary"):
@@ -84,14 +83,13 @@ def gerer_listes_reference():
                 else:
                     st.error("Le code et le libellé sont obligatoires.")
 
-        # --- LISTE DES ÉLÉMENTS EXISTANTS ---
         if not df_listes.empty and "liste_code" in df_listes.columns:
             df_filtre = df_listes[df_listes["liste_code"] == liste_cible].sort_values(by="ordre")
 
             if not df_filtre.empty:
                 st.markdown("**Éléments actuellement configurés :**")
                 for _, row in df_filtre.iterrows():
-                    rc1, rc2, rc3, rc4 = st.columns([1, 2, 1, 1])
+                    rc1, rc2, rc3 = st.columns([1, 2, 1])
                     rc1.code(row.get('valeur_code', ''))
                     rc2.write(row.get('valeur_libelle', ''))
 
@@ -111,6 +109,7 @@ def gerer_listes_reference():
             else:
                 st.info("Cette liste est vide.")
 
+
 def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, selectbox_cols: dict = None):
     """Génère un tableau interactif permettant l'édition directe des données avec listes de choix robustes."""
     df = get_dataframe(sheet_name)
@@ -119,19 +118,16 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
         st.dataframe(df, use_container_width=True, hide_index=True)
         return
 
-    # 1. NETTOYAGE CRITIQUE : Supprimer les "None" et "nan" qui bloquent Streamlit
     df = df.fillna("")
     df = df.replace(["None", "nan", "<NA>"], "")
 
     editor_key = f"editor_{sheet_name}"
 
-    # Configuration de base
     config = {
         id_col: st.column_config.TextColumn(id_col, disabled=True),
         "actif": st.column_config.SelectboxColumn("actif", options=["OUI", "NON"])
     }
 
-    # 2. Injection dynamique et sécurisée des menus déroulants
     if selectbox_cols:
         for col, opts in selectbox_cols.items():
             if col in df.columns:
@@ -155,7 +151,6 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
         num_rows="fixed"
     )
 
-    # Capture des cellules modifiées
     changes = st.session_state[editor_key].get("edited_rows", {})
 
     if changes:
@@ -170,6 +165,7 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
                 else:
                     st.error("Une erreur est survenue lors de l'enregistrement.")
 
+
 def show_admin_page():
     st.title("⚙️ Administration & Référentiels")
 
@@ -179,12 +175,19 @@ def show_admin_page():
     if not can_write:
         st.info("🔒 Mode lecture seule : vous n'avez pas les droits d'ajout ou de modification.")
 
-    # Chargement global des listes de références avec fallback et codes corrects !
+    # Chargement dynamique global depuis les listes expertes import_data.py
     pays_opts = get_opts("PAYS", PAYS_FALLBACK)
     wilaya_opts = get_opts("WILAYA", WILAYA_FALLBACK)
     unite_opts = get_opts("UNITE_MESURE", UNITE_FALLBACK)
+    cat_client_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK)
+    cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK)
+    cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
+    hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
 
-    tab1, tab2, tab3, tab4, tab5, tab_listes = st.tabs(["👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières", "🛍️ Produits", "📦 SKU", "📝 Listes de choix"])
+    tab1, tab2, tab3, tab4, tab5, tab_listes = st.tabs([
+        "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
+        "🛍️ Produits", "📦 SKU", "📝 Listes de choix"
+    ])
 
     # --- CLIENTS ---
     with tab1:
@@ -194,21 +197,16 @@ def show_admin_page():
                 st.markdown("**Informations de base**")
                 c1, c2, c3 = st.columns(3)
                 nom = c1.text_input("Nom de l'entreprise *", key="cli_nom")
-
-                cat_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK)
-                cat = c2.selectbox("Catégorie", options=cat_opts, key="cli_cat")
-
+                cat = c2.selectbox("Catégorie", options=cat_client_opts, key="cli_cat")
                 type_c = c3.selectbox("Type", ["Entreprise", "Particulier"], key="cli_type")
 
                 st.markdown("**Coordonnées**")
                 c4, c5, c6 = st.columns(3)
-
                 pays = c4.selectbox("Pays", options=pays_opts, key="cli_pays")
 
                 parent_code = f"PAYS:{pays}" if pays else None
                 dict_wilaya = liste_to_dict(get_liste("WILAYA", parent_code=parent_code))
                 wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="cli_wilaya")
-
                 adresse = c6.text_input("Adresse", key="cli_adresse")
 
                 st.markdown("**Informations Légales & Contact**")
@@ -239,7 +237,7 @@ def show_admin_page():
                         st.error("Le nom est obligatoire.")
 
         config_cli = {
-            "categorie_client": get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK),
+            "categorie_client": cat_client_opts,
             "type_client": ["Entreprise", "Particulier"],
             "pays": pays_opts,
             "wilaya": wilaya_opts
@@ -259,13 +257,11 @@ def show_admin_page():
 
                 st.markdown("**Coordonnées & Logistique**")
                 c4, c5, c6 = st.columns(3)
-
                 pays = c4.selectbox("Pays d'origine", options=pays_opts, key="fou_pays")
 
                 parent_code = f"PAYS:{pays}" if pays else None
                 dict_wilaya = liste_to_dict(get_liste("WILAYA", parent_code=parent_code))
                 wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="fou_wilaya")
-
                 delai = c6.number_input("Délai approvisionnement (jours)", min_value=0, step=1, key="fou_delai")
 
                 st.markdown("**Informations Légales & Contact**")
@@ -311,8 +307,6 @@ def show_admin_page():
                     st.markdown("**Informations de base**")
                     c1, c2 = st.columns(2)
                     nom = c1.text_input("Désignation *")
-
-                    cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK)
                     cat_mp = c2.selectbox("Catégorie", options=cat_mp_opts)
 
                     unite = c1.selectbox("Unité de stock", options=unite_opts)
@@ -326,9 +320,7 @@ def show_admin_page():
 
                     c6, c7 = st.columns(2)
                     duree_peremption = c6.number_input("Durée de péremption (jours)", min_value=0, step=1)
-
-                    hs_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
-                    hs = c7.selectbox("Code SH (Douane)", options=hs_opts)
+                    hs = c7.selectbox("Code SH (Douane)", options=hs_code_opts)
 
                     taux_dedouanement = st.number_input("Taux de dédouanement (%)", min_value=0.0, max_value=100.0, step=1.0)
 
@@ -352,10 +344,10 @@ def show_admin_page():
                             st.error("La désignation est obligatoire.")
 
         config_mp = {
-            "categorie_mp": get_opts("CAT_MP", CAT_MP_FALLBACK),
+            "categorie_mp": cat_mp_opts,
             "unite_stock": unite_opts,
             "origine_pays": pays_opts,
-            "hs_code": get_opts("HS_CODE", HS_CODE_FALLBACK)
+            "hs_code": hs_code_opts
         }
         render_editable_dataframe("MatieresPremieres", "mp_id", can_write, config_mp)
 
@@ -367,10 +359,7 @@ def show_admin_page():
                 with st.form("form_pf"):
                     c1, c2 = st.columns(2)
                     nom = c1.text_input("Nom du Produit *")
-
-                    cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
                     cat_pf = c2.selectbox("Catégorie", options=cat_pf_opts)
-
                     unite = c1.selectbox("Unité de production", options=unite_opts)
 
                     if st.form_submit_button("Enregistrer", type="primary"):
@@ -383,7 +372,7 @@ def show_admin_page():
                             st.error("Le nom du produit est obligatoire.")
 
         config_pf = {
-            "categorie_pf": get_opts("CAT_PF", CAT_PF_FALLBACK),
+            "categorie_pf": cat_pf_opts,
             "unite_production": unite_opts
         }
         render_editable_dataframe("Produits", "pf_id", can_write, config_pf)
@@ -398,8 +387,9 @@ def show_admin_page():
             if not df_pf.empty:
                 liste_pf = {row["pf_id"]: f"{row['pf_id']} - {row['nom']}" for _, row in df_pf.iterrows()}
 
+                # Prise en charge universelle des emballages (EMBALLAGE ou EMBALLAGE_CONSOMMABLE)
                 if not df_mp.empty and "categorie_mp" in df_mp.columns:
-                    df_emballage = df_mp[df_mp["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+                    df_emballage = df_mp[df_mp["categorie_mp"].isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
                     liste_emballage = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_emballage.iterrows()}
                 else:
                     liste_emballage = {}
@@ -442,7 +432,7 @@ def show_admin_page():
         df_mp = get_dataframe("MatieresPremieres")
         emballage_opts = []
         if not df_mp.empty and "categorie_mp" in df_mp.columns and "mp_id" in df_mp.columns:
-            emballage_opts = [str(x) for x in df_mp[df_mp["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]["mp_id"].dropna().unique()]
+            emballage_opts = [str(x) for x in df_mp[df_mp["categorie_mp"].isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]["mp_id"].dropna().unique()]
 
         config_sku = {
             "pf_id": pf_opts if pf_opts else [""],
@@ -458,6 +448,7 @@ def show_admin_page():
         else:
             st.info("🔒 Mode lecture seule : vous ne pouvez pas modifier les listes.")
 
+
 # ==========================================
 # PAGE DE GESTION DES UTILISATEURS
 # ==========================================
@@ -465,7 +456,6 @@ def show_user_management():
     """Affiche l'interface de gestion des accès, de la sécurité et des logs."""
     st.title("🔐 Sécurité & Utilisateurs")
 
-    # Vérification des permissions
     user_role = st.session_state.get("user", {}).get("role", "")
     can_write = has_permission(user_role, "Administration", "ecriture")
 
@@ -508,8 +498,6 @@ def show_user_management():
 
         with st.form("form_add_perm", clear_on_submit=True):
             role_cible = st.text_input("Rôle concerné (ex: COMMERCIAL) *").upper()
-
-            # Liste exacte des modules
             modules_disponibles = ["Administration", "Achats", "Stocks", "Production", "Ventes", "Finance", "CRM", "RH", "Logs"]
             module_cible = st.selectbox("Module de l'ERP", modules_disponibles)
 
@@ -538,7 +526,6 @@ def show_user_management():
         st.subheader("Annuaire des Utilisateurs")
         df_users = get_users()
         if not df_users.empty:
-            # On masque le hash_mdp pour l'affichage pour plus de sécurité visuelle
             cols_a_afficher = [col for col in df_users.columns if col != "hash_mdp"]
             st.dataframe(df_users[cols_a_afficher], use_container_width=True, hide_index=True)
         else:
