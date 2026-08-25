@@ -2,11 +2,13 @@
 Interface utilisateur de l'Administration.
 Intègre le filtrage en cascade dynamique Pays -> Wilaya.
 Édition directe en tableau (Inline Editing) avec menus déroulants robustes.
+Gestion dynamique des listes de référence.
 """
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
 from core.listes_service import get_liste, liste_to_dict
+from core.db_service import fetch_data, insert_hybrid, update_hybrid
 from modules.admin.service import (
     get_dataframe, add_fournisseur, add_matiere_premiere,
     add_produit, add_sku, add_client, sauvegarder_modifications,
@@ -26,6 +28,88 @@ def get_opts(liste_code: str, fallback: list) -> list:
     """Extrait les clés de la liste de référence, ou utilise le fallback si vide."""
     res = liste_to_dict(get_liste(liste_code))
     return [str(k) for k in res.keys()] if res else fallback
+
+def gerer_listes_reference():
+    """Interface pour ajouter et modifier les catégories, pays, wilayas, etc."""
+    st.subheader("⚙️ Gestion des Listes de Choix (Menus déroulants)")
+
+    df_listes = pd.DataFrame(fetch_data("listes_reference"))
+
+    # 1. Identifier les listes existantes
+    listes_existantes = []
+    if not df_listes.empty and "liste_code" in df_listes.columns:
+        listes_existantes = sorted(df_listes["liste_code"].dropna().unique().tolist())
+
+    col1, col2 = st.columns(2)
+    action = col1.radio("Que voulez-vous faire ?", ["Éditer une liste existante", "Créer un nouveau type de liste"])
+
+    liste_cible = ""
+    if action == "Éditer une liste existante":
+        if listes_existantes:
+            liste_cible = col2.selectbox("Sélectionnez la liste", listes_existantes)
+        else:
+            st.info("Aucune liste configurée.")
+    else:
+        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CATEGORIE_CLIENT)").strip().upper()
+
+    # 2. Affichage et Formulaire d'ajout
+    if liste_cible:
+        st.divider()
+        st.markdown(f"### Éléments de la liste : `{liste_cible}`")
+
+        # --- FORMULAIRE D'AJOUT ---
+        with st.form(f"form_add_{liste_cible}"):
+            c1, c2, c3 = st.columns([1, 2, 1])
+            val_code = c1.text_input("Code court (ex: DZA, 31, VIP)")
+            val_libelle = c2.text_input("Libellé affiché (ex: Algérie, Oran, Client VIP)")
+            ordre = c3.number_input("Ordre d'affichage", min_value=1, value=1, step=1)
+
+            if st.form_submit_button("➕ Ajouter l'élément", type="primary"):
+                if val_code and val_libelle:
+                    data_nouvel_element = {
+                        "liste_code": liste_cible,
+                        "parent_code": "",
+                        "valeur_code": val_code,
+                        "valeur_libelle": val_libelle,
+                        "ordre": ordre,
+                        "actif": "OUI"
+                    }
+                    try:
+                        insert_hybrid("listes_reference", data_nouvel_element)
+                        st.success(f"Élément '{val_libelle}' ajouté avec succès !")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur d'insertion : {e}")
+                else:
+                    st.error("Le code et le libellé sont obligatoires.")
+
+        # --- LISTE DES ÉLÉMENTS EXISTANTS ---
+        if not df_listes.empty and "liste_code" in df_listes.columns:
+            df_filtre = df_listes[df_listes["liste_code"] == liste_cible].sort_values(by="ordre")
+
+            if not df_filtre.empty:
+                st.markdown("**Éléments actuellement configurés :**")
+                for _, row in df_filtre.iterrows():
+                    rc1, rc2, rc3, rc4 = st.columns([1, 2, 1, 1])
+                    rc1.code(row.get('valeur_code', ''))
+                    rc2.write(row.get('valeur_libelle', ''))
+
+                    statut_actuel = str(row.get("actif", "OUI")).upper()
+                    nouveau_statut = rc3.selectbox(
+                        "Statut",
+                        ["OUI", "NON"],
+                        index=0 if statut_actuel == "OUI" else 1,
+                        key=f"statut_{row.get('id', row.get('valeur_code'))}"
+                    )
+
+                    if nouveau_statut != statut_actuel:
+                        update_hybrid("listes_reference", "id", str(row.get('id')), {"actif": nouveau_statut})
+                        st.toast(f"Statut mis à jour pour {row.get('valeur_libelle')}")
+                        st.cache_data.clear()
+                        st.rerun()
+            else:
+                st.info("Cette liste est vide.")
 
 def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, selectbox_cols: dict = None):
     """Génère un tableau interactif permettant l'édition directe des données avec listes de choix robustes."""
@@ -100,7 +184,7 @@ def show_admin_page():
     wilaya_opts = get_opts("Wilaya", WILAYA_FALLBACK)
     unite_opts = get_opts("UniteMesure", UNITE_FALLBACK)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["Clients", "Fournisseurs", "Matières Premières", "Produits", "SKU"])
+    tab1, tab2, tab3, tab4, tab5, tab_listes = st.tabs(["👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières", "🛍️ Produits", "📦 SKU", "📝 Listes de choix"])
 
     # --- CLIENTS ---
     with tab1:
@@ -314,7 +398,6 @@ def show_admin_page():
             if not df_pf.empty:
                 liste_pf = {row["pf_id"]: f"{row['pf_id']} - {row['nom']}" for _, row in df_pf.iterrows()}
 
-                # Filtrer les matières premières pour ne garder que les emballages
                 if not df_mp.empty and "categorie_mp" in df_mp.columns:
                     df_emballage = df_mp[df_mp["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
                     liste_emballage = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_emballage.iterrows()}
@@ -367,6 +450,13 @@ def show_admin_page():
             "unite_vente": unite_opts
         }
         render_editable_dataframe("SkuConditionnement", "sku_id", can_write, config_sku)
+
+    # --- LISTES DE CHOIX ---
+    with tab_listes:
+        if can_write:
+            gerer_listes_reference()
+        else:
+            st.info("🔒 Mode lecture seule : vous ne pouvez pas modifier les listes.")
 
 # ==========================================
 # PAGE DE GESTION DES UTILISATEURS
@@ -466,7 +556,6 @@ def show_user_management():
         st.subheader("Historique des Actions (Audit Trail)")
         st.info("Traçabilité complète et automatique des modifications de la base de données.")
 
-        # Bouton pour rafraîchir manuellement les logs
         if st.button("🔄 Rafraîchir les logs"):
             st.cache_data.clear()
 
