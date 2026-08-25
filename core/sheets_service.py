@@ -1,7 +1,7 @@
 """
 Service centralisé d'accès à Google Sheets.
 Conforme à l'architecture définie dans docs/schema_reference.md.
-Inclut : gestion du cache, résilience (Tenacity), écritures groupées et verrouillage optimiste.
+Inclut : gestion du cache, résilience (Tenacity) sur la lecture ET l'écriture, et verrouillage optimiste.
 """
 import streamlit as st
 import gspread
@@ -52,6 +52,13 @@ def get_all_records(module_name: str, sheet_name: str) -> list:
         st.error(f"Erreur de lecture Google Sheets [{module_name}/{sheet_name}]: {e}")
         return []
 
+# AJOUT DU RETRY SUR L'ÉCRITURE POUR GARANTIR LE DUAL-WRITE
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=5),
+    retry=retry_if_exception_type(Exception),
+    reraise=True
+)
 def append_rows_batch(module_name: str, sheet_name: str, rows: list):
     """Ajoute plusieurs lignes en une seule requête API et vide le cache."""
     if not rows:
@@ -60,6 +67,12 @@ def append_rows_batch(module_name: str, sheet_name: str, rows: list):
     worksheet.append_rows(rows)
     st.cache_data.clear()
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=5),
+    retry=retry_if_exception_type(Exception),
+    reraise=True
+)
 def update_cell_by_id(module_name: str, sheet_name: str, id_col: str, target_id: str, col_name: str, new_value):
     """
     Mise à jour ciblée d'une seule cellule via recherche dynamique de colonne.
@@ -83,6 +96,12 @@ def update_cell_by_id(module_name: str, sheet_name: str, id_col: str, target_id:
 
     st.cache_data.clear()
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=5),
+    retry=retry_if_exception_type(Exception),
+    reraise=True
+)
 def update_multiple_cells_by_id(module_name: str, sheet_name: str, id_col: str, target_id: str, updates: dict):
     """
     Met à jour plusieurs colonnes d'une même ligne en une seule requête API groupée.
