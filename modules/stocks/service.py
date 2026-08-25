@@ -5,7 +5,7 @@ Lecture via Supabase, Écriture hybride (Supabase + Google Sheets).
 Conforme au schéma docs/schema_reference.md.
 """
 import pandas as pd
-from core.db_service import fetch_data, insert_hybrid, update_hybrid
+from core.db_service import fetch_data, fetch_data_filtered, insert_hybrid, update_hybrid
 from core.utils import generate_technical_id, get_local_now
 
 def get_stock_actuel_mp() -> pd.DataFrame:
@@ -15,10 +15,20 @@ def get_stock_actuel_pf() -> pd.DataFrame:
     return pd.DataFrame(fetch_data("stock_actuel_pf"))
 
 def get_mouvements() -> pd.DataFrame:
+    """Récupère l'historique complet des mouvements (Attention au volume élevé)."""
     return pd.DataFrame(fetch_data("mouvements"))
 
+def get_mouvements_by_mp(mp_id: str) -> pd.DataFrame:
+    """Récupère uniquement les mouvements MP de manière optimisée."""
+    return pd.DataFrame(fetch_data_filtered("mouvements", "mp_id", mp_id))
+
 def get_mouvements_pf() -> pd.DataFrame:
+    """Récupère l'historique complet des mouvements PF."""
     return pd.DataFrame(fetch_data("mouvements_pf"))
+
+def get_mouvements_pf_by_sku(sku_id: str) -> pd.DataFrame:
+    """Récupère uniquement les mouvements PF de manière optimisée."""
+    return pd.DataFrame(fetch_data_filtered("mouvements_pf", "sku_id", sku_id))
 
 def get_lots() -> pd.DataFrame:
     return pd.DataFrame(fetch_data("lots"))

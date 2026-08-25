@@ -151,6 +151,20 @@ def fetch_data(table_name: str) -> list:
         log_error(f"Erreur de lecture Supabase sur la table {table_name}", str(e))
         return []
 
+def fetch_data_filtered(table_name: str, filter_column: str, filter_value: str) -> list:
+    """
+    Lit les données de Supabase en appliquant un filtre directement côté serveur SQL.
+    Essentiel pour les tables à fort volume (mouvements, factures, lignes) afin d'éviter les crashs mémoire.
+    """
+    supabase = get_supabase_client()
+    try:
+        response = supabase.table(table_name).select("*").eq(filter_column, filter_value).execute()
+        return response.data
+    except Exception as e:
+        from core.logger import log_error
+        log_error(f"Erreur de lecture filtrée Supabase sur {table_name}", str(e))
+        return []
+
 def insert_hybrid(table_name: str, data: dict):
     """
     Écrit la donnée dans Supabase et déduit la cible Google Sheets automatiquement.

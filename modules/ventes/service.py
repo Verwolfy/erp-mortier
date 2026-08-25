@@ -5,7 +5,7 @@ Gère les Factures, Avoirs, LignesFacture, Règlements, Bons de Livraison (BL) e
 Lecture Supabase, Écriture hybride (Supabase + Google Sheets).
 """
 import pandas as pd
-from core.db_service import fetch_data, insert_hybrid, update_hybrid, get_supabase_client
+from core.db_service import fetch_data, fetch_data_filtered, insert_hybrid, update_hybrid, get_supabase_client
 from core.utils import generate_unique_id, generate_technical_id, get_local_now
 from modules.stocks.service import enregistrer_sortie_pf, enregistrer_entree_pf
 
@@ -21,11 +21,8 @@ def get_factures() -> pd.DataFrame:
 
 
 def get_lignes_facture(facture_id: str) -> list:
-    """Récupère les lignes d'une facture spécifique."""
-    df_lignes = pd.DataFrame(fetch_data("lignes_facture"))
-    if not df_lignes.empty and "facture_id" in df_lignes.columns:
-        return df_lignes[df_lignes["facture_id"] == facture_id].to_dict('records')
-    return []
+    """Récupère les lignes d'une facture spécifique de manière optimisée."""
+    return fetch_data_filtered("lignes_facture", "facture_id", facture_id)
 
 
 def get_bons_livraison() -> pd.DataFrame:
@@ -34,11 +31,10 @@ def get_bons_livraison() -> pd.DataFrame:
 
 
 def get_lignes_bons_livraison(bl_id: str = None) -> pd.DataFrame:
-    """Récupère les lignes des bons de livraison, optionnellement filtrées par BL."""
-    df = pd.DataFrame(fetch_data("lignes_bons_livraison"))
-    if bl_id and not df.empty and "bl_id" in df.columns:
-        return df[df["bl_id"] == bl_id]
-    return df
+    """Récupère les lignes des bons de livraison, optimisé si filtré par BL."""
+    if bl_id:
+        return pd.DataFrame(fetch_data_filtered("lignes_bons_livraison", "bl_id", bl_id))
+    return pd.DataFrame(fetch_data("lignes_bons_livraison"))
 
 
 def generer_numero_facture_legal(type_document: str) -> str:
@@ -234,6 +230,6 @@ def annuler_facture(facture_id: str):
 
     if not is_avoir:
         for ligne in lignes:
-            enregistrer_entree_pf(ligne["sku_id"], ligne["quantite"], facture_id)
+            enregistrer_entree_pf(ligne["sku_id"], ligne["quantite"], facture_id, "")
 
     update_hybrid("factures", "facture_id", facture_id, {"statut": "ANNULE"})
