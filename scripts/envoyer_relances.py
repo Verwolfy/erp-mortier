@@ -9,7 +9,7 @@ import pandas as pd
 from datetime import datetime
 from supabase import create_client
 
-# Configuration Supabase (via variables d'environnement)
+# Configuration Supabase (via variables d'environnement injectées par GitHub Actions)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
@@ -21,21 +21,19 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")  # Mot de passe d'application
 
 
 def get_factures_echues(supabase):
-    """Récupère les factures en retard non soldées."""
-    response = supabase.table("factures").select("*").in_("statut",
-                                                          ["EN_ATTENTE", "PARTIELLE", "BROUILLON", "VALIDE"]).execute()
-    df_fac = pd.DataFrame(response.data)
+    """
+    Récupère les factures en retard non soldées.
+    Optimisation OOM : Le filtrage de la date se fait directement côté SQL (Supabase).
+    """
+    aujourdhui_str = datetime.now().strftime("%Y-%m-%d")
 
-    if df_fac.empty:
-        return pd.DataFrame()
+    response = supabase.table("factures") \
+        .select("*") \
+        .in_("statut", ["EN_ATTENTE", "PARTIELLE", "BROUILLON", "VALIDE"]) \
+        .lt("date_echeance", aujourdhui_str) \
+        .execute()
 
-    # Filtrer celles dont la date d'échéance est dépassée
-    aujourdhui = datetime.now()
-    df_fac["date_echeance_obj"] = pd.to_datetime(df_fac["date_echeance"], errors="coerce")
-
-    # On garde les factures échues
-    mask_echues = df_fac["date_echeance_obj"] < aujourdhui
-    return df_fac[mask_echues]
+    return pd.DataFrame(response.data)
 
 
 def get_clients(supabase):
@@ -103,7 +101,7 @@ def main():
         client = client_info.iloc[0]
         montant_restant = float(facture.get("montant_ttc", 0)) - float(facture.get("montant_paye", 0))
 
-        # On ne relance que s'il reste au moins 10 DZD à payer
+        # Règle métier : On ne relance que s'il reste au moins 10 DZD à payer
         if montant_restant > 10.0:
             envoyer_email_relance(
                 client_nom=client["nom"],

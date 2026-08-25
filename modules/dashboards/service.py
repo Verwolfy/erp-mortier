@@ -1,21 +1,24 @@
 """
 Logique métier du module Dashboards.
 Agrège les données pour les indicateurs clés (KPIs) et graphiques.
-Interroge directement Supabase (SQL) pour une fiabilité et des performances maximales.
+Interroge directement Supabase (SQL) via des filtres de dates pour des performances maximales.
 """
 import pandas as pd
 from datetime import timedelta
-from core.db_service import fetch_data
+from core.db_service import fetch_data, fetch_data_by_date_range
 from core.utils import get_local_now
 
 def charger_donnees(table_name: str) -> pd.DataFrame:
-    """Fonction utilitaire pour charger une table SQL sous forme de DataFrame sécurisé."""
+    """Charge une table entière (réservé aux petites tables type référentiels ou stocks actuels)."""
     return pd.DataFrame(fetch_data(table_name))
 
 def get_kpis_direction() -> dict:
     now = get_local_now()
+    start_mois = now.replace(day=1).strftime("%Y-%m-%d")
+    end_mois = now.strftime("%Y-%m-%d")
 
-    # 1. CA & Impayés
+    # 1. CA & Impayés (Filtré SQL)
+    # On récupère toutes les factures car on a besoin des impayés (qui peuvent dater d'avant ce mois)
     df_fac = charger_donnees("factures")
     ca_mois = 0.0
     impayes_30j = 0.0
@@ -70,24 +73,26 @@ def get_kpis_direction() -> dict:
     return {"ca_mois": ca_mois, "tresorerie": treso_dispo, "impayes_30j": impayes_30j, "alertes_stock": alertes_stock}
 
 def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    """Calcule le Compte de Résultat (P&L) : CA, Marge Brute, OPEX et EBITDA."""
-    df_fac = charger_donnees("factures")
+    """Calcule le Compte de Résultat (P&L) de manière optimisée."""
+    start_str = date_debut.strftime("%Y-%m-%d")
+    end_str = date_fin.strftime("%Y-%m-%d")
+
+    # Fetch uniquement sur la période
+    df_fac_periode = pd.DataFrame(fetch_data_by_date_range("factures", "date", start_str, end_str))
+    df_reg_periode = pd.DataFrame(fetch_data_by_date_range("reglements", "date_reglement", start_str, end_str))
+
     df_lignes_fac = charger_donnees("lignes_facture")
     df_pf = charger_donnees("stock_actuel_pf")
-    df_reg = charger_donnees("reglements")
     df_frn = charger_donnees("fournisseurs")
-    df_paie = charger_donnees("fiches_de_paie")
+    df_paie = charger_donnees("fiches_de_paie") # La table paie pourrait aussi être filtrée
 
     # 1. CHIFFRE D'AFFAIRES (CA HT)
     ca_ht = 0.0
-    df_fac_periode = pd.DataFrame()
-    if not df_fac.empty and "date" in df_fac.columns:
-        df_fac["date_obj"] = pd.to_datetime(df_fac["date"], errors="coerce").dt.tz_localize(None)
-        mask_periode = (df_fac["date_obj"] >= date_debut) & (df_fac["date_obj"] <= date_fin)
-        type_col = "type_document" if "type_document" in df_fac.columns else "type_facture"
-        mask_clients = df_fac.get(type_col, "FactureClient") == "FactureClient"
-        df_fac_periode = df_fac[mask_periode & mask_clients]
-        ca_ht = pd.to_numeric(df_fac_periode["montant_ht"], errors="coerce").fillna(0).sum()
+    if not df_fac_periode.empty and "date" in df_fac_periode.columns:
+        type_col = "type_document" if "type_document" in df_fac_periode.columns else "type_facture"
+        mask_clients = df_fac_periode.get(type_col, "FactureClient") == "FactureClient"
+        df_fac_clients = df_fac_periode[mask_clients]
+        ca_ht = pd.to_numeric(df_fac_clients["montant_ht"], errors="coerce").fillna(0).sum()
 
     # 2. COGS (Coût des marchandises vendues)
     cogs = 0.0
@@ -103,12 +108,8 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
 
     # 3. OPEX (Fournisseurs d'exploitation)
     opex_fournisseurs = 0.0
-    if not df_reg.empty and not df_frn.empty:
-        col_date_reg = "date_reglement" if "date_reglement" in df_reg.columns else df_reg.columns[1]
-        df_reg["date_obj"] = pd.to_datetime(df_reg[col_date_reg], errors="coerce").dt.tz_localize(None)
-        mask_reg = (df_reg["date_obj"] >= date_debut) & (df_reg["date_obj"] <= date_fin) & (df_reg["type_flux"] == "DECAISSEMENT")
-        df_decaissements = df_reg[mask_reg]
-
+    if not df_reg_periode.empty and not df_frn.empty:
+        df_decaissements = df_reg_periode[df_reg_periode["type_flux"] == "DECAISSEMENT"]
         if not df_decaissements.empty:
             merged_opex = pd.merge(df_decaissements, df_frn, left_on="partenaire_id", right_on="fournisseur_id", how="inner")
             if "categorie" in merged_opex.columns:
@@ -137,21 +138,23 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     }
 
 def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
+    start_str = date_debut.strftime("%Y-%m-%d")
+    end_str = date_fin.strftime("%Y-%m-%d")
+
+    # On récupère toutes les factures pour la balance âgée, et les filtrées pour les ventes
     df_fac = charger_donnees("factures")
-    if df_fac.empty or "facture_id" not in df_fac.columns:
+    df_periode = pd.DataFrame(fetch_data_by_date_range("factures", "date", start_str, end_str))
+
+    if df_periode.empty or "facture_id" not in df_periode.columns:
         return {"ca_ht": 0.0, "ca_ttc": 0.0, "timbre_fiscal": 0.0, "panier_moyen": 0.0, "taux_avoirs": 0.0, "nb_factures": 0, "balance_agee": {}, "top_clients": pd.DataFrame()}
 
     for col in ["montant_ht", "montant_ttc", "montant_paye", "montant_timbre"]:
+        if col in df_periode.columns:
+            df_periode[col] = pd.to_numeric(df_periode[col], errors="coerce").fillna(0)
         if col in df_fac.columns:
             df_fac[col] = pd.to_numeric(df_fac[col], errors="coerce").fillna(0)
 
-    col_date = "date" if "date" in df_fac.columns else df_fac.columns[3]
-    df_fac["date_obj"] = pd.to_datetime(df_fac[col_date], errors="coerce").dt.tz_localize(None)
-
-    mask_periode = (df_fac["date_obj"] >= date_debut) & (df_fac["date_obj"] <= date_fin)
-    df_periode = df_fac[mask_periode].copy()
-
-    type_col = "type_document" if "type_document" in df_fac.columns else "type_facture"
+    type_col = "type_document" if "type_document" in df_periode.columns else "type_facture"
     if type_col not in df_periode.columns:
         df_periode[type_col] = "FactureClient"
 
@@ -161,7 +164,10 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     ca_ttc = df_clients_purs["montant_ttc"].sum()
     nb_factures = len(df_clients_purs)
 
-    df_fac["date_echeance_obj"] = pd.to_datetime(df_fac.get("date_echeance", df_fac["date_obj"]), errors="coerce").dt.tz_localize(None)
+    # Balance âgée sur l'ensemble du portefeuille ouvert
+    if "date" in df_fac.columns:
+        df_fac["date_obj"] = pd.to_datetime(df_fac["date"], errors="coerce").dt.tz_localize(None)
+    df_fac["date_echeance_obj"] = pd.to_datetime(df_fac.get("date_echeance", df_fac.get("date_obj")), errors="coerce").dt.tz_localize(None)
 
     if "statut" in df_fac.columns:
         mask_ouvertes = df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE", "VALIDE", "BROUILLON"])
@@ -169,7 +175,6 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
         mask_ouvertes = pd.Series([False] * len(df_fac))
 
     df_ouvertes = df_fac[mask_ouvertes].copy()
-
     now = pd.Timestamp(get_local_now()).tz_localize(None)
     df_ouvertes["retard_jours"] = (now - df_ouvertes["date_echeance_obj"]).dt.days
     df_ouvertes["reste_a_payer"] = df_ouvertes["montant_ttc"] - df_ouvertes["montant_paye"]
@@ -192,51 +197,47 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     }
 
 def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_cmd = charger_donnees("commandes_achats")
+    start_str = date_debut.strftime("%Y-%m-%d")
+    end_str = date_fin.strftime("%Y-%m-%d")
+
+    df_cmd = charger_donnees("commandes_achats") # Besoin global pour commandes en retard
+    df_periode = pd.DataFrame(fetch_data_by_date_range("commandes_achats", "date_commande", start_str, end_str))
     df_lignes = charger_donnees("lignes_achats")
 
-    if df_cmd.empty:
+    if df_periode.empty:
         return {"montant_total": 0.0, "commandes_retard": 0, "repartition_fournisseurs": pd.DataFrame(), "evolution_prix": pd.DataFrame()}
 
-    col_montant = "montant_total_local" if "montant_total_local" in df_cmd.columns else "montant_total"
-    if col_montant in df_cmd.columns:
-        df_cmd[col_montant] = pd.to_numeric(df_cmd[col_montant], errors="coerce").fillna(0)
+    col_montant = "montant_total_local" if "montant_total_local" in df_periode.columns else "montant_total"
+    if col_montant in df_periode.columns:
+        df_periode[col_montant] = pd.to_numeric(df_periode[col_montant], errors="coerce").fillna(0)
 
-    col_date = "date_commande" if "date_commande" in df_cmd.columns else (df_cmd.columns[1] if len(df_cmd.columns) > 1 else df_cmd.columns[0])
-    df_cmd["date_obj"] = pd.to_datetime(df_cmd[col_date], errors="coerce").dt.tz_localize(None)
+    montant_total = df_periode[col_montant].sum()
 
-    if "date_voulue" in df_cmd.columns:
-        col_voulue = "date_voulue"
-    elif "date_livraison_prevue" in df_cmd.columns:
-        col_voulue = "date_livraison_prevue"
-    else:
-        col_voulue = col_date
-
-    df_cmd["date_voulue_obj"] = pd.to_datetime(df_cmd[col_voulue], errors="coerce").dt.tz_localize(None)
-
-    mask_periode = (df_cmd["date_obj"] >= date_debut) & (df_cmd["date_obj"] <= date_fin)
-    df_periode = df_cmd[mask_periode].copy()
-    montant_total = df_periode[col_montant].sum() if not df_periode.empty and col_montant in df_periode.columns else 0.0
-
+    # Retards globaux
     now = pd.Timestamp(get_local_now()).tz_localize(None)
-    mask_retard = (df_cmd["date_voulue_obj"] < now)
-
-    if "statut" in df_cmd.columns:
-        mask_retard = mask_retard & (~df_cmd["statut"].isin(["RECEPTIONNE", "TERMINE", "ANNULE"]))
+    if not df_cmd.empty and "date_voulue" in df_cmd.columns:
+        df_cmd["date_voulue_obj"] = pd.to_datetime(df_cmd["date_voulue"], errors="coerce").dt.tz_localize(None)
+        mask_retard = (df_cmd["date_voulue_obj"] < now)
+        if "statut" in df_cmd.columns:
+            mask_retard = mask_retard & (~df_cmd["statut"].isin(["RECEPTIONNE", "TERMINE", "ANNULE"]))
+        commandes_retard = len(df_cmd[mask_retard])
+    else:
+        commandes_retard = 0
 
     repartition = df_periode.groupby("fournisseur_id")[col_montant].sum().reset_index().sort_values(by=col_montant, ascending=False) if not df_periode.empty and "fournisseur_id" in df_periode.columns else pd.DataFrame()
 
     evolution_prix = pd.DataFrame()
     if not df_lignes.empty and "commande_achat_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
         df_lignes["prix_unitaire"] = pd.to_numeric(df_lignes["prix_unitaire"], errors="coerce").fillna(0)
-        if "commande_achat_id" in df_cmd.columns:
-            df_merge = pd.merge(df_lignes, df_cmd[["commande_achat_id", "date_obj"]], on="commande_achat_id", how="inner")
-            if not df_merge.empty:
-                evolution_prix = df_merge[["date_obj", "mp_id", "prix_unitaire"]].dropna()
+        df_periode["date_obj"] = pd.to_datetime(df_periode["date_commande"], errors="coerce").dt.tz_localize(None)
+        df_merge = pd.merge(df_lignes, df_periode[["commande_achat_id", "date_obj"]], on="commande_achat_id", how="inner")
+        if not df_merge.empty:
+            evolution_prix = df_merge[["date_obj", "mp_id", "prix_unitaire"]].dropna()
 
-    return {"montant_total": montant_total, "commandes_retard": len(df_cmd[mask_retard]), "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
+    return {"montant_total": montant_total, "commandes_retard": commandes_retard, "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
 
 def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
+    # Le stock actuel n'a pas besoin de filtre temporel
     df_stock_mp = charger_donnees("stock_actuel")
     df_stock_pf = charger_donnees("stock_actuel_pf")
     df_lots = charger_donnees("lots")
@@ -284,20 +285,14 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
     }
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_of = charger_donnees("ordres_fabrication")
-    df_cq = charger_donnees("controle_qualite")
+    start_str = date_debut.strftime("%Y-%m-%d")
+    end_str = date_fin.strftime("%Y-%m-%d")
 
-    if df_of.empty:
-        return {"total_ofs": 0, "repartition_statut": pd.DataFrame(), "taux_rejet": 0.0}
-
-    col_date = "date_planification" if "date_planification" in df_of.columns else df_of.columns[0]
-    df_of["date_obj"] = pd.to_datetime(df_of[col_date], errors="coerce").dt.tz_localize(None)
-
-    mask_periode = (df_of["date_obj"] >= date_debut) & (df_of["date_obj"] <= date_fin)
-    df_periode = df_of[mask_periode].copy()
+    df_periode = pd.DataFrame(fetch_data_by_date_range("ordres_fabrication", "date_planification", start_str, end_str))
+    df_cq = pd.DataFrame(fetch_data_by_date_range("controle_qualite", "date", start_str, end_str))
 
     if df_periode.empty:
-        df_periode = df_of.copy()
+        return {"total_ofs": 0, "repartition_statut": pd.DataFrame(), "taux_rejet": 0.0}
 
     total_ofs = len(df_periode)
     repartition = pd.DataFrame()
@@ -307,22 +302,17 @@ def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dic
 
     taux_rejet = 0.0
     if not df_cq.empty and "conforme" in df_cq.columns:
-        col_date_cq = "date" if "date" in df_cq.columns else "date_controle"
-        if col_date_cq in df_cq.columns:
-            df_cq["date_obj"] = pd.to_datetime(df_cq[col_date_cq], errors="coerce").dt.tz_localize(None)
-            mask_cq = (df_cq["date_obj"] >= date_debut) & (df_cq["date_obj"] <= date_fin)
-            df_cq_periode = df_cq[mask_cq] if not df_cq[mask_cq].empty else df_cq
-        else:
-            df_cq_periode = df_cq
-
-        if len(df_cq_periode) > 0:
-            rejets = len(df_cq_periode[df_cq_periode["conforme"].astype(str).str.upper().isin(["NON", "FALSE", "REJETE"])])
-            taux_rejet = (rejets / len(df_cq_periode)) * 100
+        rejets = len(df_cq[df_cq["conforme"].astype(str).str.upper().isin(["NON", "FALSE", "REJETE"])])
+        taux_rejet = (rejets / len(df_cq)) * 100
 
     return {"total_ofs": total_ofs, "repartition_statut": repartition, "taux_rejet": taux_rejet}
 
 def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    df_opp = charger_donnees("pipeline")
+    start_str = date_debut.strftime("%Y-%m-%d")
+    end_str = date_fin.strftime("%Y-%m-%d")
+
+    df_opp = charger_donnees("pipeline") # Besoin de toutes pour le pipeline en cours
+    df_periode = pd.DataFrame(fetch_data_by_date_range("pipeline", "date_creation", start_str, end_str))
 
     if df_opp.empty:
         return {"pipeline_pondere": 0.0, "taux_conversion": 0.0, "performance_commerciaux": pd.DataFrame()}
@@ -330,12 +320,10 @@ def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     for col in ["valeur_estimee", "probabilite_pct"]:
         if col in df_opp.columns:
             df_opp[col] = pd.to_numeric(df_opp[col], errors="coerce").fillna(0)
+        if not df_periode.empty and col in df_periode.columns:
+            df_periode[col] = pd.to_numeric(df_periode[col], errors="coerce").fillna(0)
 
-    col_date = "date_creation" if "date_creation" in df_opp.columns else (df_opp.columns[1] if len(df_opp.columns) > 1 else df_opp.columns[0])
-    df_opp["date_obj"] = pd.to_datetime(df_opp[col_date], errors="coerce").dt.tz_localize(None)
-    mask_periode = (df_opp["date_obj"] >= date_debut) & (df_opp["date_obj"] <= date_fin)
-    df_periode = df_opp[mask_periode].copy()
-
+    # Pipeline en cours sur TOUTE la base
     if "statut" in df_opp.columns:
         mask_ouvert = df_opp["statut"].isin(["NOUVELLE", "EN_COURS", "QUALIFICATION", "PROPOSITION"])
     else:
@@ -351,7 +339,7 @@ def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     taux_conversion = 0.0
     perf = pd.DataFrame()
 
-    if "statut" in df_periode.columns:
+    if not df_periode.empty and "statut" in df_periode.columns:
         df_cloturees = df_periode[df_periode["statut"].isin(["GAGNEE", "PERDUE"])]
         if len(df_cloturees) > 0:
             nb_gagnees = len(df_cloturees[df_cloturees["statut"] == "GAGNEE"])
@@ -380,7 +368,6 @@ def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
             df_actifs = df_emp
 
         effectif_actif = len(df_actifs)
-
         col_service = "departement" if "departement" in df_actifs.columns else ("service" if "service" in df_actifs.columns else None)
         if col_service:
             repart_service = df_actifs[col_service].value_counts().reset_index()
@@ -393,8 +380,11 @@ def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     return {"effectif_actif": effectif_actif, "repartition_service": repart_service, "conges_attente": conges_attente}
 
 def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
+    start_str = date_debut.strftime("%Y-%m-%d")
+    end_str = date_fin.strftime("%Y-%m-%d")
+
     df_cpt = charger_donnees("comptes")
-    df_reg = charger_donnees("reglements")
+    df_periode = pd.DataFrame(fetch_data_by_date_range("reglements", "date_reglement", start_str, end_str))
 
     repartition_comptes = pd.DataFrame()
     if not df_cpt.empty:
@@ -410,21 +400,12 @@ def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     flux_sortants = 0.0
     taux_lettrage = 0.0
 
-    if not df_reg.empty:
-        if "montant_total" in df_reg.columns:
-            df_reg["montant_total"] = pd.to_numeric(df_reg["montant_total"], errors="coerce").fillna(0)
-        else:
-            df_reg["montant_total"] = 0.0
-
-        if "montant_alloue" in df_reg.columns:
-            df_reg["montant_alloue"] = pd.to_numeric(df_reg["montant_alloue"], errors="coerce").fillna(0)
-        else:
-            df_reg["montant_alloue"] = 0.0
-
-        col_date = "date_reglement" if "date_reglement" in df_reg.columns else (df_reg.columns[1] if len(df_reg.columns) > 1 else df_reg.columns[0])
-        df_reg["date_obj"] = pd.to_datetime(df_reg[col_date], errors="coerce").dt.tz_localize(None)
-
-        df_periode = df_reg[(df_reg["date_obj"] >= date_debut) & (df_reg["date_obj"] <= date_fin)].copy()
+    if not df_periode.empty:
+        for col in ["montant_total", "montant_alloue"]:
+            if col in df_periode.columns:
+                df_periode[col] = pd.to_numeric(df_periode[col], errors="coerce").fillna(0)
+            else:
+                df_periode[col] = 0.0
 
         if "type_flux" in df_periode.columns:
             flux_entrants = df_periode[df_periode["type_flux"] == "ENCAISSEMENT"]["montant_total"].sum()
