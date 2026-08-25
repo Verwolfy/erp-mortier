@@ -161,8 +161,20 @@ def fetch_data_filtered(table_name: str, filter_column: str, filter_value: str) 
         response = supabase.table(table_name).select("*").eq(filter_column, filter_value).execute()
         return response.data
     except Exception as e:
-        from core.logger import log_error
         log_error(f"Erreur de lecture filtrée Supabase sur {table_name}", str(e))
+        return []
+
+def fetch_data_by_date_range(table_name: str, date_column: str, start_date: str, end_date: str) -> list:
+    """
+    Lit les données de Supabase filtrées par une plage de dates (SQL).
+    Indispensable pour les Dashboards afin de ne pas charger des années d'historique en mémoire.
+    """
+    supabase = get_supabase_client()
+    try:
+        response = supabase.table(table_name).select("*").gte(date_column, start_date).lte(date_column, end_date).execute()
+        return response.data
+    except Exception as e:
+        log_error(f"Erreur de lecture filtrée par date sur {table_name}", str(e))
         return []
 
 def insert_hybrid(table_name: str, data: dict):
