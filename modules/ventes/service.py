@@ -5,6 +5,7 @@ Gère les Factures, Avoirs, LignesFacture, Règlements, Bons de Livraison (BL) e
 Lecture Supabase, Écriture hybride (Supabase + Google Sheets).
 """
 import pandas as pd
+from decimal import Decimal, ROUND_HALF_UP
 from core.db_service import fetch_data, fetch_data_filtered, insert_hybrid, update_hybrid, get_supabase_client
 from core.utils import generate_unique_id, generate_technical_id, get_local_now
 from modules.stocks.service import enregistrer_sortie_pf, enregistrer_entree_pf
@@ -60,49 +61,62 @@ def generer_numero_facture_legal(type_document: str) -> str:
 
 
 def calculer_montants_facture(panier: list, remise_globale: float = 0.0, paiement_especes: bool = False) -> dict:
-    """Intègre les remises par ligne, la remise globale, et le calcul du timbre fiscal."""
-    montant_ht_brut = 0.0
-    total_remises_lignes = 0.0
+    """Intègre les remises, la TVA, et le calcul du timbre fiscal avec une précision comptable absolue (Decimal)."""
+
+    # Constantes et initialisation
+    CENT = Decimal('0.01')
+    ZERO = Decimal('0.00')
+    TAUX_TVA = Decimal('0.19')
+    TAUX_TIMBRE = Decimal('0.01')
+    MAX_TIMBRE = Decimal('2500.00')
+
+    montant_ht_brut = ZERO
+    total_remises_lignes = ZERO
+    # Conversion stricte en string avant Decimal pour éviter les artefacts flottants
+    remise_globale_dec = Decimal(str(remise_globale))
 
     for item in panier:
-        qte = float(item.get("quantite", 0))
-        pu = float(item.get("prix_unitaire", 0))
-        remise_ligne = float(item.get("remise", 0))
+        qte = Decimal(str(item.get("quantite", 0)))
+        pu = Decimal(str(item.get("prix_unitaire", 0)))
+        remise_ligne = Decimal(str(item.get("remise", 0)))
 
         ligne_brut = qte * pu
         montant_ht_brut += ligne_brut
         total_remises_lignes += remise_ligne
 
-    total_remise = total_remises_lignes + remise_globale
-    net_a_payer_ht = max(0.0, montant_ht_brut - total_remise)
+    total_remise = total_remises_lignes + remise_globale_dec
+    net_a_payer_ht = max(ZERO, montant_ht_brut - total_remise)
 
-    taux_tva = 0.19
-    montant_tva = net_a_payer_ht * taux_tva
+    # L'arrondi (ROUND_HALF_UP) comptable est appliqué à chaque étape transactionnelle
+    montant_tva = (net_a_payer_ht * TAUX_TVA).quantize(CENT, rounding=ROUND_HALF_UP)
     montant_ttc_avant_timbre = net_a_payer_ht + montant_tva
 
-    timbre_fiscal = 0.0
+    timbre_fiscal = ZERO
     if paiement_especes:
-        timbre_fiscal = min(montant_ttc_avant_timbre * 0.01, 2500.0)
+        timbre_calcule = (montant_ttc_avant_timbre * TAUX_TIMBRE).quantize(CENT, rounding=ROUND_HALF_UP)
+        timbre_fiscal = min(timbre_calcule, MAX_TIMBRE)
 
-    montant_ttc_final = montant_ttc_avant_timbre + timbre_fiscal
+    montant_ttc_final = (montant_ttc_avant_timbre + timbre_fiscal).quantize(CENT, rounding=ROUND_HALF_UP)
 
+    # Conversion en float uniquement à la toute fin pour la compatibilité avec Supabase JSON et num2words
+    val_ttc_float = float(montant_ttc_final)
     lettres = ""
     if num2words:
-        partie_entiere = int(montant_ttc_final)
-        partie_decimale = int(round((montant_ttc_final - partie_entiere) * 100))
+        partie_entiere = int(val_ttc_float)
+        partie_decimale = int(round((val_ttc_float - partie_entiere) * 100))
         lettres = num2words(partie_entiere, lang='fr') + " Dinars Algériens"
         if partie_decimale > 0:
             lettres += f" et {num2words(partie_decimale, lang='fr')} Centimes"
     else:
-        lettres = f"{montant_ttc_final:,.2f} Dinars Algériens"
+        lettres = f"{val_ttc_float:,.2f} Dinars Algériens"
 
     return {
-        "total_ht": round(montant_ht_brut, 2),
-        "total_remise": round(total_remise, 2),
-        "net_a_payer": round(net_a_payer_ht, 2),
-        "total_tva": round(montant_tva, 2),
-        "timbre_fiscal": round(timbre_fiscal, 2),
-        "total_ttc": round(montant_ttc_final, 2),
+        "total_ht": float(montant_ht_brut.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "total_remise": float(total_remise.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "net_a_payer": float(net_a_payer_ht.quantize(CENT, rounding=ROUND_HALF_UP)),
+        "total_tva": float(montant_tva),
+        "timbre_fiscal": float(timbre_fiscal),
+        "total_ttc": val_ttc_float,
         "montant_lettres": lettres.capitalize()
     }
 
