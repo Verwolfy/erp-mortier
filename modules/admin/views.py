@@ -15,7 +15,7 @@ from modules.admin.service import (
     add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
 
-# --- FALLBACKS SÉCURISÉS (Tirés de docs/schema_reference.md) ---
+# --- FALLBACKS SÉCURISÉS ---
 PAYS_FALLBACK = ["DZ", "FR", "CN", "TR", "ES", "IT", "DE", "AE", "EG", "TN", "MA", "LY", "MR", "Autre"]
 WILAYA_FALLBACK = [str(i).zfill(2) for i in range(1, 59)]
 CAT_CLIENT_FALLBACK = ["PARTICULIER", "PRO_BTP", "REVENDEUR", "NEGOCE", "PROMOTEUR", "ENTREPRISE_CONSTRUCTION", "MARCHE_PUBLIC", "EXPORT"]
@@ -50,7 +50,7 @@ def gerer_listes_reference():
         else:
             st.info("Aucune liste configurée.")
     else:
-        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CATEGORIE_CLIENT)").strip().upper()
+        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CAT_CLIENT)").strip().upper()
 
     # 2. Affichage et Formulaire d'ajout
     if liste_cible:
@@ -179,10 +179,10 @@ def show_admin_page():
     if not can_write:
         st.info("🔒 Mode lecture seule : vous n'avez pas les droits d'ajout ou de modification.")
 
-    # Chargement global des listes de références avec fallback
-    pays_opts = get_opts("Pays", PAYS_FALLBACK)
-    wilaya_opts = get_opts("Wilaya", WILAYA_FALLBACK)
-    unite_opts = get_opts("UniteMesure", UNITE_FALLBACK)
+    # Chargement global des listes de références avec fallback et codes corrects !
+    pays_opts = get_opts("PAYS", PAYS_FALLBACK)
+    wilaya_opts = get_opts("WILAYA", WILAYA_FALLBACK)
+    unite_opts = get_opts("UNITE_MESURE", UNITE_FALLBACK)
 
     tab1, tab2, tab3, tab4, tab5, tab_listes = st.tabs(["👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières", "🛍️ Produits", "📦 SKU", "📝 Listes de choix"])
 
@@ -195,7 +195,7 @@ def show_admin_page():
                 c1, c2, c3 = st.columns(3)
                 nom = c1.text_input("Nom de l'entreprise *", key="cli_nom")
 
-                cat_opts = get_opts("CategorieClient", CAT_CLIENT_FALLBACK)
+                cat_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK)
                 cat = c2.selectbox("Catégorie", options=cat_opts, key="cli_cat")
 
                 type_c = c3.selectbox("Type", ["Entreprise", "Particulier"], key="cli_type")
@@ -205,8 +205,8 @@ def show_admin_page():
 
                 pays = c4.selectbox("Pays", options=pays_opts, key="cli_pays")
 
-                parent_code = f"Pays:{pays}" if pays else None
-                dict_wilaya = liste_to_dict(get_liste("Wilaya", parent_code=parent_code))
+                parent_code = f"PAYS:{pays}" if pays else None
+                dict_wilaya = liste_to_dict(get_liste("WILAYA", parent_code=parent_code))
                 wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="cli_wilaya")
 
                 adresse = c6.text_input("Adresse", key="cli_adresse")
@@ -239,7 +239,7 @@ def show_admin_page():
                         st.error("Le nom est obligatoire.")
 
         config_cli = {
-            "categorie_client": get_opts("CategorieClient", CAT_CLIENT_FALLBACK),
+            "categorie_client": get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK),
             "type_client": ["Entreprise", "Particulier"],
             "pays": pays_opts,
             "wilaya": wilaya_opts
@@ -262,8 +262,8 @@ def show_admin_page():
 
                 pays = c4.selectbox("Pays d'origine", options=pays_opts, key="fou_pays")
 
-                parent_code = f"Pays:{pays}" if pays else None
-                dict_wilaya = liste_to_dict(get_liste("Wilaya", parent_code=parent_code))
+                parent_code = f"PAYS:{pays}" if pays else None
+                dict_wilaya = liste_to_dict(get_liste("WILAYA", parent_code=parent_code))
                 wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="fou_wilaya")
 
                 delai = c6.number_input("Délai approvisionnement (jours)", min_value=0, step=1, key="fou_delai")
@@ -312,7 +312,7 @@ def show_admin_page():
                     c1, c2 = st.columns(2)
                     nom = c1.text_input("Désignation *")
 
-                    cat_mp_opts = get_opts("CategorieMP", CAT_MP_FALLBACK)
+                    cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK)
                     cat_mp = c2.selectbox("Catégorie", options=cat_mp_opts)
 
                     unite = c1.selectbox("Unité de stock", options=unite_opts)
@@ -327,7 +327,7 @@ def show_admin_page():
                     c6, c7 = st.columns(2)
                     duree_peremption = c6.number_input("Durée de péremption (jours)", min_value=0, step=1)
 
-                    hs_opts = get_opts("HSCode", HS_CODE_FALLBACK)
+                    hs_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
                     hs = c7.selectbox("Code SH (Douane)", options=hs_opts)
 
                     taux_dedouanement = st.number_input("Taux de dédouanement (%)", min_value=0.0, max_value=100.0, step=1.0)
@@ -352,10 +352,10 @@ def show_admin_page():
                             st.error("La désignation est obligatoire.")
 
         config_mp = {
-            "categorie_mp": get_opts("CategorieMP", CAT_MP_FALLBACK),
+            "categorie_mp": get_opts("CAT_MP", CAT_MP_FALLBACK),
             "unite_stock": unite_opts,
             "origine_pays": pays_opts,
-            "hs_code": get_opts("HSCode", HS_CODE_FALLBACK)
+            "hs_code": get_opts("HS_CODE", HS_CODE_FALLBACK)
         }
         render_editable_dataframe("MatieresPremieres", "mp_id", can_write, config_mp)
 
@@ -368,7 +368,7 @@ def show_admin_page():
                     c1, c2 = st.columns(2)
                     nom = c1.text_input("Nom du Produit *")
 
-                    cat_pf_opts = get_opts("CategoriePF", CAT_PF_FALLBACK)
+                    cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
                     cat_pf = c2.selectbox("Catégorie", options=cat_pf_opts)
 
                     unite = c1.selectbox("Unité de production", options=unite_opts)
@@ -383,7 +383,7 @@ def show_admin_page():
                             st.error("Le nom du produit est obligatoire.")
 
         config_pf = {
-            "categorie_pf": get_opts("CategoriePF", CAT_PF_FALLBACK),
+            "categorie_pf": get_opts("CAT_PF", CAT_PF_FALLBACK),
             "unite_production": unite_opts
         }
         render_editable_dataframe("Produits", "pf_id", can_write, config_pf)
