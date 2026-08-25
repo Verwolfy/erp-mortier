@@ -1,26 +1,40 @@
 """
-Script d'importation massive des listes de référence (Version EXPERT).
+Script d'importation globale des listes de référence dans Supabase.
 Spécialisé pour l'industrie des Mortiers, Adjuvants et Peintures en Algérie.
-Conforme à la norme MAJUSCULES_AVEC_UNDERSCORE du schéma.
 """
-from core.sheets_service import append_rows_batch
+from core.db_service import get_supabase_client
 
 def importer_referentiels():
-    print("⏳ Préparation des données expertes structurées...")
+    print("⏳ Préparation et injection des données expertes dans Supabase...")
+    supabase = get_supabase_client()
     donnees = []
 
     def ajouter_liste(liste_code, elements, parent_prefix=""):
         for index, (val_code, val_lib) in enumerate(elements):
             ordre = index + 1
-            parent_code = f"{parent_prefix}:{val_code}" if parent_prefix else ""
-            donnees.append([liste_code, val_code, val_lib, parent_code, ordre, "ACTIF"])
+            parent_code = f"{parent_prefix}:{val_code}" if parent_prefix else None
+            donnees.append({
+                "liste_code": liste_code,
+                "valeur_code": val_code,
+                "valeur_libelle": val_lib,
+                "parent_code": parent_code,
+                "ordre": ordre,
+                "actif": "OUI"
+            })
 
     def ajouter_wilayas(liste_code, elements, parent_code):
         for index, (val_code, val_lib) in enumerate(elements):
             ordre = index + 1
-            donnees.append([liste_code, val_code, val_lib, parent_code, ordre, "ACTIF"])
+            donnees.append({
+                "liste_code": liste_code,
+                "valeur_code": val_code,
+                "valeur_libelle": val_lib,
+                "parent_code": parent_code,
+                "ordre": ordre,
+                "actif": "OUI"
+            })
 
-    # --- 1. CATÉGORIES CLIENTS (Sectoriel) ---
+    # --- 1. CATÉGORIES CLIENTS ---
     ajouter_liste("CAT_CLIENT", [
         ("DISTRIB", "Distributeur / Grossiste Principal"),
         ("DROGUERIE", "Droguerie / Quincaillerie (Détaillant)"),
@@ -32,38 +46,38 @@ def importer_referentiels():
         ("B2C", "Client Final (Particulier)")
     ])
 
-    # --- 2. CATÉGORIES MATIÈRES PREMIÈRES (Chimie & Minéraux) ---
+    # --- 2. CATÉGORIES MATIÈRES PREMIÈRES ---
     ajouter_liste("CAT_MP", [
         ("LIANT_HYD", "Liants Hydrauliques (Ciment, Chaux, Plâtre)"),
         ("CHARGE_MIN", "Charges Minérales (Carbonate, Sable siliceux, Talc, Baryte)"),
         ("RESINE_AQ", "Résines & Dispersions Aqueuses (Acrylique, Vinylique, VAE)"),
         ("RESINE_SOLV", "Résines Solvantées (Alkyde, Époxy, Polyuréthane)"),
-        ("ADD_RHEO", "Additifs Rhéologiques (Éthers de cellulose, HPMC, HEC, Épaississants)"),
-        ("ADD_BETO", "Additifs Béton/Mortier (Superplastifiants PCE/SNF, Retardateurs, Accélérateurs)"),
+        ("ADD_RHEO", "Additifs Rhéologiques (Éthers de cellulose, HPMC, HEC)"),
+        ("ADD_BETO", "Additifs Béton/Mortier (Superplastifiants PCE/SNF)"),
         ("PIGMENT_BL", "Pigments Blancs (Dioxyde de Titane - TiO2)"),
-        ("PIGMENT_COL", "Pigments Colorés (Oxydes de fer, Colorants organiques)"),
-        ("SOLVANT", "Solvants & Coalescents (White Spirit, Texanol, Eau)"),
-        ("BIOCIDE", "Biocides & Conservateurs (In-can, Dry-film)"),
-        ("AGENT_SURF", "Agents de Surface (Anti-mousse, Dispersants, Mouillants)"),
-        ("EMBALLAGE", "Emballages (Sacs Kraft, Seaux Plastique, Fûts, IBC, Palettes, Films)")
+        ("PIGMENT_COL", "Pigments Colorés (Oxydes de fer)"),
+        ("SOLVANT", "Solvants & Coalescents (White Spirit, Texanol)"),
+        ("BIOCIDE", "Biocides & Conservateurs"),
+        ("AGENT_SURF", "Agents de Surface (Anti-mousse, Dispersants)"),
+        ("EMBALLAGE", "Emballages (Sacs, Seaux, Fûts, IBC, Palettes)")
     ])
 
     # --- 3. CATÉGORIES PRODUITS FINIS ---
     ajouter_liste("CAT_PF", [
         ("MORT_COLLE", "Mortiers Colles (C1, C2, C2TE...)"),
         ("MORT_JOINTS", "Mortiers de Jointoiement"),
-        ("END_FACADE", "Enduits de Façade (Monocouche, Tyrolien, Revêtement Plastique Épais - RPE)"),
-        ("END_LISS", "Enduits de Lissage & Rebouchage (Intérieur/Extérieur)"),
-        ("MORT_TECH", "Mortiers Techniques (Réparation, Ragréage, Scellement)"),
+        ("END_FACADE", "Enduits de Façade (Monocouche, RPE)"),
+        ("END_LISS", "Enduits de Lissage & Rebouchage"),
+        ("MORT_TECH", "Mortiers Techniques (Réparation, Ragréage)"),
         ("ADJ_PLAST", "Adjuvants : Plastifiants & Superplastifiants"),
-        ("ADJ_PRISE", "Adjuvants : Accélérateurs & Retardateurs de prise"),
-        ("ADJ_HYDRO", "Adjuvants : Hydrofuges de masse & Entraîneurs d'air"),
-        ("ADJ_CURE", "Adjuvants : Produits de cure (Curing) & Décoffrants"),
-        ("PEINT_INT", "Peintures Décoratives Intérieures (Vinyle, Acrylique, Satin, Mat)"),
+        ("ADJ_PRISE", "Adjuvants : Accélérateurs & Retardateurs"),
+        ("ADJ_HYDRO", "Adjuvants : Hydrofuges & Entraîneurs d'air"),
+        ("ADJ_CURE", "Adjuvants : Produits de cure & Décoffrants"),
+        ("PEINT_INT", "Peintures Décoratives Intérieures"),
         ("PEINT_EXT", "Peintures Extérieures (Façade, Pliolite)"),
         ("PEINT_TECH", "Peintures Techniques (Époxy, Sol, Antirouille)"),
-        ("ETANCHEITE", "Produits d'Étanchéité (Goudron, Résines d'imperméabilisation)"),
-        ("PRIMAIRE", "Primaires & Sous-couches (Fixateurs)")
+        ("ETANCHEITE", "Produits d'Étanchéité"),
+        ("PRIMAIRE", "Primaires & Sous-couches")
     ])
 
     # --- 4. UNITÉS DE MESURE ---
@@ -74,40 +88,37 @@ def importer_referentiels():
         ("IBC", "Cuve IBC (1000L)"), ("PAL", "Palette"), ("M", "Mètre")
     ])
 
-    # --- 5. CODES SH (HS CODES DOUANES - Chimie & Construction) ---
+    # --- 5. CODES SH (HS CODES DOUANES) ---
     ajouter_liste("HS_CODE", [
-        ("250510", "2505.10 - Sables siliceux et sables quartzeux"),
+        ("250510", "2505.10 - Sables siliceux et quartzeux"),
         ("252220", "2522.20 - Chaux éteinte"),
-        ("252329", "2523.29 - Ciments Portland (autres que blancs)"),
-        ("253090", "2530.90 - Matières minérales n.d.a. (Carbonate de calcium naturel)"),
-        ("282110", "2821.10 - Oxydes et hydroxydes de fer (Pigments)"),
-        ("283650", "2836.50 - Carbonate de calcium (Précipité/Synthétique)"),
-        ("291816", "2918.16 - Acide gluconique, ses sels et ses esters (Gluconate de sodium)"),
-        ("320611", "3206.11 - Pigments à base de dioxyde de titane (TiO2 > 80%)"),
-        ("320649", "3206.49 - Autres matières colorantes (Inorganiques)"),
-        ("320820", "3208.20 - Peintures et vernis (Polymères acryliques/vinyliques, milieu non aqueux)"),
-        ("320910", "3209.10 - Peintures et vernis (Polymères acryliques/vinyliques, milieu aqueux)"),
-        ("381600", "3816.00 - Ciments, mortiers, bétons réfractaires"),
-        ("382440", "3824.40 - Additifs préparés pour ciments, mortiers ou bétons (Superplastifiants, etc.)"),
-        ("382450", "3824.50 - Mortiers et bétons non réfractaires"),
-        ("390529", "3905.29 - Polymères d'acétate de vinyle (Poudres VAE, Dispersions)"),
-        ("390690", "3906.90 - Polymères acryliques sous formes primaires (Résines)"),
-        ("391239", "3912.39 - Éthers de cellulose (HPMC, HEC, CMC)"),
-        ("392321", "3923.21 - Sacs et sachets en polymères de l'éthylène (Emballages)")
+        ("252329", "2523.29 - Ciments Portland"),
+        ("253090", "2530.90 - Carbonate de calcium naturel"),
+        ("282110", "2821.10 - Oxydes et hydroxydes de fer"),
+        ("283650", "2836.50 - Carbonate de calcium synthétique"),
+        ("291816", "2918.16 - Gluconate de sodium"),
+        ("320611", "3206.11 - Dioxyde de titane (TiO2)"),
+        ("320649", "3206.49 - Autres matières colorantes"),
+        ("320820", "3208.20 - Peintures non aqueuses"),
+        ("320910", "3209.10 - Peintures aqueuses"),
+        ("381600", "3816.00 - Ciments et mortiers réfractaires"),
+        ("382440", "3824.40 - Additifs pour ciments et bétons"),
+        ("382450", "3824.50 - Mortiers non réfractaires"),
+        ("390529", "3905.29 - Poudres VAE / Acétate de vinyle"),
+        ("390690", "3906.90 - Résines acryliques"),
+        ("391239", "3912.39 - Éthers de cellulose (HPMC, HEC)"),
+        ("392321", "3923.21 - Sacs en polymères d'éthylène")
     ])
 
-    # --- 6. PAYS (Top partenaires commerciaux industriels de l'Algérie) ---
+    # --- 6. PAYS ---
     ajouter_liste("PAYS", [
-        ("DZ", "Algérie"),
-        ("CN", "Chine"), ("TR", "Turquie"), ("IT", "Italie"),
-        ("FR", "France"), ("ES", "Espagne"), ("DE", "Allemagne"),
-        ("AE", "Émirats Arabes Unis"), ("SA", "Arabie Saoudite"),
-        ("IN", "Inde"), ("EG", "Égypte"), ("TN", "Tunisie"),
-        ("MA", "Maroc"), ("PT", "Portugal"), ("BE", "Belgique"),
-        ("KR", "Corée du Sud")
+        ("DZ", "Algérie"), ("CN", "Chine"), ("TR", "Turquie"), ("IT", "Italie"),
+        ("FR", "France"), ("ES", "Espagne"), ("DE", "Allemagne"), ("AE", "Émirats Arabes Unis"),
+        ("SA", "Arabie Saoudite"), ("IN", "Inde"), ("EG", "Égypte"), ("TN", "Tunisie"),
+        ("MA", "Maroc"), ("PT", "Portugal"), ("BE", "Belgique"), ("KR", "Corée du Sud")
     ])
 
-    # --- 7. WILAYAS (Les 58 wilayas d'Algérie rattachées au PAYS:DZ) ---
+    # --- 7. WILAYAS (58 Wilayas) ---
     ajouter_wilayas("WILAYA", [
         ("01", "01 - Adrar"), ("02", "02 - Chlef"), ("03", "03 - Laghouat"),
         ("04", "04 - Oum El Bouaghi"), ("05", "05 - Batna"), ("06", "06 - Béjaïa"),
@@ -131,46 +142,32 @@ def importer_referentiels():
         ("58", "58 - El Meniaa")
     ], parent_code="PAYS:DZ")
 
-    # --- 8. LISTES GÉNÉRALES FINANCES & CRM ---
+    # --- 8. FINANCES & CRM ---
     ajouter_liste("DEVISE", [
-        ("DZD", "Dinar Algérien (DZD)"),
-        ("EUR", "Euro (€)"),
-        ("USD", "Dollar Américain ($)"),
-        ("CNY", "Yuan Chinois (¥)")
+        ("DZD", "Dinar Algérien (DZD)"), ("EUR", "Euro (€)"),
+        ("USD", "Dollar Américain ($)"), ("CNY", "Yuan Chinois (¥)")
     ])
 
     ajouter_liste("MODE_PAIEMENT", [
-        ("VIREMENT", "Virement Bancaire"),
-        ("CHEQUE", "Chèque Bancaire"),
-        ("ESPECES", "Espèces"),
-        ("LC", "Lettre de Crédit (Credoc)"),
+        ("VIREMENT", "Virement Bancaire"), ("CHEQUE", "Chèque Bancaire"),
+        ("ESPECES", "Espèces"), ("LC", "Lettre de Crédit (Credoc)"),
         ("REMISE_DOC", "Remise Documentaire (Remdoc)")
     ])
 
     ajouter_liste("CONDITION_PAIEMENT", [
-        ("AVANCE_100", "100% à la commande"),
-        ("IMMEDIAT", "Paiement à la livraison"),
-        ("NET_30", "Net 30 jours"),
-        ("NET_60", "Net 60 jours"),
-        ("NET_90", "Net 90 jours")
+        ("AVANCE_100", "100% à la commande"), ("IMMEDIAT", "Paiement à la livraison"),
+        ("NET_30", "Net 30 jours"), ("NET_60", "Net 60 jours"), ("NET_90", "Net 90 jours")
     ])
 
-    ajouter_liste("TYPE_INTERACTION_CRM", [
-        ("APPEL", "Appel téléphonique"),
-        ("EMAIL", "Email"),
-        ("VISITE_CLIENT", "Visite chez le client / Chantier"),
-        ("VISITE_USINE", "Visite du client à l'usine"),
-        ("REUNION", "Réunion Commerciale"),
-        ("ECHANTILLON", "Dépôt d'échantillons / Essais"),
-        ("RECLAMATION", "Traitement de réclamation")
-    ])
-
-    print(f"🚀 Insertion de {len(donnees)} lignes structurées en cours...")
+    print(f"🚀 Insertion de {len(donnees)} lignes dans Supabase...")
     try:
-        append_rows_batch("referentiels", "ListesReference", donnees)
-        print("✅ Importation experte terminée avec succès ! La base est parfaitement configurée.")
+        # Nettoyage préventif des anciennes données de test
+        supabase.table("listes_reference").delete().neq("id", 0).execute()
+        # Insertion groupée des données expertes
+        supabase.table("listes_reference").insert(donnees).execute()
+        print("✅ Importation dans Supabase terminée avec succès !")
     except Exception as e:
-        print(f"❌ Erreur lors de l'insertion : {e}")
+        print(f"❌ Erreur lors de l'insertion Supabase : {e}")
 
 if __name__ == "__main__":
     importer_referentiels()
