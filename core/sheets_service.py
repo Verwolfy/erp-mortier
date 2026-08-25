@@ -52,7 +52,6 @@ def get_all_records(module_name: str, sheet_name: str) -> list:
         st.error(f"Erreur de lecture Google Sheets [{module_name}/{sheet_name}]: {e}")
         return []
 
-# AJOUT DU RETRY SUR L'ÉCRITURE POUR GARANTIR LE DUAL-WRITE
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=5),
@@ -60,12 +59,11 @@ def get_all_records(module_name: str, sheet_name: str) -> list:
     reraise=True
 )
 def append_rows_batch(module_name: str, sheet_name: str, rows: list):
-    """Ajoute plusieurs lignes en une seule requête API et vide le cache."""
+    """Ajoute plusieurs lignes en une seule requête API."""
     if not rows:
         return
     worksheet = get_worksheet(module_name, sheet_name)
     worksheet.append_rows(rows)
-    st.cache_data.clear()
 
 @retry(
     stop=stop_after_attempt(3),
@@ -93,8 +91,6 @@ def update_cell_by_id(module_name: str, sheet_name: str, id_col: str, target_id:
         if len(row) > id_idx and str(row[id_idx]) == str(target_id):
             ws.update_cell(row_idx, col_idx, str(new_value))
             break
-
-    st.cache_data.clear()
 
 @retry(
     stop=stop_after_attempt(3),
@@ -129,7 +125,6 @@ def update_multiple_cells_by_id(module_name: str, sheet_name: str, id_col: str, 
 
     if cells_to_update:
         ws.update_cells(cells_to_update)
-        st.cache_data.clear()
 
 def check_optimistic_lock(module_name: str, sheet_name: str, id_col: str, target_id: str, lock_col: str, expected_lock_value: str) -> bool:
     """
