@@ -83,6 +83,9 @@ def main():
         if "Dashboards" in allowed_modules:
             menu_options["Dashboards"] = "📊 Tableaux de bord"
 
+        # Le module d'aide est ajouté systématiquement pour tous les utilisateurs
+        menu_options["Help"] = "📚 Guide & Aide"
+
         # Sélecteur de navigation
         if menu_options:
             choix_menu = st.radio("Aller vers :", list(menu_options.keys()), format_func=lambda x: menu_options[x])
@@ -121,6 +124,9 @@ def main():
     elif choix_menu == "Dashboards":
         from modules.dashboards.views import show_dashboards_page
         show_dashboards_page()
+    elif choix_menu == "Help":
+        from modules.help.views import show_help_page
+        show_help_page()
 
 if __name__ == "__main__":
     main()
