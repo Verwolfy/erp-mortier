@@ -4,6 +4,11 @@ Lit depuis Supabase (SQL). Écrit dans Supabase ET Google Sheets (Dual-Write).
 Le schéma est centralisé ici pour éviter les erreurs de frappe.
 Intègre une piste d'audit automatique ET UN CONTRÔLE DE DROITS SERVEUR.
 """
+import hashlib
+import logging
+import re
+from typing import Any, Optional
+
 import streamlit as st
 from supabase import create_client, Client
 from core.sheets_service import append_rows_batch, update_multiple_cells_by_id
@@ -85,149 +90,266 @@ SCHEMA_CONFIG = {
     # --- LOGS ---
     "audit_trail": {"module": "logs", "sheet": "AuditTrail", "cols": ["timestamp", "user_id", "module", "action", "detail"]},
     "erreurs": {"module": "logs", "sheet": "Erreurs", "cols": ["timestamp", "module", "message", "contexte"]},
+    "logs": {"module": "logs", "sheet": "Logs", "cols": ["log_id", "date_action", "user_id", "action", "table_name", "details"]},
 }
+
+# Clés primaires absentes de la liste des colonnes synchronisées vers Sheets.
+_EXTRA_COLUMNS = {
+    "permissions": {"permission_id"},
+    "listes_reference": {"id"},
+    "audit_trail": {"audit_id"},
+    "erreurs": {"erreur_id"},
+}
+
+# Aucune donnée de comptes ou d'autorisations n'est recopiée dans Sheets.
+# Supabase est la source de vérité pour ces informations sensibles.
+_NO_SHEETS_SYNC = frozenset({"users", "permissions", "audit_trail", "erreurs", "logs"})
+_PRIMARY_KEY_OVERRIDES = {
+    "permissions": "permission_id",
+    "listes_reference": "id",
+    "audit_trail": "audit_id",
+    "erreurs": "erreur_id",
+}
+_ADMIN_ROLES = frozenset({"ADMIN", "ADMINISTRATEUR", "SUPERADMIN"})
+_ACTIVE_VALUES = frozenset({"oui", "o", "true", "1", "actif", "active", "yes", "y"})
+_LOG = logging.getLogger(__name__)
+
+
+def _known_columns(table_name: str) -> set[str]:
+    config = SCHEMA_CONFIG.get(table_name)
+    if config is None:
+        raise ValueError(f"Table non référencée dans SCHEMA_CONFIG : {table_name!r}")
+    return set(config["cols"]) | _EXTRA_COLUMNS.get(table_name, set())
+
+
+def _check_write_columns(table_name: str, data: dict[str, Any]) -> None:
+    if not isinstance(data, dict) or not data:
+        raise ValueError("Les données à écrire doivent être un dictionnaire non vide.")
+    invalid = set(data) - _known_columns(table_name)
+    if invalid:
+        raise ValueError(f"Colonnes non autorisées dans {table_name}: {sorted(invalid)}")
+
+
+def _is_active(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().casefold() in _ACTIVE_VALUES
+
 
 @st.cache_resource
 def get_supabase_client() -> Client:
-    """Initialise et retourne le client Supabase en utilisant les secrets de Streamlit."""
+    """Client serveur Supabase partagé. Ne pas y stocker de session Auth utilisateur.
+
+    Important : si modules/auth utilise ``client.auth.sign_in_with_password`` sur
+    ce client, il faut isoler les clients par utilisateur avant déploiement.
+    """
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
     return create_client(url, key)
 
+
 def check_server_permission(table_name: str) -> bool:
-    """Vérifie côté serveur si l'utilisateur a le droit d'écriture sur le module cible."""
-    if not hasattr(st, "session_state") or "user" not in st.session_state:
-        return False
+    """Valide le compte et son rôle depuis la base avant toute écriture.
 
-    user = st.session_state.get("user")
-    if not user:
-        return False
-
-    user_role = str(user.get("role", "")).strip()
-
-    # Bypass automatique pour les administrateurs
-    if user_role.upper() in ["ADMIN", "ADMINISTRATEUR", "SUPERADMIN"]:
-        return True
-
+    L'identité est issue de la session Streamlit, mais le rôle n'est *jamais*
+    considéré comme autoritaire tant que Supabase ne l'a pas confirmé.
+    """
     if table_name not in SCHEMA_CONFIG:
         return False
-
-    module_cible = SCHEMA_CONFIG[table_name]["module"]
-    if module_cible in ["referentiels", "logs"]:
-        module_cible = "Administration"
-    else:
-        module_cible = module_cible.capitalize()
-
-    return has_permission(user_role, module_cible, "ecriture")
-
-def log_action(action: str, table_name: str, details: str):
-    """Enregistre silencieusement une trace d'action dans la table audit_trail du schéma."""
     try:
-        supabase = get_supabase_client()
-        if not supabase:
-            return
+        state = st.session_state
+        if state.get("authenticated") is not True:
+            return False
+        session_user = state.get("user")
+        if not isinstance(session_user, dict):
+            return False
+        user_id = session_user.get("user_id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            return False
 
+        response = (get_supabase_client().table("users")
+                    .select("user_id,role,actif")
+                    .eq("user_id", user_id).limit(1).execute())
+        records = response.data or []
+        if len(records) != 1:
+            return False
+        account = records[0]
+        if not isinstance(account, dict) or account.get("user_id") != user_id:
+            return False
+        if not _is_active(account.get("actif")):
+            return False
+        role = str(account.get("role") or "").strip()
+        if not role:
+            return False
+
+        if role.upper() in _ADMIN_ROLES:
+            return True
+        module = SCHEMA_CONFIG[table_name]["module"]
+        module = "Administration" if module in ("referentiels", "logs") else module.capitalize()
+        return has_permission(role, module, "ecriture") is True
+    except Exception as exc:
+        # Mode sécurité par défaut : en cas de panne de vérification, refuser.
+        # Ne pas afficher la réponse API, qui peut contenir des informations sensibles.
+        _LOG.warning("Vérification de droits impossible (%s)", type(exc).__name__)
+        return False
+
+
+def _audit_details(table_name: str, action: str, data: dict[str, Any],
+                   *, id_col: Optional[str] = None, target_id: Any = None) -> str:
+    """Audit de métadonnées, jamais de valeurs métier ou de mots de passe."""
+    columns = ",".join(sorted(data))
+    # L'ID est volontairement omis pour ne pas divulguer des données privées.
+    return f"operation={action}; table={table_name}; colonnes=[{columns}]"[:1000]
+
+
+def log_action(action: str, table_name: str, details: str) -> None:
+    """Audit best-effort, en minimisant les données des appelants historiques."""
+    try:
         user = st.session_state.get("user") if hasattr(st, "session_state") else None
-        user_id = user.get("user_id", "SYSTEM") if user else "SYSTEM"
-        timestamp = get_local_now().strftime("%Y-%m-%d %H:%M:%S")
-
-        supabase.table("audit_trail").insert({
-            "timestamp": timestamp,
+        user_id = user.get("user_id", "SYSTEM") if isinstance(user, dict) else "SYSTEM"
+        # Le texte libre historique peut contenir des secrets ou des données
+        # personnelles. N'en stocker que l'empreinte non réversible, sauf pour
+        # notre format structuré (noms de colonnes uniquement).
+        raw = str(details)
+        if re.fullmatch(r"operation=(INSERT|UPDATE); table=[a-z_]+; colonnes=\[[a-z0-9_,]*\]", raw):
+            detail = raw[:1000]
+        else:
+            digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            detail = f"details_masques; sha256={digest}"
+        get_supabase_client().table("audit_trail").insert({
+            "timestamp": get_local_now().strftime("%Y-%m-%d %H:%M:%S"),
             "user_id": user_id,
             "module": table_name,
             "action": action,
-            "detail": str(details)
+            "detail": detail,
         }).execute()
-    except Exception as e:
-        print(f"⚠️ Échec d'enregistrement de la piste d'audit : {e}")
+    except Exception as exc:
+        # L'échec d'audit n'annule PAS la transaction déjà validée en base.
+        _LOG.warning("Écriture dans audit_trail impossible (%s)", type(exc).__name__)
+
 
 def fetch_data(table_name: str) -> list:
-    """Lit toutes les données d'une table Supabase."""
-    supabase = get_supabase_client()
+    """Lecture historique (compatibilité). Attention : pagination Supabase non gérée."""
     try:
-        response = supabase.table(table_name).select("*").execute()
-        return response.data
-    except Exception as e:
-        log_error(f"Erreur de lecture Supabase sur la table {table_name}", str(e))
+        response = get_supabase_client().table(table_name).select("*").execute()
+        return response.data or []
+    except Exception as exc:
+        log_error(f"Erreur de lecture Supabase sur la table {table_name}", type(exc).__name__)
         return []
+
 
 def fetch_data_filtered(table_name: str, filter_column: str, filter_value: str) -> list:
-    """
-    Lit les données de Supabase en appliquant un filtre directement côté serveur SQL.
-    Essentiel pour les tables à fort volume (mouvements, factures, lignes) afin d'éviter les crashs mémoire.
-    """
-    supabase = get_supabase_client()
+    """Filtre serveur, API conservée pour compatibilité avec les vues existantes."""
     try:
-        response = supabase.table(table_name).select("*").eq(filter_column, filter_value).execute()
-        return response.data
-    except Exception as e:
-        log_error(f"Erreur de lecture filtrée Supabase sur {table_name}", str(e))
+        response = (get_supabase_client().table(table_name).select("*")
+                    .eq(filter_column, filter_value).execute())
+        return response.data or []
+    except Exception as exc:
+        log_error(f"Erreur de lecture filtrée Supabase sur {table_name}", type(exc).__name__)
         return []
 
-def fetch_data_by_date_range(table_name: str, date_column: str, start_date: str, end_date: str) -> list:
-    """
-    Lit les données de Supabase filtrées par une plage de dates (SQL).
-    Indispensable pour les Dashboards afin de ne pas charger des années d'historique en mémoire.
-    """
-    supabase = get_supabase_client()
+
+def fetch_data_by_date_range(table_name: str, date_column: str,
+                             start_date: str, end_date: str) -> list:
+    """Filtre serveur par dates ; colonnes TEXT supposées ISO-8601 ordonnables."""
     try:
-        response = supabase.table(table_name).select("*").gte(date_column, start_date).lte(date_column, end_date).execute()
-        return response.data
-    except Exception as e:
-        log_error(f"Erreur de lecture filtrée par date sur {table_name}", str(e))
+        response = (get_supabase_client().table(table_name).select("*")
+                    .gte(date_column, start_date).lte(date_column, end_date).execute())
+        return response.data or []
+    except Exception as exc:
+        log_error(f"Erreur de lecture filtrée par date sur {table_name}", type(exc).__name__)
         return []
+
+
+def fetch_data_paginated(table_name: str, *, page_size: int = 500,
+                         max_rows: int = 10000, order_column: Optional[str] = None) -> list:
+    """Lecture paginée explicite ; ne change pas la sémantique des appels existants.
+
+    Une lecture trop volumineuse provoque une erreur, au lieu de tronquer les
+    résultats silencieusement. Une colonne de tri stable est indispensable.
+    """
+    if not 1 <= page_size <= 1000 or max_rows < 1:
+        raise ValueError("page_size doit être entre 1 et 1000 et max_rows positif")
+    valid_cols = _known_columns(table_name)
+    if order_column is None:
+        order_column = _PRIMARY_KEY_OVERRIDES.get(table_name, SCHEMA_CONFIG[table_name]["cols"][0])
+    if order_column not in valid_cols:
+        raise ValueError(f"Colonne de tri inconnue : {order_column}")
+    rows: list = []
+    # +1 permet de détecter explicitement une troncature au seuil max_rows.
+    while len(rows) <= max_rows:
+        count = min(page_size, max_rows + 1 - len(rows))
+        start = len(rows)
+        page = (get_supabase_client().table(table_name).select("*")
+                .order(order_column).range(start, start + count - 1).execute())
+        batch = page.data or []
+        rows.extend(batch)
+        if len(batch) < count:
+            return rows
+    raise ValueError(f"Résultat trop volumineux : plus de {max_rows} lignes")
+
+
+def _sync_google_sheets_insert(table_name: str, data: dict[str, Any]) -> None:
+    if table_name in _NO_SHEETS_SYNC:
+        return
+    config = SCHEMA_CONFIG[table_name]
+    try:
+        ligne = [data.get(col, "") for col in config["cols"]]
+        append_rows_batch(config["module"], config["sheet"], [ligne])
+    except Exception as exc:
+        log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", type(exc).__name__)
+
+
+def _sync_google_sheets_update(table_name: str, id_col: str, target_id: Any,
+                               updates: dict[str, Any]) -> None:
+    if table_name in _NO_SHEETS_SYNC:
+        return
+    config = SCHEMA_CONFIG[table_name]
+    try:
+        update_multiple_cells_by_id(config["module"], config["sheet"], id_col,
+                                    target_id, updates)
+    except Exception as exc:
+        log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", type(exc).__name__)
+
 
 def insert_hybrid(table_name: str, data: dict):
-    """
-    Écrit la donnée dans Supabase et déduit la cible Google Sheets automatiquement.
-    Intègre le contrôle de droits côté serveur.
-    """
+    """Écrit dans Supabase, puis réplique en best-effort dans Sheets."""
+    _check_write_columns(table_name, data)
     if not check_server_permission(table_name):
         log_error("Accès Refusé", f"Tentative d'INSERT bloquée sur {table_name}")
-        raise PermissionError(f"🔒 Sécurité Serveur : Droit d'écriture refusé pour la table '{table_name}'.")
-
-    supabase = get_supabase_client()
+        raise PermissionError(f"Droit d'écriture refusé pour {table_name!r}")
     try:
-        res = supabase.table(table_name).insert(data).execute()
-        supa_data = res.data
-    except Exception as e:
-        log_error(f"Erreur d'insertion Supabase ({table_name})", str(e))
+        response = get_supabase_client().table(table_name).insert(data).execute()
+        result = response.data
+    except Exception as exc:
+        log_error(f"Erreur d'insertion Supabase ({table_name})", type(exc).__name__)
         return None
+    if result:
+        log_action("INSERT", table_name, _audit_details(table_name, "INSERT", data))
+        _sync_google_sheets_insert(table_name, data)
+    return result
 
-    if supa_data and table_name in SCHEMA_CONFIG:
-        config = SCHEMA_CONFIG[table_name]
-        try:
-            ligne_sheets = [data.get(col, "") for col in config["cols"]]
-            append_rows_batch(config["module"], config["sheet"], [ligne_sheets])
-        except Exception as e:
-            log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", str(e))
-
-    log_action("INSERT", table_name, f"ID/Data: {data}")
-    return supa_data
 
 def update_hybrid(table_name: str, id_col: str, target_id: str, updates: dict):
-    """
-    Met à jour la donnée dans Supabase et déduit la cible Google Sheets automatiquement.
-    Intègre le contrôle de droits côté serveur.
-    """
+    """Modifie dans Supabase puis réplique en best-effort dans Sheets."""
+    _check_write_columns(table_name, updates)
+    if id_col not in _known_columns(table_name):
+        raise ValueError(f"Colonne identifiant inconnue : {id_col}")
+    if target_id is None or str(target_id).strip() == "":
+        raise ValueError("target_id ne peut pas être vide")
     if not check_server_permission(table_name):
         log_error("Accès Refusé", f"Tentative d'UPDATE bloquée sur {table_name}")
-        raise PermissionError(f"🔒 Sécurité Serveur : Droit d'écriture refusé pour la table '{table_name}'.")
-
-    supabase = get_supabase_client()
+        raise PermissionError(f"Droit d'écriture refusé pour {table_name!r}")
     try:
-        res = supabase.table(table_name).update(updates).eq(id_col, target_id).execute()
-        supa_data = res.data
-    except Exception as e:
-        log_error(f"Erreur de mise à jour Supabase ({table_name}, ID: {target_id})", str(e))
+        response = (get_supabase_client().table(table_name)
+                    .update(updates).eq(id_col, target_id).execute())
+        result = response.data
+    except Exception as exc:
+        log_error(f"Erreur de mise à jour Supabase ({table_name})", type(exc).__name__)
         return None
-
-    if supa_data and table_name in SCHEMA_CONFIG:
-        config = SCHEMA_CONFIG[table_name]
-        try:
-            update_multiple_cells_by_id(config["module"], config["sheet"], id_col, target_id, updates)
-        except Exception as e:
-            log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", str(e))
-
-    log_action("UPDATE", table_name, f"{id_col}={target_id} | Modifs: {updates}")
-    return supa_data
+    if result:
+        log_action("UPDATE", table_name,
+                   _audit_details(table_name, "UPDATE", updates,
+                                  id_col=id_col, target_id=target_id))
+        _sync_google_sheets_update(table_name, id_col, target_id, updates)
+    return result
