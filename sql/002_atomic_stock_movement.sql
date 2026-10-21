@@ -1,7 +1,8 @@
--- VERSION TEST UNIQUEMENT : à exécuter dans Supabase SQL Editor sur un projet séparé.
+-- INSTALLATION CONTROLEE : projet Supabase ERP actuel, apres sauvegarde et controles prealables.
 -- Modèles métier inchangés : stock_actuel, stock_actuel_pf, lots, mouvements,
 -- mouvements_pf. Deux tables TECHNIQUES ajoutées : journal idempotence et outbox.
--- Ne PAS déployer avant inventaire/réconciliation des lots et validation RLS.
+-- Stock/lots vides et structure/droits controles avant installation (2026-10-21).
+-- Ne pas utiliser les anciens parcours d ecriture Stock pendant les essais.
 
 BEGIN;
 
@@ -19,6 +20,11 @@ CREATE TABLE IF NOT EXISTS public.erp_stock_outbox (
     created_at timestamptz NOT NULL DEFAULT now(),
     synced_at timestamptz
 );
+
+-- Deux tables techniques NON exposees aux utilisateurs Web.
+-- L'activation RLS est incluse dans la meme transaction que leur creation.
+ALTER TABLE public.erp_stock_operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.erp_stock_outbox ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.erp_apply_stock_movement(
     p_operation_id text,
@@ -248,8 +254,10 @@ REVOKE ALL ON FUNCTION public.erp_apply_stock_movement(text,text,text,text,numer
 GRANT EXECUTE ON FUNCTION public.erp_apply_stock_movement(text,text,text,text,numeric,numeric,text,text)
     TO service_role;
 
+-- Les droits par defaut du schema public ne doivent pas exposer ces objets.
 REVOKE ALL ON public.erp_stock_operations, public.erp_stock_outbox FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.erp_stock_operations, public.erp_stock_outbox TO service_role;
+REVOKE ALL ON SEQUENCE public.erp_stock_outbox_event_id_seq FROM PUBLIC, anon, authenticated;
 GRANT USAGE, SELECT ON SEQUENCE public.erp_stock_outbox_event_id_seq TO service_role;
 
 COMMIT;
