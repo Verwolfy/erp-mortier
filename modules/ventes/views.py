@@ -38,6 +38,7 @@ _REQUIRED = {
     "ship": frozenset({"commande_vente_id", "transporteur", "zone", "items_livraison"}),
 }
 _LIMIT = Decimal("1e15")
+_EXPEDIABLE_STATES = frozenset({"EN_ATTENTE", "CONFIRMEE", "VALIDEE", "EN_COURS", "PARTIELLEMENT_LIVREE"})
 
 
 def _sale_access() -> tuple[str, bool] | None:
@@ -283,6 +284,13 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         st.warning("Aucun SKU disponible.")
         return
     cart_key = _cart_key(user_id)
+    context_key = f"ventes_panier_contexte_{user_id}"
+    current_context = (client_id, type_doc, origine)
+    previous_context = st.session_state.get(context_key)
+    if previous_context is not None and previous_context != current_context:
+        st.session_state[cart_key] = []
+        st.warning("Client, type de document ou origine modifié : panier vidé pour éviter une erreur de facturation.")
+    st.session_state[context_key] = current_context
     cart = st.session_state.setdefault(cart_key, [])
     if not isinstance(cart, list):
         st.error("Panier non exploitable.")
@@ -290,12 +298,15 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
     sku_id = st.selectbox("Produit", list(labels), format_func=lambda x: labels[x], key="vente_sku")
     product_row = skus[skus["sku_id"] == sku_id].iloc[0]
     prix = _decimal(product_row.get("prix_vente_defaut", 0) or 0, "Prix par défaut")
-    qte = st.number_input("Quantité", min_value=0.001, value=1.0, step=1.0, key="vente_qte")
+    qte = st.number_input("Quantité (unités SKU entières)", min_value=1, value=1, step=1, key="vente_qte")
     pu = st.number_input("Prix unitaire HT (DZD)", min_value=0.0, value=float(prix), step=1.0, key="vente_pu")
     rem_type = st.selectbox("Remise", ["Montant (DZD)", "Pourcentage (%)"], key="vente_rem_type")
     remise_value = st.number_input("Valeur de remise", min_value=0.0, step=1.0, key="vente_rem_val")
     if st.button("Ajouter au panier", key="vente_add"):
         quant = _decimal(qte, "Quantité", positive=True)
+        if quant != quant.to_integral_value():
+            st.error("Le nombre de conditionnements doit être entier.")
+            return
         prix_u = _decimal(pu, "Prix unitaire")
         discount = _decimal(remise_value, "Remise")
         gross = quant * prix_u
@@ -350,7 +361,7 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
     if not {"commande_vente_id", "statut"}.issubset(orders.columns):
         st.error("Schéma des commandes incomplet.")
         return
-    orders = orders[~orders["statut"].isin(["ANNULE", "REJETE", "TERMINE"])]
+    orders = orders[orders["statut"].isin(_EXPEDIABLE_STATES)]
     if orders.empty:
         st.info("Aucune commande client expédiable.")
         return
@@ -377,14 +388,17 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
         transporteur = st.text_input("Transporteur", value="Transport Interne")
         zone = st.text_input("Zone de livraison")
         for i, (sku, to_deliver) in enumerate(remaining.items()):
+            if to_deliver != to_deliver.to_integral_value():
+                st.error(f"Quantité de commande fractionnaire pour {sku} : corriger la commande avant expédition.")
+                return
             stock = stock_map.get(sku, Decimal(0))
             if stock < 0:
                 st.error("Stock PF incohérent.")
                 return
             maximum = min(stock, to_deliver)
             st.write(f"{sku} : reste {to_deliver} | stock PF {stock}")
-            amount = st.number_input(f"Quantité à livrer — {sku}", min_value=0.0,
-                                     max_value=float(maximum), value=0.0, step=1.0,
+            amount = st.number_input(f"Quantité à livrer — {sku}", min_value=0,
+                                     max_value=int(maximum), value=0, step=1,
                                      key=f"ship_{order_id}_{sku}_{i}")
             if amount > 0:
                 items.append({"sku_id": sku, "quantite_livree": float(_decimal(amount, "Livraison", positive=True))})

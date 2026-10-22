@@ -133,6 +133,8 @@ def _invoice_lines(panier: list) -> tuple[list[dict], Decimal]:
     for item in _lines(panier):
         sku = _text(item.get("sku_id"), "SKU")
         qte = _decimal(item.get("quantite"), "Quantité", strictly_positive=True)
+        if qte != qte.to_integral_value():
+            raise ValueError("Une facture de SKU conditionnés exige des unités entières")
         prix = _decimal(item.get("prix_unitaire"), "Prix unitaire")
         remise = _decimal(item.get("remise", 0), "Remise de ligne")
         brut = qte * prix
@@ -257,6 +259,8 @@ def creer_bon_livraison(commande_vente_id: str, transporteur: str, zone: str,
     for item in _lines(items_livraison):
         sku = _text(item.get("sku_id"), "SKU")
         qty = _decimal(item.get("quantite_livree"), "Quantité livrée", strictly_positive=True)
+        if qty != qty.to_integral_value():
+            raise ValueError("Une livraison de SKU conditionnés exige des unités entières")
         preferred = item.get("lot_id")
         if preferred not in (None, "", "DEFAUT"):
             raise ValueError("Choix manuel d'un lot non pris en charge par le FIFO automatique")

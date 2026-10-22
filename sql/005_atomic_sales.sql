@@ -1,5 +1,9 @@
--- UNIQUEMENT SUR UNE BASE SUPABASE DE TEST.
+-- MIGRATION 005 VENTES : validation contrôlée sur projet existant, après sauvegarde.
+-- Ne pas activer les fonctions depuis Streamlit avant les tests SQL transactionnels.
 -- Prérequis : migration 002_atomic_stock_movement.sql ; clé serveur réservée.
+-- La facturation est indépendante des commandes clients dans l'UI actuelle :
+-- commande_vente_id doit être NULL tant qu'aucun lien réel n'est vérifié.
+-- Les taux TVA / timbre du SQL sont des conventions métiers à valider avant production.
 -- Aucun mouvement de stock lors de la validation/annulation d'une facture.
 -- Les marchandises sont décrémentées UNIQUEMENT à l'expédition d'un BL.
 BEGIN;
@@ -17,6 +21,17 @@ CREATE TABLE IF NOT EXISTS public.erp_sales_outbox (
     created_at timestamptz NOT NULL DEFAULT now(),
     synced_at timestamptz
 );
+
+-- Isolation des opérations techniques, comme les migrations 002 à 004.
+ALTER TABLE public.erp_sales_operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.erp_sales_outbox ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS erp_sales_operations_service_only ON public.erp_sales_operations;
+CREATE POLICY erp_sales_operations_service_only
+    ON public.erp_sales_operations FOR ALL TO service_role USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS erp_sales_outbox_service_only ON public.erp_sales_outbox;
+CREATE POLICY erp_sales_outbox_service_only
+    ON public.erp_sales_outbox FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION public.erp_sale_transaction(
     p_action text, p_operation_id text, p_payload jsonb
@@ -82,6 +97,7 @@ BEGIN
            OR p_payload->>'type_facture' NOT IN ('FactureClient','FactureAvoir')
            OR length(coalesce(p_payload->>'date_echeance',''))>10
            OR length(coalesce(p_payload->>'facture_origine_id',''))>200
+           OR nullif(btrim(coalesce(p_payload->>'commande_vente_id','')),'') IS NOT NULL
            OR p_payload->>'paiement_especes' IS NULL
            OR p_payload->>'paiement_especes' NOT IN ('true','false')
            OR jsonb_typeof(p_payload->'lignes') IS DISTINCT FROM 'array'
@@ -98,6 +114,15 @@ BEGIN
         ELSIF coalesce(p_payload->>'facture_origine_id','')<>'' THEN
             RAISE EXCEPTION 'Facture normale avec origine d avoir' USING ERRCODE='23514';
         END IF;
+        IF p_payload->>'type_facture' = 'FactureAvoir' THEN
+            SELECT * INTO v_original FROM public.factures
+              WHERE facture_id=p_payload->>'facture_origine_id' FOR SHARE;
+            IF NOT FOUND OR v_original.type_facture IS DISTINCT FROM 'FactureClient'
+               OR v_original.statut IS DISTINCT FROM 'VALIDE'
+               OR v_original.client_id IS DISTINCT FROM p_payload->>'client_id' THEN
+                RAISE EXCEPTION 'Origine de l avoir incompatible' USING ERRCODE='23514';
+            END IF;
+        END IF;
 
         v_net_lines := 0;
         FOR v_line IN SELECT * FROM jsonb_to_recordset(p_payload->'lignes')
@@ -106,6 +131,7 @@ BEGIN
             IF nullif(btrim(v_line.sku_id),'') IS NULL OR length(v_line.sku_id)>200
                OR v_line.quantite IS NULL OR v_line.quantite<=0 OR v_line.quantite>=1000000000000000
                OR v_line.quantite::text IN ('NaN','Infinity','-Infinity')
+               OR v_line.quantite <> trunc(v_line.quantite)
                OR v_line.prix_unitaire IS NULL OR v_line.prix_unitaire<0 OR v_line.prix_unitaire>=1000000000000000
                OR v_line.prix_unitaire::text IN ('NaN','Infinity','-Infinity')
                OR v_line.remise_ligne IS NULL OR v_line.remise_ligne<0 OR v_line.remise_ligne>=1000000000000000
@@ -117,8 +143,9 @@ BEGIN
                OR v_line.total_ligne_ht IS DISTINCT FROM round(v_line.quantite*v_line.prix_unitaire-v_line.remise_ligne,2) THEN
                 RAISE EXCEPTION 'Montant ligne incohérent' USING ERRCODE='23514';
             END IF;
-            PERFORM 1 FROM public.sku_conditionnement WHERE sku_id=v_line.sku_id;
-            IF NOT FOUND THEN RAISE EXCEPTION 'SKU facture inconnu' USING ERRCODE='23503'; END IF;
+            PERFORM 1 FROM public.sku_conditionnement
+              WHERE sku_id=v_line.sku_id AND actif='OUI';
+            IF NOT FOUND THEN RAISE EXCEPTION 'SKU facture inexistant ou inactif' USING ERRCODE='23503'; END IF;
             v_net_lines := v_net_lines + v_line.total_ligne_ht;
             v_count := v_count + 1;
         END LOOP;
@@ -152,7 +179,8 @@ BEGIN
           WHERE type_document=p_payload->>'type_facture' FOR UPDATE;
         IF NOT FOUND OR nullif(btrim(v_counter.prefixe),'') IS NULL
            OR nullif(btrim(v_counter.annee),'') IS NULL
-           OR coalesce(v_counter.dernier_numero,0)<0 OR coalesce(v_counter.dernier_numero,0)>=999999999 THEN
+           OR v_counter.annee IS DISTINCT FROM extract(year FROM now() AT TIME ZONE 'UTC')::integer::text
+           OR coalesce(v_counter.dernier_numero,0)<0 OR coalesce(v_counter.dernier_numero,0)>=999999 THEN
             RAISE EXCEPTION 'Compteur légal manquant ou invalide' USING ERRCODE='23514';
         END IF;
         UPDATE public.compteurs SET dernier_numero=coalesce(dernier_numero,0)+1
@@ -161,7 +189,7 @@ BEGIN
         INSERT INTO public.factures(facture_id,commande_vente_id,client_id,date,montant_ht,taux_tva,
           montant_tva,montant_ttc,montant_paye,statut,date_echeance,montant_timbre,
           type_facture,facture_origine_id,remise_globale)
-        VALUES(v_invoice_id,'',p_payload->>'client_id',v_now,v_net_ht,0.19,
+        VALUES(v_invoice_id,NULL,p_payload->>'client_id',v_now,v_net_ht,0.19,
           v_tax,v_ttc,0,'BROUILLON',p_payload->>'date_echeance',v_stamp,
           p_payload->>'type_facture',p_payload->>'facture_origine_id',v_discount);
         FOR v_line IN SELECT * FROM jsonb_to_recordset(p_payload->'lignes') AS x(
@@ -229,8 +257,11 @@ BEGIN
         -- Verrou du parent pour interdire le cumul d'expéditions supérieures à la commande.
         SELECT * INTO v_order FROM public.commandes_ventes
           WHERE commande_vente_id=p_payload->>'commande_vente_id' FOR UPDATE;
-        IF NOT FOUND OR v_order.statut='ANNULE' THEN
-            RAISE EXCEPTION 'Commande client absente ou annulée' USING ERRCODE='23503';
+        -- Autorisation positive : les statuts supplémentaires devront être validés
+        -- à partir de leur usage réel avant d'élargir cette liste.
+        IF NOT FOUND OR v_order.statut IS NULL OR v_order.statut NOT IN
+           ('EN_ATTENTE','CONFIRMEE','VALIDEE','EN_COURS','PARTIELLEMENT_LIVREE') THEN
+            RAISE EXCEPTION 'Statut de commande non expédiable' USING ERRCODE='23514';
         END IF;
         FOR v_line IN SELECT * FROM jsonb_to_recordset(p_payload->'lignes')
           AS x(sku_id text,quantite_livree numeric)
@@ -238,7 +269,8 @@ BEGIN
             IF nullif(btrim(v_line.sku_id),'') IS NULL OR length(v_line.sku_id)>200
                OR v_line.quantite_livree IS NULL OR v_line.quantite_livree<=0
                OR v_line.quantite_livree>=1000000000000000
-               OR v_line.quantite_livree::text IN ('NaN','Infinity','-Infinity') THEN
+               OR v_line.quantite_livree::text IN ('NaN','Infinity','-Infinity')
+               OR v_line.quantite_livree <> trunc(v_line.quantite_livree) THEN
                 RAISE EXCEPTION 'Ligne de livraison invalide' USING ERRCODE='22023';
             END IF;
         END LOOP;
@@ -247,6 +279,9 @@ BEGIN
           jsonb_to_recordset(p_payload->'lignes') AS x(sku_id text,quantite_livree numeric)
           GROUP BY x.sku_id ORDER BY x.sku_id
         LOOP
+            PERFORM 1 FROM public.sku_conditionnement
+              WHERE sku_id=v_sku.sku_id AND actif='OUI';
+            IF NOT FOUND THEN RAISE EXCEPTION 'SKU à expédier inconnu ou inactif' USING ERRCODE='23503'; END IF;
             SELECT coalesce(sum(quantite),0) INTO v_ordered
               FROM public.lignes_commande_ventes WHERE commande_vente_id=v_order.commande_vente_id
                 AND sku_id=v_sku.sku_id;

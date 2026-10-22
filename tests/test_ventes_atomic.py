@@ -107,11 +107,11 @@ def test_cancel_never_restocks(sales):
 def test_shipment_with_fifo_and_stocks_permission(sales):
     mod, db, client = sales
     assert mod.creer_bon_livraison('CMD-1', 'T', 'Nord',
-        [{'sku_id': 'SKU-1', 'quantite_livree': '2.5', 'lot_id': 'DEFAUT'}],
+        [{'sku_id': 'SKU-1', 'quantite_livree': '2', 'lot_id': 'DEFAUT'}],
         operation_id='SHIP-1') == 'BL-AAA'
     payload = client.rpc.call_args.args[1]
     assert payload['p_action'] == 'SHIP'
-    assert payload['p_payload']['lignes'][0] == {'sku_id': 'SKU-1', 'quantite_livree': '2.5'}
+    assert payload['p_payload']['lignes'][0] == {'sku_id': 'SKU-1', 'quantite_livree': '2'}
     assert [x.args for x in db.check_server_permission.call_args_list] == [('bons_livraison',), ('mouvements_pf',)]
 
 
