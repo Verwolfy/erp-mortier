@@ -2,11 +2,17 @@
 Script d'importation globale des listes de référence dans Supabase.
 Spécialisé pour l'industrie des Mortiers, Adjuvants et Peintures en Algérie.
 """
-from core.db_service import get_supabase_client
+import json
+from pathlib import Path
+from collections import Counter
 
-def importer_referentiels():
-    print("⏳ Préparation et injection des données expertes dans Supabase...")
-    supabase = get_supabase_client()
+def importer_referentiels(export_path: str | Path = "referentiels_previsualisation.json") -> list[dict]:
+    """Prépare les référentiels dans un fichier local, sans écrire dans Supabase.
+
+    Le mécanisme de remplacement destructif initial est volontairement supprimé.
+    La future synchronisation doit être une opération SQL atomique dédiée.
+    """
+    print("📋 Préparation des listes de référence en lecture seule (aucune modification Supabase)...")
     donnees = []
 
     def ajouter_liste(liste_code, elements, parent_prefix=""):
@@ -159,15 +165,23 @@ def importer_referentiels():
         ("NET_30", "Net 30 jours"), ("NET_60", "Net 60 jours"), ("NET_90", "Net 90 jours")
     ])
 
-    print(f"🚀 Insertion de {len(donnees)} lignes dans Supabase...")
-    try:
-        # Nettoyage préventif des anciennes données de test
-        supabase.table("listes_reference").delete().neq("id", 0).execute()
-        # Insertion groupée des données expertes
-        supabase.table("listes_reference").insert(donnees).execute()
-        print("✅ Importation dans Supabase terminée avec succès !")
-    except Exception as e:
-        print(f"❌ Erreur lors de l'insertion Supabase : {e}")
+    # Une même identité (liste, parent, code) ne doit figurer qu'une fois.
+    identities = [
+        (row["liste_code"], row["parent_code"] or "", row["valeur_code"])
+        for row in donnees
+    ]
+    duplicates = [key for key, count in Counter(identities).items() if count > 1]
+    if duplicates:
+        raise ValueError(f"Doublons dans les valeurs à importer : {duplicates[:5]}")
+
+    path = Path(export_path)
+    if not path.parent.exists():
+        raise FileNotFoundError(f"Dossier inexistant : {path.parent}")
+    path.write_text(json.dumps(donnees, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"✅ {len(donnees)} références préparées dans {path}.")
+    print("⚠️ AUCUNE base Supabase modifiée. Ne PAS utiliser d'ancien script d'import destructif.")
+    return donnees
+
 
 if __name__ == "__main__":
     importer_referentiels()
