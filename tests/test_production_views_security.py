@@ -85,6 +85,12 @@ def _materials():
                           'categorie_mp': 'LIANT', 'actif': 'OUI'}])
 
 
+def _pack_materials():
+    return pd.concat([_materials(), pd.DataFrame([{
+        'mp_id': 'EMB-1', 'nom': 'Sac Kraft 25 kg', 'unite_stock': 'U',
+        'categorie_mp': 'EMBALLAGE', 'actif': 'OUI'}])], ignore_index=True)
+
+
 def _orders(status='EN_COURS'):
     return pd.DataFrame([{'of_id': 'OF-0001', 'pf_id': 'PF-1', 'sku_id': 'SKU-1',
                           'recette_id': 'REC-0001', 'statut': status,
@@ -171,12 +177,18 @@ def test_recipe_quantity_below_precision_limit_blocks(ui):
 
 
 @pytest.mark.parametrize('factor,unit,compatible', [
-    (1, 'Kg', True), (1.0, 'kg', True), (25, 'Kg', False),
-    (1, 'Sac', False), (None, 'Kg', False), (-1, 'Kg', False),
+    (25, 'SAC', True), (5, 'SAC', True), (1, 'SAC', True),
+    (25, 'KG', False), (25, 'FUT', False),
+    (None, 'SAC', False), (-1, 'SAC', False),
 ])
 def test_sku_conversion_is_fail_closed(ui, factor, unit, compatible):
-    sku = _skus(factor, unit).iloc[0]
-    assert ui.mod._sku_unit_safe(sku, _products()) is compatible
+    sku = _skus(factor, unit, 'EMB-1').iloc[0]
+    try:
+        spec = ui.mod._sku_pack_spec(sku, _products(), _pack_materials())
+        actual = spec['factor'] == ui.mod._decimal(factor, 'Facteur SKU')
+    except ValueError:
+        actual = False
+    assert actual is compatible
 
 
 def test_unsupported_sku_cannot_create_of(ui):
@@ -326,14 +338,15 @@ def test_en_cours_status_goes_directly_to_quality(ui):
 
 
 def test_quality_form_blocks_unsupported_sku(ui):
-    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'Sac'), _materials(), _products(), True)
-    ui.st.form.assert_not_called()
+    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC'), _materials(), _products(), True)
+    assert ui.st.form_submit_button.call_args.kwargs['disabled'] is True
     ui.prod.enregistrer_controle_qualite.assert_not_called()
     ui.st.error.assert_called()
 
 
 def test_quality_form_requires_explicit_recipe_ack(ui):
-    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(), _materials(), _products(), True)
+    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC', 'EMB-1'),
+                         _pack_materials(), _products(), True)
     assert ui.st.form_submit_button.call_args.kwargs['disabled'] is True
     ui.prod.enregistrer_controle_qualite.assert_not_called()
 
@@ -349,13 +362,16 @@ def test_quality_rejection_has_zero_qty_packaging(ui):
     assert kwargs['emballage_consomme'] == 0
 
 
-def test_quality_form_does_not_default_packaging_to_produced_qty(ui):
+def test_quality_form_auto_sets_one_pack_per_sku(ui):
     ui.st.form_submit_button.return_value = True
     ui.st.checkbox.return_value = True
-    ui.st.number_input.side_effect = [100., 0.]
-    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(1, 'Kg', 'EMB-1'), _materials(), _products(), True)
-    ui.prod.enregistrer_controle_qualite.assert_not_called()
-    ui.st.error.assert_called()
+    ui.st.number_input.return_value = 100
+    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC', 'EMB-1'),
+                         _pack_materials(), _products(), True)
+    kwargs = ui.prod.enregistrer_controle_qualite.call_args.kwargs
+    assert kwargs['quantite_produite'] == 100
+    assert kwargs['emballage_mp_id'] == 'EMB-1'
+    assert kwargs['emballage_consomme'] == 100
 
 
 def test_no_new_close_with_unconfirmed_of(ui):
@@ -375,7 +391,8 @@ def test_theoretical_consumptions_use_per_unit_rate(ui):
 def test_unreadable_recipe_disables_closure(ui):
     ui.prod.get_lignes_recette.return_value = pd.DataFrame()
     ui.st.checkbox.return_value = True
-    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(), _materials(), _products(), True)
+    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC', 'EMB-1'),
+                         _pack_materials(), _products(), True)
     assert ui.st.form_submit_button.call_args.kwargs['disabled'] is True
     ui.prod.enregistrer_controle_qualite.assert_not_called()
 
@@ -390,3 +407,138 @@ def test_recipe_preview_is_not_stock_write(ui):
     ui.mod._theoretical_consumptions(_orders().iloc[0], 100, _materials())
     ui.prod.enregistrer_controle_qualite.assert_not_called()
     ui.prod.changer_statut_of.assert_not_called()
+
+
+# ---- Migration 003 : facturation en unites SKU et besoins matieres en KG/L ----
+
+def _sku_case(sku_id, pf_id, sale_unit, factor, package_id, active='OUI'):
+    return pd.Series({'sku_id': sku_id, 'pf_id': pf_id,
+                      'unite_vente': sale_unit, 'facteur_conversion': factor,
+                      'emballage_mp_id': package_id, 'actif': active})
+
+
+def _prod_case(pf_id, unit):
+    return pd.DataFrame([{'pf_id': pf_id, 'nom': 'Produit test',
+                          'unite_production': unit, 'actif': 'OUI'}])
+
+
+def _material_case(package_id):
+    return pd.DataFrame([{'mp_id': package_id, 'nom': 'Emballage test',
+                          'categorie_mp': 'EMBALLAGE', 'unite_stock': 'U', 'actif': 'OUI'}])
+
+
+@pytest.mark.parametrize('sku,pf,sale,factor,pack,unit,sku_count,expected', [
+    ('SKU-001', 'PF-001', 'SAC', 25, 'MP-008', 'KG', 100, 2500),
+    ('SKU-003', 'PF-003', 'SAC', 5, 'MP-010', 'KG', 100, 500),
+    ('SKU-005', 'PF-005', 'FUT', 200, 'MP-011', 'L', 10, 2000),
+    ('SKU-006', 'PF-005', 'IBC', 1000, 'MP-012', 'L', 5, 5000),
+])
+def test_packaging_and_conversion_matrix(ui, sku, pf, sale, factor, pack, unit, sku_count, expected):
+    spec = ui.mod._sku_pack_spec(_sku_case(sku,pf,sale,factor,pack),
+                                  _prod_case(pf, unit), _material_case(pack))
+    assert ui.mod._sku_base_quantity(sku_count, spec) == expected
+    assert spec['package_id'] == pack
+
+
+def test_paint_bucket_stays_blocked_until_physical_validation(ui):
+    with pytest.raises(ValueError, match='validation physique'):
+        ui.mod._sku_pack_spec(_sku_case('SKU-007', 'PF-006', 'SEAU',20,'MP-009'),
+                               _prod_case('PF-006', 'KG'), _material_case('MP-009'))
+
+
+def test_supplier_packaging_wrong_category_or_unit_is_blocked(ui):
+    pack = _material_case('MP-008')
+    pack.loc[0,'categorie_mp'] = 'LIANT'
+    with pytest.raises(ValueError):
+        ui.mod._sku_pack_spec(_sku_case('SKU-001','PF-001','SAC',25,'MP-008'),
+                               _prod_case('PF-001','KG'), pack)
+    pack.loc[0,'categorie_mp'] = 'EMBALLAGE'
+    pack.loc[0,'unite_stock'] = 'KG'
+    with pytest.raises(ValueError):
+        ui.mod._sku_pack_spec(_sku_case('SKU-001','PF-001','SAC',25,'MP-008'),
+                               _prod_case('PF-001','KG'), pack)
+
+
+def test_sku_without_packaging_cannot_be_produced(ui):
+    with pytest.raises(ValueError):
+        ui.mod._sku_pack_spec(_sku_case('SKU-005','PF-005','FUT',200,''),
+                               _prod_case('PF-005','L'), _material_case('MP-011'))
+
+
+@pytest.mark.parametrize('qty', [0, -2, 1.5, float('nan'), float('inf'), 1e15])
+def test_no_fractional_or_invalid_sku_quantity(ui, qty):
+    with pytest.raises(ValueError):
+        ui.mod._sku_base_quantity(qty, {'factor': ui.mod._decimal(25, 'factor')})
+
+
+def test_theoretical_consumption_uses_sku_factor(ui):
+    forecast = ui.mod._theoretical_consumptions(_orders().iloc[0],100,_materials(),factor=25)
+    assert forecast.iloc[0]['besoin_pour_OF'] == 625
+    assert ui.prod.enregistrer_controle_qualite.call_count == 0
+
+
+def test_wrong_packaging_as_recipe_material_fails_preview(ui):
+    ui.prod.get_lignes_recette.return_value = pd.DataFrame([{'mp_id':'EMB-1','quantite_par_unite':0.01}])
+    with pytest.raises(ValueError, match='interdit'):
+        ui.mod._theoretical_consumptions(_orders().iloc[0], 100, _pack_materials(), factor=25)
+
+
+def test_recipe_filter_excludes_packaging_category(ui):
+    materials = _pack_materials()
+    ui.st.selectbox.side_effect = lambda label, options, **kw: next(iter(options))
+    ui.mod._recipe_tab('USR-1', True, _products(), materials)
+    selections = [c for c in ui.st.selectbox.call_args_list if c.args and c.args[0] == 'Composant']
+    assert len(selections) == 1
+    assert selections[0].args[1] == ['MP-1']
+
+
+def test_create_of_with_packaging_and_factor(ui):
+    ui.prod.get_recettes.return_value = pd.DataFrame([{
+        'recette_id':'REC-0001', 'pf_id':'PF-001', 'version':'v1', 'actif':'OUI', 'rendement_unite':1000}])
+    ui.st.form_submit_button.return_value = True
+    ui.st.number_input.return_value = 100
+    products = _prod_case('PF-001','KG')
+    products['nom'] = 'Mortier'
+    skus = pd.DataFrame([_sku_case('SKU-001','PF-001','SAC',25,'MP-008')])
+    ui.mod._of_tab('USR-1', True, products, skus, _material_case('MP-008'))
+    kwargs = ui.prod.create_ordre_fabrication.call_args.kwargs
+    assert kwargs['sku_id'] == 'SKU-001'
+    assert kwargs['quantite_prevue'] == 100
+
+
+def test_rejected_of_allowed_without_valid_packaging(ui):
+    ui.st.radio.return_value = 'NON'
+    ui.st.form_submit_button.return_value = True
+    ui.prod.enregistrer_controle_qualite.return_value = {'of_id':'OF-0001','statut':'REJETE'}
+    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC'),
+                         _materials(), _products(), False)
+    result = ui.prod.enregistrer_controle_qualite.call_args.kwargs
+    assert result['quantite_produite'] == 0
+    assert result['emballage_mp_id'] is None
+    assert result['emballage_consomme'] == 0
+
+
+def test_quality_form_fractional_quantity_does_not_call_rpc(ui):
+    ui.st.checkbox.return_value = True
+    ui.st.form_submit_button.return_value = True
+    ui.st.number_input.return_value = 2.5
+    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC', 'EMB-1'),
+                         _pack_materials(), _products(), True)
+    ui.prod.enregistrer_controle_qualite.assert_not_called()
+
+
+def test_product_unit_incompatible_with_package_fails(ui):
+    with pytest.raises(ValueError):
+        ui.mod._sku_pack_spec(_sku_case('SKU-005','PF-005','FUT',200,'MP-011'),
+                               _prod_case('PF-005','KG'), _material_case('MP-011'))
+
+
+def test_old_cart_with_packaging_cannot_create_recipe(ui):
+    cart_key = ui.mod._cart_key('USR-1')
+    ui.st.session_state[cart_key] = {'pf_id': 'PF-1', 'yield': '10.0', 'lines': [
+        {'mp_id': 'EMB-1', 'nom_mp': 'Sac', 'unite_stock': 'U', 'quantite_batch': 10.0}]}
+    ui.st.number_input.return_value = 10.0
+    ui.st.button.return_value = True
+    ui.mod._recipe_tab('USR-1', True, _products(), _pack_materials())
+    ui.prod.create_recette.assert_not_called()
+    ui.st.error.assert_called()

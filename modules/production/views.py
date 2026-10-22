@@ -1,9 +1,8 @@
-"""Interface Production : droits vérifiés, recettes par unité, clôture d'OF idempotente.
+"""Production : accès serveur, recette par KG/L, conditionnement par unité SKU.
 
-Aucune donnée métier n'est lue avant l'autorisation Supabase. La convention SQL
-est : lignes_recette.quantite_par_unite = quantité de MP PAR unité de PF.
-Le formulaire peut saisir une recette par batch, mais convertit explicitement
-la quantité de chaque matière en quantité par unité de produit.
+Les recettes sauvegardent la quantité MP par KG/L de produit fabriqué. Pour les
+OF, la migration SQL 003 multiplie ces taux par unités SKU * facteur_conversion,
+puis consomme exactement un emballage par unité SKU conforme.
 """
 from __future__ import annotations
 
@@ -26,6 +25,9 @@ from modules.production.service import (
 _LOG = logging.getLogger(__name__)
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _VALID_STATES = frozenset({"PLANIFIE", "EN_COURS", "TERMINE", "REJETE", "CONTROLE_QUALITE"})
+# Confirmation physique encore attendue : seau 20 L pour 20 kg de peinture.
+# Ne jamais activer ce conditionnement par une simple conversion kg <-> L.
+_PENDING_PHYSICAL_PACKAGING = frozenset({"SKU-007"})
 
 
 def _production_access() -> tuple[str, bool, bool] | None:
@@ -262,13 +264,22 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
         cart = {"pf_id": pf_id, "yield": batch, "lines": []}
         st.session_state[cart_key] = cart
 
-    components = materials[materials["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"] \
-        if "categorie_mp" in materials.columns else materials
+    if "categorie_mp" not in materials.columns:
+        st.error("Catégorie des matières absente : recette bloquée pour exclure les emballages.")
+        return
+    categories = materials["categorie_mp"].fillna("").astype(str).str.strip().str.upper()
+    components = materials[~categories.isin({"EMBALLAGE", "EMBALLAGE_CONSOMMABLE"})]
     if components.empty:
         st.warning("Aucune matière première hors emballage disponible.")
         return
     labels = {r["mp_id"]: f"{r['mp_id']} - {r['nom']} ({r.get('unite_stock', '?')})"
               for _, r in components.iterrows()}
+    if cart["lines"]:
+        cart_ids = [line.get("mp_id") for line in cart["lines"]]
+        if (len(set(cart_ids)) != len(cart_ids)
+            or any(existing not in labels for existing in cart_ids)):
+            st.error("Ancien panier invalide : emballage, matière inactive ou doublon. Vider la recette.")
+            return
     mp_id = st.selectbox("Composant", list(labels), format_func=lambda x: labels[x])
     qte = st.number_input("Quantité MP nécessaire pour le batch (dans l'unité de stock de la MP)",
                           min_value=0.000001, step=1.0)
@@ -319,7 +330,60 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
             st.error(str(exc))
 
 
-def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame, skus: pd.DataFrame) -> None:
+def _sku_pack_spec(sku_row: pd.Series, products: pd.DataFrame,
+                   materials: pd.DataFrame) -> dict:
+    """Données de conditionnement validées sans conversion implicite KG <-> L.
+
+    Ce garde-fou d'interface complète les contrôles côté RPC, sans s'y substituer.
+    """
+    sku_id = sku_row.get("sku_id")
+    if sku_id in _PENDING_PHYSICAL_PACKAGING:
+        raise ValueError("Conditionnement en attente de validation physique (seau 20 L / 20 kg).")
+    if products.empty or "pf_id" not in products or "unite_production" not in products:
+        raise ValueError("Référentiel des produits incomplet")
+    if materials.empty or not {"mp_id", "categorie_mp", "unite_stock", "actif"}.issubset(materials.columns):
+        raise ValueError("Référentiel des emballages incomplet")
+    product = products[products["pf_id"] == sku_row.get("pf_id")]
+    if len(product) != 1:
+        raise ValueError("Produit associé au SKU absent ou ambigu")
+    unit = str(product.iloc[0].get("unite_production") or "").strip().upper()
+    sale_unit = str(sku_row.get("unite_vente") or "").strip().upper()
+    if unit not in {"KG", "L"} or (unit, sale_unit) not in {
+        ("KG", "SAC"), ("KG", "SEAU"), ("L", "FUT"), ("L", "IBC")
+    }:
+        raise ValueError("Unité KG/L et type de conditionnement incompatibles")
+    if str(sku_row.get("actif") or "").strip().upper() != "OUI":
+        raise ValueError("SKU inactif")
+    factor = _decimal(sku_row.get("facteur_conversion"), "Facteur de conditionnement")
+    package_id = sku_row.get("emballage_mp_id")
+    if not isinstance(package_id, str) or not package_id.strip():
+        raise ValueError("Emballage manquant pour le SKU")
+    package_id = package_id.strip()
+    matches = materials[materials["mp_id"] == package_id]
+    if len(matches) != 1:
+        raise ValueError("Emballage du SKU absent ou ambigu")
+    package = matches.iloc[0]
+    if (str(package.get("categorie_mp") or "").strip().upper() != "EMBALLAGE"
+        or str(package.get("unite_stock") or "").strip().upper() != "U"
+        or str(package.get("actif") or "").strip().upper() != "OUI"):
+        raise ValueError("Emballage non actif, non classé EMBALLAGE ou non suivi en U")
+    return {"sku_id": sku_id, "pf_unit": unit, "sale_unit": sale_unit,
+            "factor": factor, "package_id": package_id,
+            "package_name": str(package.get("nom") or package_id)}
+
+
+def _sku_base_quantity(sku_count: object, spec: dict) -> Decimal:
+    quantity = _decimal(sku_count, "Quantité SKU")
+    if quantity != quantity.to_integral_value():
+        raise ValueError("La quantité de SKU doit être un nombre entier")
+    base = quantity * spec["factor"]
+    if not base.is_finite() or base <= 0 or base >= Decimal("1e15"):
+        raise ValueError("Quantité fabriquée KG/L hors limites")
+    return base
+
+
+def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
+            skus: pd.DataFrame, materials: pd.DataFrame | None = None) -> None:
     st.subheader("Créer un ordre de fabrication")
     if not can_write:
         st.info("Mode lecture seule")
@@ -336,64 +400,67 @@ def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame, skus: pd.Data
     sku = st.selectbox("SKU", list(labels), format_func=lambda x: labels[x])
     sku_row = skus[skus["sku_id"] == sku].iloc[0]
     pf_id = sku_row["pf_id"]
-    if not _sku_unit_safe(sku_row, products):
-        st.error("Conversion SKU ↔ unité de production non prise en charge : création d’OF bloquée jusqu’à validation métier et SQL.")
+    try:
+        spec = _sku_pack_spec(sku_row, products,
+                              materials if materials is not None else pd.DataFrame())
+    except ValueError as exc:
+        st.error(f"Création d'OF bloquée : {exc}")
         return
     matches = recipes[(recipes["pf_id"] == pf_id) & (recipes["actif"] == "OUI")]
     if matches.empty:
         st.warning("Aucune recette active pour ce produit.")
         return
-    recipes_dict = {r["recette_id"]: f"{r['version']} (batch : {r['rendement_unite']})"
+    recipes_dict = {r["recette_id"]: f"{r['version']} (batch : {r['rendement_unite']} {spec['pf_unit']})"
                     for _, r in matches.iterrows()}
     with st.form(f"new_of_{user_id}"):
         recipe = st.selectbox("Recette", list(recipes_dict), format_func=lambda x: recipes_dict[x])
-        quantity = st.number_input("Quantité prévue (unités SKU)", min_value=1.0, step=1.0)
+        quantity = st.number_input("Quantité prévue (unités SKU entières)", min_value=1, step=1)
         date_planif = st.date_input("Date planifiée")
         notes = st.text_input("Notes de fabrication")
-        st.warning("Vérifier les conversions unité PF / unité SKU avant d'utiliser un conditionnement différent du vrac.")
-        if st.form_submit_button("Créer l'OF"):
+        allowed = True
+        try:
+            base_qty = _sku_base_quantity(quantity, spec)
+            st.info(f"{quantity} {spec['sale_unit']} = {base_qty} {spec['pf_unit']} de produit ; "
+                    f"{quantity} emballages {spec['package_id']} à consommer.")
+        except ValueError as exc:
+            st.error(str(exc))
+            allowed = False
+        if st.form_submit_button("Créer l'OF", disabled=not allowed) and allowed:
             payload = {"pf_id": pf_id, "recette_id": recipe, "sku_id": sku,
-                       "quantite_prevue": float(_decimal(quantity, "Quantité OF")),
+                       "quantite_prevue": int(_decimal(quantity, "Quantité OF")),
                        "date_planification": str(date_planif), "notes": notes}
             _create_document("of", user_id, payload)
 
 
-def _sku_unit_safe(sku_row: pd.Series, products: pd.DataFrame) -> bool:
-    """Ne pas lancer la consommation PF quand une conversion SKU est nécessaire."""
-    if products.empty or "pf_id" not in products.columns or "unite_production" not in products.columns:
-        return False
-    found = products[products["pf_id"] == sku_row.get("pf_id")]
-    if found.empty:
-        return False
-    try:
-        factor = _decimal(sku_row.get("facteur_conversion"), "Facteur SKU")
-    except ValueError:
-        return False
-    pf_unit = str(found.iloc[0].get("unite_production") or "").strip().casefold()
-    sale_unit = str(sku_row.get("unite_vente") or "").strip().casefold()
-    return factor == 1 and bool(pf_unit) and pf_unit == sale_unit
-
-
 def _theoretical_consumptions(of: pd.Series, produced: object,
-                              materials: pd.DataFrame) -> pd.DataFrame:
-    """Aperçu lisible avant toute mutation : besoin = quantite_par_unite × production."""
+                               materials: pd.DataFrame, *, factor: object = 1) -> pd.DataFrame:
+    """Aperçu : MP = taux par KG/L × (unités SKU × facteur_conversion)."""
     recipe_id = of.get("recette_id")
     if not isinstance(recipe_id, str) or not recipe_id.strip():
         raise ValueError("OF sans recette valide")
     lines = get_lignes_recette(recipe_id)
     if not isinstance(lines, pd.DataFrame) or lines.empty or not {"mp_id", "quantite_par_unite"}.issubset(lines.columns):
         raise ValueError("Impossible de vérifier les matières de la recette")
-    quantity = _decimal(produced, "Production prévue")
+    quantity = _sku_base_quantity(produced, {"factor": _decimal(factor, "Facteur SKU")})
+    if materials.empty or not {"mp_id", "unite_stock", "categorie_mp", "actif"}.issubset(materials.columns):
+        raise ValueError("Référentiel de matières incomplet : impossible de calculer la consommation")
     rows = []
     for _, line in lines.iterrows():
         mp_id = line["mp_id"]
         if not isinstance(mp_id, str) or not mp_id.strip():
             raise ValueError("Matière de recette invalide")
-        unit = "non renseignée"
-        if not materials.empty and {"mp_id", "unite_stock"}.issubset(materials.columns):
-            match = materials[materials["mp_id"] == mp_id]
-            if not match.empty:
-                unit = str(match.iloc[0].get("unite_stock") or unit)
+        match = materials[materials["mp_id"] == mp_id]
+        if len(match) != 1:
+            raise ValueError(f"Matière {mp_id} absente ou ambiguë")
+        mp = match.iloc[0]
+        category = str(mp.get("categorie_mp") or "").strip().upper()
+        if category in {"EMBALLAGE", "EMBALLAGE_CONSOMMABLE"}:
+            raise ValueError(f"Emballage {mp_id} interdit dans la recette")
+        if str(mp.get("actif") or "").strip().upper() != "OUI":
+            raise ValueError(f"Matière {mp_id} inactive")
+        unit = str(mp.get("unite_stock") or "").strip()
+        if not unit:
+            raise ValueError(f"Unité de stock manquante pour {mp_id}")
         rate = _decimal(line["quantite_par_unite"], "Quantité de la recette")
         required = quantity * rate
         if required >= Decimal("1e15"):
@@ -407,65 +474,73 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
                   products: pd.DataFrame, can_stock: bool) -> None:
     of_id = of["of_id"]
     sku_id = of["sku_id"]
-    sku_row = skus[skus["sku_id"] == sku_id] if "sku_id" in skus.columns else pd.DataFrame()
-    packaging_id = ""
-    if not sku_row.empty:
-        value = sku_row.iloc[0].get("emballage_mp_id")
-        if isinstance(value, str) and value.strip() and value.lower() not in ("nan", "none"):
-            packaging_id = value.strip()
-    if sku_row.empty or not _sku_unit_safe(sku_row.iloc[0], products):
-        st.error("Conversion SKU ↔ unité de production incompatible : clôture bloquée pour éviter une consommation MP incorrecte.")
-        return
-    if packaging_id and not materials.empty and "mp_id" in materials.columns:
-        matched = materials[materials["mp_id"] == packaging_id]
-        if matched.empty:
-            st.warning("Emballage du SKU introuvable/inactif : vérifier le référentiel.")
+    sku_rows = skus[skus["sku_id"] == sku_id] if "sku_id" in skus else pd.DataFrame()
+    spec = None
+    spec_error = "SKU introuvable ou ambigu"
+    if len(sku_rows) == 1:
+        try:
+            spec = _sku_pack_spec(sku_rows.iloc[0], products, materials)
+        except ValueError as exc:
+            spec_error = str(exc)
     with st.form(f"quality_{user_id}_{of_id}"):
         st.subheader(f"Contrôle qualité / clôture de l'OF {of_id}")
         conforme = st.radio("Produit conforme ?", ["OUI", "NON"], key=f"qc_{of_id}")
         remarks = st.text_area("Remarques / motif de rejet")
         controller = st.text_input("Contrôleur")
+        needs_valid = True
+        qty = 0
+        pack_qty = 0
+        pack_id = None
         if conforme == "OUI":
-            qty = st.number_input("Quantité réellement produite (unités SKU)", min_value=0.001,
-                                  value=float(of["quantite_prevue"]))
-            pack_qty = st.number_input("Emballages réellement consommés", min_value=0.0,
-                                       value=0.0, disabled=not packaging_id)
-            if packaging_id:
-                st.caption(f"Emballage configuré : {packaging_id}. Indiquer la consommation réelle.")
-            else:
-                st.caption("Aucun emballage configuré pour ce SKU.")
-            try:
-                forecast = _theoretical_consumptions(of, qty, materials)
-                st.caption("Prévision des consommations MP : quantité par unité × quantité produite")
-                st.dataframe(forecast, use_container_width=True, hide_index=True)
-                needs_valid = True
-            except ValueError as exc:
-                st.error(str(exc))
+            if spec is None:
+                st.error(f"Clôture conforme bloquée : {spec_error}")
                 needs_valid = False
+            else:
+                try:
+                    planned = _decimal(of.get("quantite_prevue"), "Quantité prévue")
+                    if planned != planned.to_integral_value():
+                        raise ValueError("Quantité prévue non entière")
+                except ValueError as exc:
+                    st.error(str(exc))
+                    planned = Decimal(1)
+                    needs_valid = False
+                qty = st.number_input("Quantité réellement produite (unités SKU entières)",
+                                      min_value=1, value=int(planned), step=1)
+                try:
+                    base_qty = _sku_base_quantity(qty, spec)
+                    pack_qty = int(_decimal(qty, "Emballages"))
+                    pack_id = spec["package_id"]
+                    st.info(f"Production : {base_qty} {spec['pf_unit']} pour {pack_qty} "
+                            f"{spec['sale_unit']}. Emballages : {pack_qty} × {pack_id} "
+                            f"({spec['package_name']}).")
+                    forecast = _theoretical_consumptions(of, qty, materials,
+                                                          factor=spec["factor"])
+                    st.caption("Prévision MP : quantité par KG/L × nombre SKU × facteur de conversion")
+                    st.dataframe(forecast, use_container_width=True, hide_index=True)
+                except (ValueError, TypeError, OverflowError) as exc:
+                    st.error(str(exc))
+                    needs_valid = False
             if not can_stock:
-                st.warning("Droits Stocks nécessaires pour valider une clôture conforme.")
+                st.warning("Droits Stocks nécessaires pour une clôture conforme.")
         else:
-            needs_valid = True
-            qty = 0.0
-            pack_qty = 0.0
-            st.info("OF rejeté : aucune matière consommée et aucune entrée de produit fini.")
-        recipe_ack = st.checkbox("Je confirme que la recette indique les consommations de MP PAR unité produite et que les unités sont cohérentes",
-                                 key=f"qc_recipe_ack_{user_id}_{of_id}") if conforme == "OUI" else True
-        if st.form_submit_button("Valider et clôturer cet OF", disabled=(not recipe_ack or not needs_valid or (conforme == "OUI" and not can_stock))):
+            st.info("OF rejeté : aucune matière consommée, aucun emballage déduit ni PF entré en stock.")
+        recipe_ack = (st.checkbox("Je confirme les unités KG/L, le facteur de conversion, "
+                                  "les quantités MP et le nombre d'emballages",
+                                  key=f"qc_recipe_ack_{user_id}_{of_id}")
+                      if conforme == "OUI" else True)
+        disabled = not recipe_ack or not needs_valid or (conforme == "OUI" and not can_stock)
+        if st.form_submit_button("Valider et clôturer cet OF", disabled=disabled) and not disabled:
             if not isinstance(controller, str) or not controller.strip():
                 st.error("Le contrôleur est obligatoire.")
-                return
-            if conforme == "OUI" and packaging_id and pack_qty <= 0:
-                st.error("SKU avec emballage : indiquer une quantité d’emballage strictement positive.")
                 return
             try:
                 payload = {"of_id": of_id, "conforme": conforme,
                            "remarques": remarks, "controleur": controller.strip(),
-                           "quantite_produite": float(_decimal(qty, "Quantité produite", allow_zero=conforme == "NON")),
-                           "emballage_mp_id": packaging_id or None if conforme == "OUI" and pack_qty > 0 else None,
-                           "emballage_consomme": float(_decimal(pack_qty, "Quantité emballage", allow_zero=True))}
+                           "quantite_produite": int(qty),
+                           "emballage_mp_id": pack_id,
+                           "emballage_consomme": int(pack_qty)}
                 _start_closure(user_id, payload, can_stock)
-            except ValueError as exc:
+            except (ValueError, TypeError, OverflowError) as exc:
                 st.error(str(exc))
 
 
@@ -524,7 +599,7 @@ def show_production_page() -> None:
     with tab_recipe:
         _recipe_tab(user_id, can_write, products, materials)
     with tab_of:
-        _of_tab(user_id, can_write, products, skus)
+        _of_tab(user_id, can_write, products, skus, materials)
     with tab_follow:
         _followup_tab(user_id, can_write, can_stock, skus, materials, products)
     with tab_history:
