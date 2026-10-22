@@ -59,3 +59,13 @@ def test_sql_account_and_partner_integrity_guards():
     assert "WHERE client_id=p_payload->>'partenaire_id' AND actif='OUI'" in s
     assert "WHERE fournisseur_id=p_payload->>'partenaire_id' AND actif='OUI'" in s
     assert "'ANNULE','REJETE','PAYEE'" in s
+
+@pytest.mark.parametrize('expression',[
+    "v_direction || ' ' || (p_payload->>'reference_trace')",
+    "'Contrepartie ' || (p_payload->>'reference_trace')",
+])
+def test_sql_payment_labels_parenthesize_json_extraction(expression):
+    sql=(ROOT/'sql/006_atomic_finance.sql').read_text(encoding='utf-8')
+    assert expression in sql
+    # Avoid PostgreSQL evaluating text || jsonb before ->> on a composed label.
+    assert not __import__('re').search(r'\|\|\s*p_payload\s*->>', sql)

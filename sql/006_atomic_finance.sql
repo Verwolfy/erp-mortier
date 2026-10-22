@@ -170,13 +170,13 @@ BEGIN
         INSERT INTO public.ecritures_comptables(ecriture_id,date_ecriture,compte_id,
                   document_source_id,libelle,debit,credit,lettrage_id)
         VALUES('ECR-'||gen_random_uuid()::text,v_date,v_cash_id,v_reg_id,
-               v_direction||' '||p_payload->>'reference_trace',
+               v_direction || ' ' || (p_payload->>'reference_trace'),
                CASE WHEN v_direction='ENCAISSEMENT' THEN v_amount ELSE 0 END,
                CASE WHEN v_direction='DECAISSEMENT' THEN v_amount ELSE 0 END,'');
         INSERT INTO public.ecritures_comptables(ecriture_id,date_ecriture,compte_id,
                   document_source_id,libelle,debit,credit,lettrage_id)
         VALUES('ECR-'||gen_random_uuid()::text,v_date,v_counter_id,v_reg_id,
-               'Contrepartie '||p_payload->>'reference_trace',
+               'Contrepartie ' || (p_payload->>'reference_trace'),
                CASE WHEN v_direction='DECAISSEMENT' THEN v_amount ELSE 0 END,
                CASE WHEN v_direction='ENCAISSEMENT' THEN v_amount ELSE 0 END,'');
         v_result := jsonb_build_object('operation_id',p_operation_id,'action',p_action,
