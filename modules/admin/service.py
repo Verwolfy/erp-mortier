@@ -5,8 +5,8 @@ Respect strict du schéma docs/schema_reference.md.
 """
 import pandas as pd
 import streamlit as st
-import bcrypt
-from core.db_service import fetch_data, insert_hybrid, update_hybrid
+from core.db_service import fetch_data, insert_hybrid, update_hybrid, get_supabase_client
+from modules.auth.service import hash_password
 from core.utils import generate_unique_id
 
 # Petit mapping local uniquement pour faire le lien entre l'UI et la lecture
@@ -17,6 +17,44 @@ READ_MAPPING = {
     "SkuConditionnement": "sku_conditionnement",
     "Clients": "clients"
 }
+
+# Les champs techniques structurants ne sont pas modifiables dans le tableau
+# générique : ils nécessitent un processus métier dédié et audité.
+EDITABLE_FIELDS = {
+    "Fournisseurs": frozenset({
+        "nom", "categorie", "type_entreprise", "adresse", "gps", "pays",
+        "wilaya", "rc", "nif", "nis", "nom_contact", "poste_contact",
+        "email_contact", "mobile_contact", "email_entreprise", "site_web",
+        "telephone_fixe", "delai_appro_jours", "actif",
+    }),
+    "MatieresPremieres": frozenset({
+        "nom", "categorie_mp", "origine_pays", "duree_peremption_jours",
+        "fournisseurs_ids", "stock_mini", "stock_maxi", "hs_code",
+        "taux_dedouanement", "lien_fiche_technique", "lien_fiche_securite",
+        "actif",
+    }),
+    "Produits": frozenset({"nom", "categorie_pf", "actif"}),
+    "SkuConditionnement": frozenset({"format", "prix_vente_defaut", "actif"}),
+    "Clients": frozenset({
+        "nom", "categorie_client", "type_client", "adresse", "gps", "pays",
+        "wilaya", "rc", "nif", "nis", "nom_contact", "poste_contact",
+        "email_contact", "mobile_contact", "email_entreprise", "site_web",
+        "telephone_fixe", "commercial_id", "actif",
+    }),
+}
+PRIMARY_KEYS = {
+    "Fournisseurs": "fournisseur_id",
+    "MatieresPremieres": "mp_id",
+    "Produits": "pf_id",
+    "SkuConditionnement": "sku_id",
+    "Clients": "client_id",
+}
+
+def _confirmed(result: object, operation: str) -> None:
+    """Ne jamais annoncer un succès quand la réponse Supabase est absente."""
+    if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+        raise RuntimeError(f"{operation} non confirmée dans Supabase ; vérifier l'état avant réessai")
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_dataframe(sheet_name: str, only_active=False) -> pd.DataFrame:
@@ -32,20 +70,46 @@ def get_dataframe(sheet_name: str, only_active=False) -> pd.DataFrame:
         df = df[df["actif"] == "OUI"]
     return df
 
-def sauvegarder_modifications(sheet_name: str, id_col: str, df_original: pd.DataFrame, changes: dict) -> bool:
-    """Applique les modifications d'un data_editor vers Supabase + Google Sheets."""
-    table_name = READ_MAPPING.get(sheet_name)
-    try:
-        for row_idx_str, col_changes in changes.items():
-            row_idx = int(row_idx_str)
-            target_id = str(df_original.iloc[row_idx][id_col])
-            updates_dict = {col: str(val) for col, val in col_changes.items()}
+def sauvegarder_modifications(sheet_name: str, id_col: str,
+                             df_original: pd.DataFrame, changes: dict) -> bool:
+    """Modifie au plus une ligne, après contrôle strict des colonnes.
 
-            update_hybrid(table_name, id_col, target_id, updates_dict)
-        return True
-    except Exception as e:
-        print(f"Erreur lors de la sauvegarde sur {sheet_name} : {e}")
-        return False
+    Multi-lignes refusées jusqu'à une RPC PostgreSQL véritablement atomique.
+    Une écriture confirmée sur Supabase n'implique PAS la réussite de Sheets.
+    """
+    table_name = READ_MAPPING.get(sheet_name)
+    if table_name is None or id_col != PRIMARY_KEYS.get(sheet_name):
+        raise ValueError("Référentiel ou identifiant non autorisé")
+    if not isinstance(changes, dict) or len(changes) != 1:
+        raise ValueError("Enregistrer une seule ligne à la fois (pas de transaction multi-lignes)")
+    row_key, columns = next(iter(changes.items()))
+    if not isinstance(columns, dict) or not columns:
+        raise ValueError("Aucune modification valide")
+    if set(columns) - EDITABLE_FIELDS[sheet_name]:
+        raise ValueError("Une colonne technique protégée ne peut pas être modifiée ici")
+    try:
+        row_idx = int(row_key)
+        if isinstance(row_key, bool) or str(row_idx) != str(row_key):
+            raise ValueError
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Indice de ligne invalide") from exc
+    if row_idx < 0 or row_idx >= len(df_original) or id_col not in df_original.columns:
+        raise ValueError("Ligne ou identifiant introuvable")
+    target_id = df_original.iloc[row_idx][id_col]
+    if not isinstance(target_id, str) or not target_id.strip():
+        raise ValueError("Identifiant de ligne invalide")
+    # Valider tout AVANT l'écriture. Ne pas masquer l'échec de Supabase.
+    updates = {col: str(value) for col, value in columns.items()}
+    if "actif" in updates:
+        value = updates["actif"].strip().upper()
+        if value not in {"OUI", "NON"}:
+            raise ValueError("Statut actif invalide : OUI ou NON")
+        updates["actif"] = value
+    result = update_hybrid(table_name, id_col, target_id, updates)
+    _confirmed(result, "Modification")
+    if result[0].get(id_col) != target_id:
+        raise RuntimeError("Ligne modifiée non vérifiable ; contrôler Supabase")
+    return True
 
 # --- FOURNISSEURS, MP, PRODUITS, SKU, CLIENTS ---
 def add_fournisseur(data: dict):
@@ -53,7 +117,8 @@ def add_fournisseur(data: dict):
     exist_ids = df["fournisseur_id"].tolist() if not df.empty else []
     data["fournisseur_id"] = generate_unique_id("FRN", exist_ids)
     data["actif"] = "OUI"
-    insert_hybrid("fournisseurs", data)
+    _confirmed(insert_hybrid("fournisseurs", data), "Création fournisseur")
+    return data["fournisseur_id"]
 
 def add_matiere_premiere(data: dict):
     df = get_dataframe("MatieresPremieres")
@@ -61,28 +126,32 @@ def add_matiere_premiere(data: dict):
     data["mp_id"] = generate_unique_id("MP", exist_ids)
     data["actif"] = "OUI"
     data["cmp_actuel"] = 0.0
-    insert_hybrid("matieres_premieres", data)
+    _confirmed(insert_hybrid("matieres_premieres", data), "Création matière première")
+    return data["mp_id"]
 
 def add_produit(data: dict):
     df = get_dataframe("Produits")
     exist_ids = df["pf_id"].tolist() if not df.empty else []
     data["pf_id"] = generate_unique_id("PF", exist_ids)
     data["actif"] = "OUI"
-    insert_hybrid("produits", data)
+    _confirmed(insert_hybrid("produits", data), "Création produit")
+    return data["pf_id"]
 
 def add_sku(data: dict):
     df = get_dataframe("SkuConditionnement")
     exist_ids = df["sku_id"].tolist() if not df.empty else []
     data["sku_id"] = generate_unique_id("SKU", exist_ids)
     data["actif"] = "OUI"
-    insert_hybrid("sku_conditionnement", data)
+    _confirmed(insert_hybrid("sku_conditionnement", data), "Création SKU")
+    return data["sku_id"]
 
 def add_client(data: dict):
     df = get_dataframe("Clients")
     exist_ids = df["client_id"].tolist() if not df.empty else []
     data["client_id"] = generate_unique_id("CLI", exist_ids)
     data["actif"] = "OUI"
-    insert_hybrid("clients", data)
+    _confirmed(insert_hybrid("clients", data), "Création client")
+    return data["client_id"]
 
 # ==========================================
 # GESTION DES UTILISATEURS ET PERMISSIONS
@@ -90,7 +159,12 @@ def add_client(data: dict):
 
 def get_users() -> pd.DataFrame:
     """Récupère la liste des utilisateurs."""
-    return pd.DataFrame(fetch_data("users"))
+    # Projeter explicitement les colonnes non sensibles, sans télécharger hash_mdp.
+    response = (get_supabase_client().table("users")
+                .select("user_id,nom,login,role,actif").execute())
+    if not isinstance(response.data, list):
+        raise RuntimeError("Annuaire utilisateurs indisponible")
+    return pd.DataFrame(response.data)
 
 def add_user(nom: str, login: str, mot_de_passe_clair: str, role: str):
     """Crée un utilisateur, hache son mot de passe et l'enregistre."""
@@ -101,8 +175,7 @@ def add_user(nom: str, login: str, mot_de_passe_clair: str, role: str):
     nouveau_id = generate_unique_id("USR", exist_ids)
 
     # Sécurisation du mot de passe
-    sel = bcrypt.gensalt()
-    hash_mdp = bcrypt.hashpw(mot_de_passe_clair.encode('utf-8'), sel).decode('utf-8')
+    hash_mdp = hash_password(mot_de_passe_clair)
 
     # Respect du schéma : user_id, nom, login, hash_mdp, role, actif
     data_user = {
@@ -114,7 +187,7 @@ def add_user(nom: str, login: str, mot_de_passe_clair: str, role: str):
         "actif": "OUI"
     }
 
-    insert_hybrid("users", data_user)
+    _confirmed(insert_hybrid("users", data_user), "Création utilisateur")
     return nouveau_id
 
 def get_permissions() -> pd.DataFrame:
@@ -131,13 +204,13 @@ def add_permission(role: str, module: str, lecture: str, ecriture: str):
         "ecriture": ecriture
     }
 
-    insert_hybrid("permissions", data_perm)
+    _confirmed(insert_hybrid("permissions", data_perm), "Création permission")
+    return True
 
 def get_audit_logs() -> pd.DataFrame:
     """Récupère l'historique des actions (logs) classé du plus récent au plus ancien."""
-    df = pd.DataFrame(fetch_data("logs"))
-    if not df.empty and "date_action" in df.columns:
-        # Conversion en format date et tri décroissant
-        df["date_action"] = pd.to_datetime(df["date_action"])
-        df = df.sort_values(by="date_action", ascending=False)
+    df = pd.DataFrame(fetch_data("audit_trail"))
+    if not df.empty and "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.sort_values(by="timestamp", ascending=False)
     return df

@@ -10,7 +10,7 @@ from config.roles import has_permission
 from core.listes_service import get_liste, liste_to_dict
 from core.db_service import fetch_data, insert_hybrid, update_hybrid
 from modules.admin.service import (
-    get_dataframe, add_fournisseur, add_matiere_premiere,
+    get_dataframe, EDITABLE_FIELDS, add_fournisseur, add_matiere_premiere,
     add_produit, add_sku, add_client, sauvegarder_modifications,
     add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
@@ -29,6 +29,22 @@ def get_opts(liste_code: str, fallback: list) -> list:
     """Extrait les clés de la liste de référence, ou utilise le fallback si vide."""
     res = liste_to_dict(get_liste(liste_code))
     return [str(k) for k in res.keys()] if res else fallback
+
+
+def _creation_confirmee(operation, data: dict, label: str) -> bool:
+    """Affiche le succès seulement après réponse positive du service."""
+    try:
+        identifiant = operation(data)
+    except (ValueError, RuntimeError, PermissionError):
+        st.error("Enregistrement non confirmé. Vérifiez Supabase avant tout nouvel essai.")
+        return False
+    if not isinstance(identifiant, str) or not identifiant:
+        st.error("Réponse de création invalide ; vérifiez Supabase.")
+        return False
+    st.success(f"{label} enregistré dans Supabase ({identifiant}).")
+    st.cache_data.clear()
+    st.rerun()
+    return True
 
 
 def gerer_listes_reference():
@@ -74,7 +90,9 @@ def gerer_listes_reference():
                         "actif": "OUI"
                     }
                     try:
-                        insert_hybrid("listes_reference", data_nouvel_element)
+                        result = insert_hybrid("listes_reference", data_nouvel_element)
+                        if not isinstance(result, list) or len(result) != 1:
+                            raise RuntimeError("Ajout non confirmé : vérifier Supabase")
                         st.success(f"Élément '{val_libelle}' ajouté avec succès !")
                         st.cache_data.clear()
                         st.rerun()
@@ -102,7 +120,10 @@ def gerer_listes_reference():
                     )
 
                     if nouveau_statut != statut_actuel:
-                        update_hybrid("listes_reference", "id", str(row.get('id')), {"actif": nouveau_statut})
+                        result = update_hybrid("listes_reference", "id", str(row.get('id')), {"actif": nouveau_statut})
+                        if not isinstance(result, list) or len(result) != 1:
+                            st.error("Modification non confirmée dans Supabase")
+                            return
                         st.toast(f"Statut mis à jour pour {row.get('valeur_libelle')}")
                         st.cache_data.clear()
                         st.rerun()
@@ -145,6 +166,7 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
     st.data_editor(
         df,
         key=editor_key,
+        disabled=[col for col in df.columns if col not in EDITABLE_FIELDS[sheet_name]],
         column_config=config,
         use_container_width=True,
         hide_index=True,
@@ -155,15 +177,21 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
 
     if changes:
         st.warning(f"⚠️ {len(changes)} ligne(s) modifiée(s) en attente de sauvegarde.")
+        if len(changes) > 1:
+            st.info("Pour éviter les enregistrements partiels, modifiez et enregistrez une seule ligne à la fois.")
         if st.button(f"💾 Enregistrer les modifications ({sheet_name})", type="primary", key=f"save_{sheet_name}"):
             with st.spinner("Mise à jour dans Google Sheets/Supabase..."):
-                success = sauvegarder_modifications(sheet_name, id_col, df, changes)
+                try:
+                    success = sauvegarder_modifications(sheet_name, id_col, df, changes)
+                except (ValueError, RuntimeError) as exc:
+                    st.error(str(exc))
+                    return
                 if success:
-                    st.success("Modifications enregistrées avec succès !")
+                    st.success("Modification confirmée dans Supabase.")
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error("Une erreur est survenue lors de l'enregistrement.")
+                    st.error("Modification non confirmée dans Supabase.")
 
 
 def show_admin_page():
@@ -223,16 +251,13 @@ def show_admin_page():
 
                 if st.button("Enregistrer le client", type="primary", key="btn_save_client"):
                     if nom:
-                        add_client({
+                        _creation_confirmee(add_client, {
                             "nom": nom, "categorie_client": cat, "type_client": type_c,
                             "pays": pays, "wilaya": wilaya_aj, "adresse": adresse,
                             "rc": rc, "nif": nif, "nis": nis,
                             "nom_contact": nom_contact, "poste_contact": poste_contact,
                             "mobile_contact": mobile_contact, "email_contact": email_contact
-                        })
-                        st.success(f"Client {nom} ajouté.")
-                        st.cache_data.clear()
-                        st.rerun()
+                        }, "Client")
                     else:
                         st.error("Le nom est obligatoire.")
 
@@ -278,16 +303,13 @@ def show_admin_page():
 
                 if st.button("Enregistrer le fournisseur", type="primary", key="btn_save_fou"):
                     if nom:
-                        add_fournisseur({
+                        _creation_confirmee(add_fournisseur, {
                             "nom": nom, "categorie": categorie, "type_entreprise": type_ent,
                             "pays": pays, "wilaya": wilaya_aj, "delai_appro_jours": delai,
                             "rc": rc, "nif": nif, "nis": nis,
                             "nom_contact": nom_contact, "poste_contact": poste_contact,
                             "mobile_contact": mobile_contact, "email_contact": email_contact
-                        })
-                        st.success("Fournisseur ajouté.")
-                        st.cache_data.clear()
-                        st.rerun()
+                        }, "Fournisseur")
                     else:
                         st.error("Le nom du fournisseur est obligatoire.")
 
@@ -330,16 +352,13 @@ def show_admin_page():
 
                     if st.form_submit_button("Enregistrer", type="primary"):
                         if nom:
-                            add_matiere_premiere({
+                            _creation_confirmee(add_matiere_premiere, {
                                 "nom": nom, "categorie_mp": cat_mp, "unite_stock": unite,
                                 "origine_pays": origine_pays, "duree_peremption_jours": duree_peremption,
                                 "poids_net": poids_net, "stock_mini": stock_mini, "stock_maxi": stock_maxi,
                                 "hs_code": hs, "taux_dedouanement": taux_dedouanement,
                                 "lien_fiche_technique": lien_ft, "lien_fiche_securite": lien_fds
-                            })
-                            st.success("Matière première ajoutée.")
-                            st.cache_data.clear()
-                            st.rerun()
+                            }, "Matière première")
                         else:
                             st.error("La désignation est obligatoire.")
 
@@ -364,10 +383,7 @@ def show_admin_page():
 
                     if st.form_submit_button("Enregistrer", type="primary"):
                         if nom:
-                            add_produit({"nom": nom, "categorie_pf": cat_pf, "unite_production": unite})
-                            st.success("Produit ajouté.")
-                            st.cache_data.clear()
-                            st.rerun()
+                            _creation_confirmee(add_produit, {"nom": nom, "categorie_pf": cat_pf, "unite_production": unite}, "Produit")
                         else:
                             st.error("Le nom du produit est obligatoire.")
 
@@ -413,14 +429,11 @@ def show_admin_page():
                         facteur = c6.number_input("Facteur de conversion (vs unité prod)", min_value=0.001, value=1.0, step=0.1)
 
                         if st.form_submit_button("Enregistrer", type="primary"):
-                            add_sku({
+                            _creation_confirmee(add_sku, {
                                 "pf_id": pf_id, "format": format_val, "prix_vente_defaut": prix,
                                 "emballage_mp_id": emballage_mp_id, "poids_net": poids_net, "unite_vente": unite,
                                 "facteur_conversion": facteur
-                            })
-                            st.success("SKU ajouté avec succès.")
-                            st.cache_data.clear()
-                            st.rerun()
+                            }, "SKU")
             else:
                 st.warning("Créez d'abord un produit actif.")
 
