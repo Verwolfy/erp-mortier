@@ -158,6 +158,24 @@ _ADMIN_ROLES = frozenset({"ADMIN", "ADMINISTRATEUR", "SUPERADMIN"})
 _ACTIVE_VALUES = frozenset({"oui", "o", "true", "1", "actif", "active", "yes", "y"})
 _LOG = logging.getLogger(__name__)
 
+# Les referentiels servent aussi les modules metier : acces explicites par table.
+# Pas de droit general pour Dashboards (agregats a securiser separement).
+_SHARED_READ_MODULES = {
+    "fournisseurs": ("Administration", "Achats", "Finance"),
+    "matieres_premieres": ("Administration", "Achats", "Stocks", "Production"),
+    "produits": ("Administration", "Stocks", "Production", "Ventes"),
+    "sku_conditionnement": ("Administration", "Stocks", "Production", "Ventes"),
+    "clients": ("Administration", "Ventes", "CRM", "Finance"),
+    "contrats": ("Administration", "Ventes", "CRM"),
+    "grilles_tarifaires": ("Administration", "Ventes", "CRM"),
+    "compteurs": ("Administration", "Ventes"),
+    "listes_reference": ("Administration", "Achats", "Stocks",
+                         "Production", "Ventes", "CRM", "Finance", "RH"),
+}
+
+# Les lectures generiques ne doivent jamais exposer les empreintes des mots de passe.
+_READ_PROJECTIONS = {"users": "user_id,nom,login,role,actif"}
+
 
 def _known_columns(table_name: str) -> set[str]:
     config = SCHEMA_CONFIG.get(table_name)
@@ -238,6 +256,69 @@ def check_server_permission(table_name: str) -> bool:
         return False
 
 
+def check_server_read_permission(table_name: str) -> bool:
+    """Verifie a chaque lecture le compte Supabase actif et le droit RBAC frais.
+
+    L'acces aux referentiels partages est limite aux modules explicitement
+    listes ci-dessus ; une erreur reseau ou une matrice invalide refuse l'acces.
+    """
+    if table_name not in SCHEMA_CONFIG:
+        return False
+    try:
+        state = st.session_state
+        if state.get("authenticated") is not True:
+            return False
+        session_user = state.get("user")
+        if not isinstance(session_user, dict):
+            return False
+        user_id = session_user.get("user_id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            return False
+
+        response = (get_supabase_client().table("users")
+                    .select("user_id,role,actif")
+                    .eq("user_id", user_id).limit(1).execute())
+        records = response.data or []
+        if len(records) != 1:
+            return False
+        account = records[0]
+        if not isinstance(account, dict) or account.get("user_id") != user_id:
+            return False
+        if not _is_active(account.get("actif")):
+            return False
+        role = str(account.get("role") or "").strip()
+        if not role:
+            return False
+        if role.upper() in _ADMIN_ROLES:
+            return True
+
+        modules = _SHARED_READ_MODULES.get(table_name)
+        if modules is None:
+            module = SCHEMA_CONFIG[table_name]["module"]
+            modules = (("Administration",) if module in ("referentiels", "logs")
+                       else (module.capitalize(),))
+        return any(has_permission(role, module, "lecture") is True
+                   for module in modules)
+    except Exception as exc:
+        _LOG.warning("Verification de droits de lecture impossible (%s)",
+                     type(exc).__name__)
+        return False
+
+
+def _require_read_permission(table_name: str) -> None:
+    if not check_server_read_permission(table_name):
+        raise PermissionError(f"Droit de lecture refuse pour {table_name!r}")
+
+
+def _read_projection(table_name: str) -> str:
+    return _READ_PROJECTIONS.get(table_name, "*")
+
+
+def _readable_columns(table_name: str) -> set[str]:
+    projection = _READ_PROJECTIONS.get(table_name)
+    return set(projection.split(",")) if projection else _known_columns(table_name)
+
+
 def _audit_details(table_name: str, action: str, data: dict[str, Any],
                    *, id_col: Optional[str] = None, target_id: Any = None) -> str:
     """Audit de métadonnées, jamais de valeurs métier ou de mots de passe."""
@@ -274,8 +355,10 @@ def log_action(action: str, table_name: str, details: str) -> None:
 
 def fetch_data(table_name: str) -> list:
     """Lecture historique (compatibilité). Attention : pagination Supabase non gérée."""
+    _require_read_permission(table_name)
     try:
-        response = get_supabase_client().table(table_name).select("*").execute()
+        response = (get_supabase_client().table(table_name)
+                    .select(_read_projection(table_name)).execute())
         return response.data or []
     except Exception as exc:
         log_error(f"Erreur de lecture Supabase sur la table {table_name}", type(exc).__name__)
@@ -284,8 +367,12 @@ def fetch_data(table_name: str) -> list:
 
 def fetch_data_filtered(table_name: str, filter_column: str, filter_value: str) -> list:
     """Filtre serveur, API conservée pour compatibilité avec les vues existantes."""
+    _require_read_permission(table_name)
+    if filter_column not in _readable_columns(table_name):
+        raise ValueError(f"Colonne de filtre inconnue : {filter_column}")
     try:
-        response = (get_supabase_client().table(table_name).select("*")
+        response = (get_supabase_client().table(table_name)
+                    .select(_read_projection(table_name))
                     .eq(filter_column, filter_value).execute())
         return response.data or []
     except Exception as exc:
@@ -296,8 +383,12 @@ def fetch_data_filtered(table_name: str, filter_column: str, filter_value: str) 
 def fetch_data_by_date_range(table_name: str, date_column: str,
                              start_date: str, end_date: str) -> list:
     """Filtre serveur par dates ; colonnes TEXT supposées ISO-8601 ordonnables."""
+    _require_read_permission(table_name)
+    if date_column not in _readable_columns(table_name):
+        raise ValueError(f"Colonne de date inconnue : {date_column}")
     try:
-        response = (get_supabase_client().table(table_name).select("*")
+        response = (get_supabase_client().table(table_name)
+                    .select(_read_projection(table_name))
                     .gte(date_column, start_date).lte(date_column, end_date).execute())
         return response.data or []
     except Exception as exc:
@@ -312,9 +403,10 @@ def fetch_data_paginated(table_name: str, *, page_size: int = 500,
     Une lecture trop volumineuse provoque une erreur, au lieu de tronquer les
     résultats silencieusement. Une colonne de tri stable est indispensable.
     """
+    _require_read_permission(table_name)
     if not 1 <= page_size <= 1000 or max_rows < 1:
         raise ValueError("page_size doit être entre 1 et 1000 et max_rows positif")
-    valid_cols = _known_columns(table_name)
+    valid_cols = _readable_columns(table_name)
     if order_column is None:
         order_column = _PRIMARY_KEY_OVERRIDES.get(table_name, SCHEMA_CONFIG[table_name]["cols"][0])
     if order_column not in valid_cols:
@@ -324,7 +416,8 @@ def fetch_data_paginated(table_name: str, *, page_size: int = 500,
     while len(rows) <= max_rows:
         count = min(page_size, max_rows + 1 - len(rows))
         start = len(rows)
-        page = (get_supabase_client().table(table_name).select("*")
+        page = (get_supabase_client().table(table_name)
+                .select(_read_projection(table_name))
                 .order(order_column).range(start, start + count - 1).execute())
         batch = page.data or []
         rows.extend(batch)

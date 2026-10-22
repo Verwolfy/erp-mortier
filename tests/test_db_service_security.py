@@ -135,7 +135,10 @@ def env(monkeypatch):
     conf = types.ModuleType("config")
     conf.__path__ = []
     roles = types.ModuleType("config.roles")
-    roles.has_permission = lambda *a: tracker["perms"].append(a) or (a == ("Magasinier", "Stocks", "ecriture"))
+    roles.has_permission = lambda *a: tracker["perms"].append(a) or (a in (
+        ("Magasinier", "Stocks", "ecriture"),
+        ("Magasinier", "Stocks", "lecture"),
+    ))
     for name, obj in {"streamlit": st, "supabase": supabase, "core": core,
                       "core.sheets_service": sheets, "core.logger": logger,
                       "core.utils": utils, "config": conf, "config.roles": roles}.items():
@@ -385,6 +388,7 @@ def test_legacy_audit_details_are_hashed_not_copied(env):
 
 def test_pagination_default_order_for_permissions_uses_actual_pk(env):
     module, db, _, _ = env
+    db.tables["users"][0]["role"] = "ADMIN"
     db.tables["permissions"] = [{"permission_id": 2, "role": "admin"},
                                  {"permission_id": 1, "role": "admin"}]
     out = module.fetch_data_paginated("permissions", page_size=1)
@@ -405,3 +409,148 @@ def test_fake_structured_audit_cannot_inject_secret(env):
     module, db, _, _ = env
     module.log_action("A", "users", "operation=INSERT; table=users; colonnes=[user_id]; password=topsecret")
     assert "topsecret" not in db.tables["audit_trail"][0]["detail"]
+
+
+# --- Controle des lectures cote serveur ---
+
+@pytest.mark.parametrize("lecteur", [
+    lambda m: m.fetch_data("factures"),
+    lambda m: m.fetch_data_filtered("factures", "client_id", "C1"),
+    lambda m: m.fetch_data_by_date_range("factures", "date", "2026-01-01", "2026-12-31"),
+    lambda m: m.fetch_data_paginated("factures"),
+])
+def test_unauthorized_read_denied_before_target_query(env, lecteur):
+    module, db, _, _ = env
+    with pytest.raises(PermissionError, match="lecture refuse"):
+        lecteur(module)
+    assert not any(table == "factures" for table, _, _ in db.calls)
+
+
+@pytest.mark.parametrize("lecteur", [
+    lambda m: m.fetch_data("stock_actuel"),
+    lambda m: m.fetch_data_filtered("stock_actuel", "mp_id", "MP-1"),
+    lambda m: m.fetch_data_by_date_range("mouvements", "date", "2026-01-01", "2026-12-31"),
+    lambda m: m.fetch_data_paginated("stock_actuel"),
+])
+def test_active_stock_role_read_authorized(env, lecteur):
+    module, db, _, trace = env
+    lecteur(module)
+    assert any(t[2] == "lecture" and t[1] == "Stocks" for t in trace["perms"])
+    assert any(table != "users" and action == "select" for table, action, _ in db.calls)
+
+
+def test_read_rejects_unauthenticated_even_for_admin(env):
+    module, db, st, _ = env
+    db.tables["users"][0]["role"] = "ADMIN"
+    st.session_state["authenticated"] = False
+    with pytest.raises(PermissionError):
+        module.fetch_data("clients")
+    assert not db.calls
+
+
+def test_read_refuses_inactive_or_missing_account(env):
+    module, db, _, _ = env
+    db.tables["users"][0]["actif"] = "NON"
+    with pytest.raises(PermissionError):
+        module.fetch_data("stock_actuel")
+    db.tables["users"].clear()
+    with pytest.raises(PermissionError):
+        module.fetch_data_paginated("stock_actuel")
+    assert not any(table == "stock_actuel" for table, _, _ in db.calls)
+
+
+def test_role_altered_in_session_cannot_grant_read(env):
+    module, db, st, _ = env
+    st.session_state["user"]["role"] = "ADMIN"
+    with pytest.raises(PermissionError):
+        module.fetch_data("factures")
+    assert not any(table == "factures" for table, _, _ in db.calls)
+
+
+def test_read_role_is_fetched_fresh_each_time(env):
+    module, db, _, _ = env
+    with pytest.raises(PermissionError):
+        module.fetch_data("factures")
+    db.tables["users"][0]["role"] = "ADMIN"
+    assert module.fetch_data("factures") == []
+    db.tables["users"][0]["actif"] = "NON"
+    with pytest.raises(PermissionError):
+        module.fetch_data("factures")
+
+
+def test_read_denied_on_user_db_failure(env):
+    module, db, _, _ = env
+    db.fail = ("users", "select")
+    with pytest.raises(PermissionError):
+        module.fetch_data("stock_actuel")
+    assert not any(table == "stock_actuel" for table, _, _ in db.calls)
+
+
+def test_read_denied_on_missing_role_and_permissions_error(env):
+    module, db, _, _ = env
+    db.tables["users"][0].pop("role")
+    with pytest.raises(PermissionError):
+        module.fetch_data("stock_actuel")
+    db.tables["users"][0]["role"] = "Magasinier"
+    module.has_permission = lambda *a: (_ for _ in ()).throw(RuntimeError("private"))
+    with pytest.raises(PermissionError):
+        module.fetch_data("stock_actuel")
+
+
+def test_unknown_read_table_rejected_without_target_query(env):
+    module, db, _, _ = env
+    with pytest.raises(PermissionError):
+        module.fetch_data("secret_data")
+    assert not db.calls
+
+
+def test_read_rejects_invalid_filter_and_date_columns(env):
+    module, db, _, _ = env
+    with pytest.raises(ValueError, match="filtre"):
+        module.fetch_data_filtered("stock_actuel", "secret_col", "yes")
+    with pytest.raises(ValueError, match="date"):
+        module.fetch_data_by_date_range("mouvements", "secret_col", "1", "2")
+    assert not any(table != "users" for table, _, _ in db.calls)
+
+
+def test_shared_clients_read_for_ventes_not_rh(env):
+    module, db, _, _ = env
+    db.tables["users"][0]["role"] = "Commercial"
+    db.tables["clients"] = [{"client_id": "C1", "nom": "Client"}]
+    module.has_permission = lambda role, section, operation: (
+        role, section, operation) == ("Commercial", "Ventes", "lecture")
+    assert module.fetch_data("clients")[0]["client_id"] == "C1"
+    with pytest.raises(PermissionError):
+        module.fetch_data("fiches_de_paie")
+    with pytest.raises(PermissionError):
+        module.fetch_data("users")
+
+
+def test_shared_references_can_be_read_with_non_admin_module(env):
+    module, db, _, _ = env
+    db.tables["users"][0]["role"] = "Commercial"
+    db.tables["listes_reference"] = [{"id": 3, "liste_code": "A"}]
+    module.has_permission = lambda role, section, operation: (
+        role, section, operation) == ("Commercial", "Ventes", "lecture")
+    assert module.fetch_data("listes_reference")[0]["id"] == 3
+
+
+def test_read_user_projection_omits_password_hash(env):
+    module, db, _, _ = env
+    db.tables["users"][0]["role"] = "ADMIN"
+    assert "hash_mdp" not in module.fetch_data("users")[0]
+    assert "hash_mdp" not in module.fetch_data_filtered("users", "user_id", "U1")[0]
+    assert "hash_mdp" not in module.fetch_data_paginated("users")[0]
+    assert all("hash_mdp" not in row for row in module.fetch_data("users"))
+    with pytest.raises(ValueError):
+        module.fetch_data_filtered("users", "hash_mdp", "secret")
+    with pytest.raises(ValueError):
+        module.fetch_data_paginated("users", order_column="hash_mdp")
+
+
+def test_admin_can_read_audit_but_standard_role_cannot(env):
+    module, db, _, _ = env
+    with pytest.raises(PermissionError):
+        module.fetch_data("audit_trail")
+    db.tables["users"][0]["role"] = "ADMIN"
+    assert module.fetch_data("audit_trail") == []
