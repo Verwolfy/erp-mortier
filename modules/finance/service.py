@@ -18,6 +18,7 @@ from modules.stocks.service import _stock_rpc_client
 
 LIMIT = Decimal("1e15")
 CENT = Decimal("0.01")
+_ACCOUNT_TYPES = frozenset({"banque", "caisse", "tiers client", "tiers fournisseur"})
 
 
 class FinanceOperationError(RuntimeError):
@@ -112,9 +113,12 @@ def get_ecritures_comptables() -> pd.DataFrame:
 
 def creer_compte(nom_compte: str, type_compte: str, numero_compte: str,
                  solde_initial: float, *, operation_id: str | None = None) -> str:
+    account_type = _text(type_compte, "Type compte")
+    if account_type.casefold() not in _ACCOUNT_TYPES:
+        raise ValueError("Type de compte non pris en charge")
     payload = {
         "nom_compte": _text(nom_compte, "Nom compte"),
-        "type_compte": _text(type_compte, "Type compte"),
+        "type_compte": account_type,
         "numero_compte": _text(numero_compte, "Numéro compte"),
         "solde_initial": format(_amount(solde_initial, "Solde initial", allow_zero=True,
                                          allow_negative=True), "f"),

@@ -1,4 +1,6 @@
--- Préparation TEST UNIQUEMENT, jamais appliquer directement en production.
+-- MIGRATION 006 FINANCE : installation contrôlée après sauvegarde, tests obligatoires.
+-- Ne pas activer de règlements/lettrages réels dans Streamlit avant validation SQL.
+-- Ce module ne constitue pas une comptabilité générale complète.
 -- Fonctions appelées via la clé service_role dédiée côté Streamlit.
 -- Les privilèges sur la clé de service et la couche applicative sont critiques.
 BEGIN;
@@ -16,6 +18,17 @@ CREATE TABLE IF NOT EXISTS public.erp_finance_outbox (
     created_at timestamptz NOT NULL DEFAULT now(),
     synced_at timestamptz
 );
+
+-- Ne pas exposer la journalisation des opérations financières aux sessions clientes.
+ALTER TABLE public.erp_finance_operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.erp_finance_outbox ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS erp_finance_operations_service_only ON public.erp_finance_operations;
+CREATE POLICY erp_finance_operations_service_only
+    ON public.erp_finance_operations FOR ALL TO service_role USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS erp_finance_outbox_service_only ON public.erp_finance_outbox;
+CREATE POLICY erp_finance_outbox_service_only
+    ON public.erp_finance_outbox FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION public.erp_finance_transaction(
     p_action text, p_operation_id text, p_payload jsonb
@@ -35,6 +48,8 @@ DECLARE
     v_letter_id text;
     v_cash_id text;
     v_counter_id text;
+    v_cash_type text;
+    v_counter_type text;
     v_amount numeric;
     v_balance numeric;
     v_applied numeric;
@@ -67,8 +82,10 @@ BEGIN
            OR nullif(btrim(p_payload->>'type_compte'),'') IS NULL
            OR length(p_payload->>'type_compte')>200
            OR nullif(btrim(p_payload->>'numero_compte'),'') IS NULL
-           OR length(p_payload->>'numero_compte')>200 THEN
-            RAISE EXCEPTION 'Informations de compte invalides' USING ERRCODE='22023';
+           OR length(p_payload->>'numero_compte')>200
+           OR lower(btrim(p_payload->>'type_compte')) NOT IN
+              ('banque', 'caisse', 'tiers client', 'tiers fournisseur') THEN
+            RAISE EXCEPTION 'Informations ou type de compte invalides' USING ERRCODE='22023';
         END IF;
         v_amount := (p_payload->>'solde_initial')::numeric;
         IF v_amount IS NULL OR v_amount::text IN ('NaN','Infinity','-Infinity')
@@ -115,6 +132,25 @@ BEGIN
             ORDER BY compte_id FOR UPDATE
         ) locked_accounts;
         IF v_count<>2 THEN RAISE EXCEPTION 'Un compte est inexistant ou inactif' USING ERRCODE='23503'; END IF;
+        SELECT lower(btrim(type_compte)) INTO v_cash_type FROM public.comptes WHERE compte_id=v_cash_id;
+        SELECT lower(btrim(type_compte)) INTO v_counter_type FROM public.comptes WHERE compte_id=v_counter_id;
+        IF v_cash_type IS NULL OR v_cash_type NOT IN ('banque', 'caisse') THEN
+             RAISE EXCEPTION 'Le compte de trésorerie doit être une Banque ou Caisse' USING ERRCODE='23514';
+         END IF;
+        IF v_counter_type IS NULL OR
+            (v_direction='ENCAISSEMENT' AND v_counter_type NOT IN ('tiers client','client','clients')) OR
+            (v_direction='DECAISSEMENT' AND v_counter_type NOT IN ('tiers fournisseur','fournisseur','fournisseurs')) THEN
+             RAISE EXCEPTION 'Type de compte de contrepartie incompatible avec le flux' USING ERRCODE='23514';
+         END IF;
+        -- Le partenaire doit exister et être actif, indépendamment des contrôles Streamlit.
+        IF v_direction='ENCAISSEMENT' THEN
+             PERFORM 1 FROM public.clients
+               WHERE client_id=p_payload->>'partenaire_id' AND actif='OUI';
+         ELSE
+             PERFORM 1 FROM public.fournisseurs
+               WHERE fournisseur_id=p_payload->>'partenaire_id' AND actif='OUI';
+         END IF;
+        IF NOT FOUND THEN RAISE EXCEPTION 'Partenaire inexistant ou inactif' USING ERRCODE='23503'; END IF;
         -- Empêche un deuxième règlement portant la même référence bancaire
         -- sur un même compte, même si une interface recrée un operation_id.
         -- Les paiements par espèces doivent eux aussi recevoir une référence unique.
@@ -186,7 +222,7 @@ BEGIN
             SELECT * INTO v_invoice FROM public.factures_fournisseurs
               WHERE facture_fournisseur_id=v_doc_id FOR UPDATE;
             IF NOT FOUND OR v_invoice.fournisseur_id IS DISTINCT FROM v_payment.partenaire_id
-               OR v_invoice.statut_paiement IN ('ANNULE','REJETE') THEN
+               OR upper(btrim(coalesce(v_invoice.statut_paiement,''))) IN ('','ANNULE','REJETE','PAYEE') THEN
                 RAISE EXCEPTION 'Facture fournisseur non payable ou fournisseur différent' USING ERRCODE='23514';
             END IF;
         END IF;
