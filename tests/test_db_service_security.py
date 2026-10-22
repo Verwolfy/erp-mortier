@@ -214,49 +214,53 @@ def test_failure_to_check_account_denies_write(env):
 
 
 def test_unknown_table_rejected_on_insert(env):
-    module, _, _, _ = env
-    with pytest.raises(ValueError):
+    module, db, _, _ = env
+    with pytest.raises(PermissionError, match="INSERT direct interdit"):
         module.insert_hybrid("not_present", {"mp_id": "A"})
+    assert not any(action == "insert" for _, action, _ in db.calls)
 
 
 def test_unknown_fields_rejected_on_update(env):
     module, _, _, _ = env
     with pytest.raises(ValueError):
-        module.update_hybrid("stock_actuel", "mp_id", "MP-1", {"does_not_exist": 1})
+        module.update_hybrid("clients", "client_id", "CLI-1", {"does_not_exist": 1})
 
 
 def test_empty_update_rejected(env):
     module, _, _, _ = env
     with pytest.raises(ValueError):
-        module.update_hybrid("stock_actuel", "mp_id", "MP-1", {})
+        module.update_hybrid("clients", "client_id", "CLI-1", {})
 
 
 def test_invalid_target_id_and_column_rejected(env):
     module, _, _, _ = env
-    with pytest.raises(ValueError):
-        module.update_hybrid("stock_actuel", "bad", "MP-1", {"quantite_disponible": 2})
-    with pytest.raises(ValueError):
-        module.update_hybrid("stock_actuel", "mp_id", "", {"quantite_disponible": 2})
+    with pytest.raises(ValueError, match="primaire"):
+        module.update_hybrid("clients", "bad", "CLI-1", {"nom": "test"})
+    with pytest.raises(ValueError, match="target_id"):
+        module.update_hybrid("clients", "client_id", "", {"nom": "test"})
 
 
 def test_insert_success_synced_and_audited_without_values(env):
     module, db, _, tracker = env
-    payload = {"mp_id": "MP-2", "quantite_disponible": 9}
-    result = module.insert_hybrid("stock_actuel", payload)
+    db.tables["users"][0]["role"] = "ADMIN"
+    payload = {"client_id": "CLI-2", "nom": "Client prive 9"}
+    result = module.insert_hybrid("clients", payload)
     assert result == [payload]
     assert len(tracker["rows"]) == 1
     audit = db.tables["audit_trail"][0]
     assert audit["action"] == "INSERT"
-    assert "9" not in audit["detail"]
-    assert "MP-2" not in audit["detail"]
+    assert "Client prive 9" not in audit["detail"]
+    assert "CLI-2" not in audit["detail"]
 
 
 def test_update_success_and_no_leaky_audit(env):
     module, db, _, tracker = env
-    result = module.update_hybrid("stock_actuel", "mp_id", "MP-1", {"quantite_disponible": 55})
-    assert result[0]["quantite_disponible"] == 55
+    db.tables["users"][0]["role"] = "ADMIN"
+    db.tables["clients"] = [{"client_id": "CLI-1", "nom": "Avant"}]
+    result = module.update_hybrid("clients", "client_id", "CLI-1", {"nom": "Secret 55"})
+    assert result[0]["nom"] == "Secret 55"
     assert tracker["updates"]
-    assert "55" not in db.tables["audit_trail"][0]["detail"]
+    assert "Secret 55" not in db.tables["audit_trail"][0]["detail"]
 
 
 def test_sensitive_user_never_mirrored_to_sheets(env):
@@ -268,12 +272,14 @@ def test_sensitive_user_never_mirrored_to_sheets(env):
     assert "SUPER_PRIVATE_HASH" not in repr(db.tables["audit_trail"])
 
 
-def test_user_update_not_mirrored(env):
+def test_user_update_direct_blocked_even_for_admin(env):
     module, db, _, tracker = env
     db.tables["users"][0]["role"] = "ADMIN"
-    assert module.update_hybrid("users", "user_id", "U1", {"hash_mdp": "NEW_HASH"})
+    with pytest.raises(PermissionError, match="UPDATE direct interdit"):
+        module.update_hybrid("users", "user_id", "U1", {"hash_mdp": "NEW_HASH"})
     assert not tracker["updates"]
-    assert "NEW_HASH" not in repr(db.tables["audit_trail"])
+    assert "NEW_HASH" not in repr(db.tables)
+    assert not any(table == "users" and action == "update" for table, action, _ in db.calls)
 
 
 def test_no_write_when_denied(env):
@@ -284,18 +290,21 @@ def test_no_write_when_denied(env):
     assert not tracker["rows"]
 
 
-def test_db_write_failure_returns_none_no_sync(env):
+def test_db_write_failure_raises_uncertain_no_sync(env):
     module, db, _, tracker = env
-    db.fail = ("stock_actuel", "insert")
-    assert module.insert_hybrid("stock_actuel", {"mp_id": "Z"}) is None
+    db.tables["users"][0]["role"] = "ADMIN"
+    db.fail = ("clients", "insert")
+    with pytest.raises(RuntimeError, match="non confirme"):
+        module.insert_hybrid("clients", {"client_id": "CLI-Z"})
     assert not tracker["rows"]
     assert "audit_trail" not in db.tables
 
 
 def test_sheets_failure_does_not_cancel_supabase_write(env, monkeypatch):
     module, db, _, tracker = env
+    db.tables["users"][0]["role"] = "ADMIN"
     monkeypatch.setattr(module, "append_rows_batch", lambda *a: (_ for _ in ()).throw(RuntimeError("secret data")))
-    assert module.insert_hybrid("stock_actuel", {"mp_id": "Z"})
+    assert module.insert_hybrid("clients", {"client_id": "CLI-Z"})
     assert tracker["errors"]
     assert "secret data" not in repr(tracker["errors"])
     assert db.tables["audit_trail"]
@@ -303,14 +312,19 @@ def test_sheets_failure_does_not_cancel_supabase_write(env, monkeypatch):
 
 def test_audit_failure_does_not_cancel_write(env):
     module, db, _, _ = env
+    db.tables["users"][0]["role"] = "ADMIN"
     db.fail = ("audit_trail", "insert")
-    assert module.insert_hybrid("stock_actuel", {"mp_id": "Z"})
+    assert module.insert_hybrid("clients", {"client_id": "CLI-Z"})
+    assert any(row["client_id"] == "CLI-Z" for row in db.tables["clients"])
 
 
-def test_update_missing_returns_empty_and_no_sync(env):
-    module, _, _, tracker = env
-    assert module.update_hybrid("stock_actuel", "mp_id", "not-found", {"quantite_disponible": 12}) == []
+def test_update_missing_is_uncertain_and_no_sync(env):
+    module, db, _, tracker = env
+    db.tables["users"][0]["role"] = "ADMIN"
+    with pytest.raises(RuntimeError, match="non verifiable"):
+        module.update_hybrid("clients", "client_id", "not-found", {"nom": "Client test"})
     assert not tracker["updates"]
+    assert "audit_trail" not in db.tables
 
 
 def test_reads_existing_signatures(env):
@@ -377,11 +391,14 @@ def test_pagination_default_order_for_permissions_uses_actual_pk(env):
     assert [x["permission_id"] for x in out] == [1, 2]
 
 
-def test_logs_table_is_defined_but_not_synced(env):
+def test_logs_table_is_defined_but_direct_insert_blocked(env):
     module, db, _, tracker = env
     db.tables["users"][0]["role"] = "ADMIN"
-    assert module.insert_hybrid("logs", {"user_id": "U1", "action": "test"})
+    assert "logs" in module.SCHEMA_CONFIG
+    with pytest.raises(PermissionError, match="INSERT direct interdit"):
+        module.insert_hybrid("logs", {"user_id": "U1", "action": "test"})
     assert not tracker["rows"]
+    assert "logs" not in db.tables
 
 
 def test_fake_structured_audit_cannot_inject_secret(env):

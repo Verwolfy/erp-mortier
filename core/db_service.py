@@ -110,6 +110,50 @@ _PRIMARY_KEY_OVERRIDES = {
     "audit_trail": "audit_id",
     "erreurs": "erreur_id",
 }
+# Ecritures generiques: SEULEMENT les creations encore utilisees par les modules.
+# Stocks, Achats, Ventes et Finance ecrivent exclusivement via les RPC atomiques.
+# Les recettes et OF planifies restent autorises temporairement : leur
+# atomicite de creation doit etre traitee dans une migration distincte.
+_HYBRID_INSERT_TABLES = frozenset({
+    "fournisseurs", "matieres_premieres", "produits", "sku_conditionnement",
+    "clients", "users", "permissions", "listes_reference",
+    "pipeline", "interactions", "recettes", "lignes_recette",
+    "ordres_fabrication", "employes", "demandes_conges",
+})
+
+# Mises a jour generiques: champs standards de l'editeur Administration,
+# conformes a modules/admin/service.py (correctif ecf30a5).
+_HYBRID_UPDATE_FIELDS = {
+    "fournisseurs": frozenset({
+        "nom", "categorie", "type_entreprise", "adresse", "gps", "pays",
+        "wilaya", "rc", "nif", "nis", "nom_contact", "poste_contact",
+        "email_contact", "mobile_contact", "email_entreprise", "site_web",
+        "telephone_fixe", "delai_appro_jours", "actif",
+    }),
+    "matieres_premieres": frozenset({
+        "nom", "categorie_mp", "origine_pays", "duree_peremption_jours",
+        "fournisseurs_ids", "stock_mini", "stock_maxi", "hs_code",
+        "taux_dedouanement", "lien_fiche_technique", "lien_fiche_securite", "actif",
+    }),
+    "produits": frozenset({"nom", "categorie_pf", "actif"}),
+    "sku_conditionnement": frozenset({"format", "prix_vente_defaut", "actif"}),
+    "clients": frozenset({
+        "nom", "categorie_client", "type_client", "adresse", "gps", "pays",
+        "wilaya", "rc", "nif", "nis", "nom_contact", "poste_contact",
+        "email_contact", "mobile_contact", "email_entreprise", "site_web",
+        "telephone_fixe", "commercial_id", "actif",
+    }),
+    "listes_reference": frozenset({"actif"}),
+}
+_HYBRID_UPDATE_PK = {
+    "fournisseurs": "fournisseur_id",
+    "matieres_premieres": "mp_id",
+    "produits": "pf_id",
+    "sku_conditionnement": "sku_id",
+    "clients": "client_id",
+    "listes_reference": "id",
+}
+
 _ADMIN_ROLES = frozenset({"ADMIN", "ADMINISTRATEUR", "SUPERADMIN"})
 _ACTIVE_VALUES = frozenset({"oui", "o", "true", "1", "actif", "active", "yes", "y"})
 _LOG = logging.getLogger(__name__)
@@ -313,43 +357,63 @@ def _sync_google_sheets_update(table_name: str, id_col: str, target_id: Any,
 
 
 def insert_hybrid(table_name: str, data: dict):
-    """Écrit dans Supabase, puis réplique en best-effort dans Sheets."""
+    """Creation limitee aux tables autorisees. Supabase reste source de verite.
+
+    Une reponse manquante ou une exception SQL est un resultat INCERTAIN :
+    pas de nouvelle operation sans inspection pour eviter les doublons.
+    """
+    if table_name not in _HYBRID_INSERT_TABLES:
+        raise PermissionError(f"INSERT direct interdit sur {table_name!r} ; utiliser la RPC metier")
     _check_write_columns(table_name, data)
     if not check_server_permission(table_name):
-        log_error("Accès Refusé", f"Tentative d'INSERT bloquée sur {table_name}")
-        raise PermissionError(f"Droit d'écriture refusé pour {table_name!r}")
+        log_error("Acces Refuse", f"Tentative d'INSERT bloquee sur {table_name}")
+        raise PermissionError(f"Droit d'ecriture refuse pour {table_name!r}")
     try:
         response = get_supabase_client().table(table_name).insert(data).execute()
-        result = response.data
     except Exception as exc:
         log_error(f"Erreur d'insertion Supabase ({table_name})", type(exc).__name__)
-        return None
-    if result:
-        log_action("INSERT", table_name, _audit_details(table_name, "INSERT", data))
-        _sync_google_sheets_insert(table_name, data)
+        raise RuntimeError(
+            f"INSERT {table_name} non confirme ; verifier Supabase avant de recommencer"
+        ) from exc
+    result = response.data
+    if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+        raise RuntimeError(f"INSERT {table_name} non verifiable ; verifier Supabase")
+    log_action("INSERT", table_name, _audit_details(table_name, "INSERT", data))
+    _sync_google_sheets_insert(table_name, data)
     return result
 
 
 def update_hybrid(table_name: str, id_col: str, target_id: str, updates: dict):
-    """Modifie dans Supabase puis réplique en best-effort dans Sheets."""
+    """UPDATE limite aux PK et aux colonnes de referentiels sans effet stock."""
+    allowed = _HYBRID_UPDATE_FIELDS.get(table_name)
+    if allowed is None:
+        raise PermissionError(f"UPDATE direct interdit sur {table_name!r} ; utiliser la RPC metier")
     _check_write_columns(table_name, updates)
-    if id_col not in _known_columns(table_name):
-        raise ValueError(f"Colonne identifiant inconnue : {id_col}")
+    if id_col != _HYBRID_UPDATE_PK[table_name]:
+        raise ValueError("UPDATE interdit : seul l'identifiant primaire est autorise")
+    forbidden = set(updates) - allowed
+    if forbidden:
+        raise PermissionError(f"UPDATE de colonne protegee interdit : {sorted(forbidden)}")
     if target_id is None or str(target_id).strip() == "":
-        raise ValueError("target_id ne peut pas être vide")
+        raise ValueError("target_id ne peut pas etre vide")
     if not check_server_permission(table_name):
-        log_error("Accès Refusé", f"Tentative d'UPDATE bloquée sur {table_name}")
-        raise PermissionError(f"Droit d'écriture refusé pour {table_name!r}")
+        log_error("Acces Refuse", f"Tentative d'UPDATE bloquee sur {table_name}")
+        raise PermissionError(f"Droit d'ecriture refuse pour {table_name!r}")
     try:
         response = (get_supabase_client().table(table_name)
                     .update(updates).eq(id_col, target_id).execute())
-        result = response.data
     except Exception as exc:
-        log_error(f"Erreur de mise à jour Supabase ({table_name})", type(exc).__name__)
-        return None
-    if result:
-        log_action("UPDATE", table_name,
-                   _audit_details(table_name, "UPDATE", updates,
-                                  id_col=id_col, target_id=target_id))
-        _sync_google_sheets_update(table_name, id_col, target_id, updates)
+        log_error(f"Erreur de mise a jour Supabase ({table_name})", type(exc).__name__)
+        raise RuntimeError(
+            f"UPDATE {table_name} non confirme ; verifier Supabase avant de recommencer"
+        ) from exc
+    result = response.data
+    if (not isinstance(result, list) or len(result) != 1
+            or not isinstance(result[0], dict)
+            or str(result[0].get(id_col)) != str(target_id)):
+        raise RuntimeError(f"UPDATE {table_name} non verifiable ; verifier Supabase")
+    log_action("UPDATE", table_name,
+               _audit_details(table_name, "UPDATE", updates,
+                              id_col=id_col, target_id=target_id))
+    _sync_google_sheets_update(table_name, id_col, target_id, updates)
     return result
