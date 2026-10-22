@@ -54,7 +54,7 @@ def achats(monkeypatch):
 def cmd(mod, **kw):
     args = dict(fournisseur_id="FOU-1", type_achat="MP", devise="EUR", taux_change="130",
                 mode_paiement="Virement", delai_paiement="30J", date_voulue="2026-10-27",
-                panier=[{"mp_id":"MP-1","unite_cond":"SAC","qte_cond":2,
+                panier=[{"mp_id":"MP-1","unite_cond":"KG","qte_cond":50,
                          "qte_totale":50,"prix_unitaire":4,"total_devise":200}])
     args.update(kw)
     return mod.create_commande_achat(**args)
@@ -114,7 +114,7 @@ def test_bad_order_exchange_rate(achats,value):
 ])
 def test_bad_order_line(achats,field,value):
     mod,_,_,client=achats
-    line=dict(mp_id="MP",unite_cond="SAC",qte_cond=2,qte_totale=25,prix_unitaire=3,total_devise=75)
+    line=dict(mp_id="MP",unite_cond="KG",qte_cond=25,qte_totale=25,prix_unitaire=3,total_devise=75)
     line[field]=value
     with pytest.raises(ValueError): cmd(mod,panier=[line])
     client.rpc.assert_not_called()
@@ -213,7 +213,7 @@ def test_bad_rpc_response_rejected(achats,op):
 def test_decimal_precision(achats):
     mod,_,_,client=achats
     cmd(mod,taux_change=Decimal("1.00003"),panier=[{
-        "mp_id":"MP","unite_cond":"BIDON","qte_cond":Decimal("1.25"),
+        "mp_id":"MP","unite_cond":"KG","qte_cond":Decimal("0.125"),
         "qte_totale":Decimal("0.125"),"prix_unitaire":Decimal("2.375"),
         "total_devise":Decimal("0.296875")
     }])
@@ -277,3 +277,14 @@ def test_existing_signature_is_compatible(achats):
     assert list(signature.parameters)[:6]==["commande_achat_id","date_reception",
            "controle_conformite","remarques","items_recus","date_peremption"]
     assert signature.parameters["operation_id"].kind==inspect.Parameter.KEYWORD_ONLY
+
+
+def test_unconfigured_pack_conversion_remains_forbidden(achats):
+    mod, _, _, client = achats
+    with pytest.raises(ValueError, match="conditionnement"):
+        cmd(mod, panier=[{
+            "mp_id": "MP-1", "unite_cond": "SAC",
+            "qte_cond": 2, "qte_totale": 50,
+            "prix_unitaire": 4, "total_devise": 200,
+        }])
+    client.rpc.assert_not_called()

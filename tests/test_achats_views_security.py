@@ -83,7 +83,8 @@ def ui(monkeypatch):
 def _sample_order():
     return pd.DataFrame([{
         "commande_achat_id": "CMA-1", "statut": "PARTIELLEMENT_RECEPTIONNE",
-        "fournisseur_id": "FRN-1", "date_commande": "2026-10-10"}])
+        "fournisseur_id": "FRN-1", "date_commande": "2026-10-10",
+        "devise": "EUR", "taux_change": 150}])
 
 
 def _sample_lines():
@@ -396,3 +397,17 @@ def test_confirmed_record_missing_document_blocks_gracefully(ui):
     assert ui.mod._pending_panel("commande", "USR-1") is True
     ui.st.error.assert_called()
     ui.achats.create_commande_achat.assert_not_called()
+
+
+@pytest.mark.parametrize("bad_rate", [None, 0, -1, "NaN"])
+def test_receipt_ui_blocks_invalid_exchange_rate(ui, bad_rate):
+    _configure_received(ui)
+    orders = ui.achats.get_commandes.return_value.copy()
+    orders["taux_change"] = orders["taux_change"].astype(object)
+    orders.loc[0, "taux_change"] = bad_rate
+    ui.achats.get_commandes.return_value = orders
+    ui.st.selectbox.return_value = "CMA-1"
+    ui.st.form_submit_button.return_value = True
+    ui.st.radio.return_value = "CONFORME"
+    ui.mod.show_achats_page()
+    ui.achats.creer_bon_reception.assert_not_called()

@@ -1,6 +1,9 @@
--- TEST UNIQUEMENT. Appliquer APRES sql/002_atomic_stock_movement.sql.
--- Les achats et les réceptions sont atomiques et sérialisés en PostgreSQL.
--- Pas de migration sur une base de production. Schéma métier inchangé.
+-- INSTALLATION CONTROLEE : apres sql/002_atomic_stock_movement_supabase_securise.sql.
+-- Ne pas appliquer avant audit et sauvegarde ; tester avec ROLLBACK avant toute utilisation reelle.
+-- Montants de commande dans leur devise ; stock valorise en DZD via taux_change (DZD/devise).
+-- Pour une meme MP commandee sur plusieurs lignes, prix d'entree = moyenne ponderee de la commande.
+-- Conditionnements non convertis : unite_cond = unite_stock et qte_cond = qte_totale.
+-- RPC SECURITY INVOKER, tables techniques RLS, execution service_role seulement.
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.erp_purchase_operations (
@@ -17,6 +20,9 @@ CREATE TABLE IF NOT EXISTS public.erp_purchase_outbox (
     created_at timestamptz NOT NULL DEFAULT now(),
     synced_at timestamptz
 );
+
+ALTER TABLE public.erp_purchase_operations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.erp_purchase_outbox ENABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.erp_create_purchase_order(
     p_operation_id text,
@@ -36,6 +42,7 @@ SET search_path = pg_catalog, public
 AS $body$
 DECLARE
     v_line record;
+    v_mp_unit text;
     v_request jsonb;
     v_saved_request jsonb;
     v_saved_result jsonb;
@@ -58,6 +65,10 @@ BEGIN
     IF p_taux_change IS NULL OR p_taux_change::text IN ('NaN','Infinity','-Infinity')
        OR p_taux_change <= 0 OR p_taux_change >= 1000000000000000 THEN
         RAISE EXCEPTION 'Taux de change incorrect' USING ERRCODE='22023';
+    END IF;
+    -- Le stock est valorise en DZD : 1 DZD doit toujours donner 1 DZD.
+    IF upper(btrim(p_devise)) = 'DZD' AND p_taux_change <> 1 THEN
+        RAISE EXCEPTION 'Pour la devise DZD, taux_change doit etre egal a 1' USING ERRCODE='22023';
     END IF;
     IF p_lines IS NULL OR jsonb_typeof(p_lines) <> 'array'
        OR jsonb_array_length(p_lines) < 1 OR jsonb_array_length(p_lines) > 500 THEN
@@ -93,7 +104,7 @@ BEGIN
         IF v_line.ligne_achat_id IS NULL OR length(btrim(v_line.ligne_achat_id))=0
            OR length(v_line.ligne_achat_id)>200
            OR v_line.mp_id IS NULL OR length(btrim(v_line.mp_id))=0 OR length(v_line.mp_id)>200
-           OR v_line.unite_cond IS NULL OR length(v_line.unite_cond)>200
+           OR v_line.unite_cond IS NULL OR length(btrim(v_line.unite_cond))=0 OR length(v_line.unite_cond)>200
            OR v_line.qte_cond IS NULL OR v_line.qte_cond::text IN ('NaN','Infinity','-Infinity')
            OR v_line.qte_cond <= 0 OR v_line.qte_cond >= 1000000000000000
            OR v_line.qte_totale IS NULL OR v_line.qte_totale::text IN ('NaN','Infinity','-Infinity')
@@ -104,8 +115,22 @@ BEGIN
            OR v_line.total_devise < 0 OR v_line.total_devise >= 1000000000000000 THEN
             RAISE EXCEPTION 'Ligne de commande invalide' USING ERRCODE='22023';
         END IF;
-        PERFORM 1 FROM public.matieres_premieres WHERE mp_id=v_line.mp_id;
+        -- L'ecran actuel achete en unites de STOCK, pas en cartons/sacs a convertir.
+        -- Tant qu'un vrai facteur de conditionnement n'est pas modele : fail closed.
+        IF v_line.qte_cond IS DISTINCT FROM v_line.qte_totale THEN
+            RAISE EXCEPTION 'Conversion de conditionnement Achats non prise en charge' USING ERRCODE='22023';
+        END IF;
+        SELECT unite_stock INTO v_mp_unit FROM public.matieres_premieres WHERE mp_id=v_line.mp_id;
         IF NOT FOUND THEN RAISE EXCEPTION 'MP commande inexistante' USING ERRCODE='23503'; END IF;
+        IF v_mp_unit IS NULL OR btrim(v_mp_unit) = ''
+           OR upper(btrim(v_line.unite_cond)) <> upper(btrim(v_mp_unit)) THEN
+            RAISE EXCEPTION 'Unite de commande differente de unite_stock pour %',v_line.mp_id USING ERRCODE='22023';
+        END IF;
+        -- total_devise est un montant, pas une valeur libre. Tolerance = 1 centime
+        -- pour les arrondis d'affichage en devises (flottants depuis Streamlit).
+        IF abs(v_line.total_devise - v_line.qte_totale * v_line.prix_unitaire) > 0.01 THEN
+            RAISE EXCEPTION 'Total ligne incompatible avec prix * quantite pour %',v_line.mp_id USING ERRCODE='22023';
+        END IF;
         v_total := v_total + v_line.total_devise;
         v_count := v_count + 1;
     END LOOP;
@@ -162,6 +187,7 @@ DECLARE
     v_received numeric;
     v_qty numeric;
     v_price numeric;
+    v_order_price_total numeric;
     v_lot jsonb;
     v_complete boolean;
     v_count integer := 0;
@@ -183,9 +209,15 @@ BEGIN
     END IF;
 
     -- Lock order FIRST: concurrent receipts for one BC are serialized.
-    SELECT commande_achat_id, statut INTO v_order FROM public.commandes_achats
+    SELECT commande_achat_id, statut, devise, taux_change INTO v_order FROM public.commandes_achats
       WHERE commande_achat_id=p_commande_achat_id FOR UPDATE;
     IF NOT FOUND THEN RAISE EXCEPTION 'Commande achat inexistante' USING ERRCODE='23503'; END IF;
+    IF v_order.taux_change IS NULL OR v_order.taux_change::text IN ('NaN','Infinity','-Infinity')
+       OR v_order.taux_change<=0 OR v_order.taux_change>=1000000000000000
+       OR v_order.devise IS NULL OR btrim(v_order.devise)=''
+       OR (upper(btrim(v_order.devise))='DZD' AND v_order.taux_change<>1) THEN
+        RAISE EXCEPTION 'Devise ou taux de change de la commande invalide' USING ERRCODE='22023';
+    END IF;
 
     v_request := jsonb_build_object('commande_achat_id',p_commande_achat_id,
       'date',p_date_reception,'conformite',p_controle_conformite,
@@ -223,18 +255,16 @@ BEGIN
     END LOOP;
 
     -- Check quantities against ordered and ALREADY received quantities.
+    -- Le prix transmis dans p_lines n'est JAMAIS utilise pour valoriser le stock.
     FOR v_line IN
         SELECT x.mp_id, sum(x.quantite_recue) AS qty,
-               sum(x.quantite_recue*x.prix_unitaire)/sum(x.quantite_recue) AS price,
                min(x.ligne_br_id) AS line_id
         FROM jsonb_to_recordset(p_lines) AS x(
           ligne_br_id text, mp_id text, quantite_recue numeric, prix_unitaire numeric)
         GROUP BY x.mp_id ORDER BY x.mp_id
     LOOP
         v_qty := v_line.qty;
-        v_price := v_line.price;
-        IF v_qty<=0 OR v_qty>=1000000000000000
-           OR v_price<0 OR v_price>=1000000000000000 THEN
+        IF v_qty<=0 OR v_qty>=1000000000000000 THEN
             RAISE EXCEPTION 'Quantité réception agrégée invalide' USING ERRCODE='22023';
         END IF;
         SELECT coalesce(sum(qte_totale),0) INTO v_ordered
@@ -257,15 +287,28 @@ BEGIN
     -- Nested stock RPC calls execute inside the SAME transaction.
     FOR v_line IN
         SELECT x.mp_id, sum(x.quantite_recue) AS qty,
-               sum(x.quantite_recue*x.prix_unitaire)/sum(x.quantite_recue) AS price,
                min(x.ligne_br_id) AS line_id
         FROM jsonb_to_recordset(p_lines) AS x(
           ligne_br_id text, mp_id text, quantite_recue numeric, prix_unitaire numeric)
         GROUP BY x.mp_id ORDER BY x.mp_id
     LOOP
+        -- Prix d'achat dans la DEVISE de la commande, moyenne ponderee des
+        -- lignes pour cette MP, converti en DZD avec le taux de la commande.
+        SELECT coalesce(sum(qte_totale),0), coalesce(sum(qte_totale*prix_unitaire),0)
+          INTO v_ordered, v_order_price_total
+          FROM public.lignes_achats
+          WHERE commande_achat_id=p_commande_achat_id AND mp_id=v_line.mp_id;
+        IF v_ordered<=0 THEN
+            RAISE EXCEPTION 'Aucune ligne de commande pour la MP %',v_line.mp_id USING ERRCODE='23514';
+        END IF;
+        v_price := (v_order_price_total/v_ordered) * v_order.taux_change;
+        IF v_price::text IN ('NaN','Infinity','-Infinity') OR v_price<0
+           OR v_price>=1000000000000000 OR v_price*v_line.qty>=1000000000000000 THEN
+            RAISE EXCEPTION 'Valorisation locale hors limites pour %',v_line.mp_id USING ERRCODE='22023';
+        END IF;
         v_lot := public.erp_apply_stock_movement(
           'BR-MP-' || encode(sha256(convert_to(p_operation_id || ':' || v_line.mp_id,'UTF8')),'hex'),
-          'MP','ENTREE',v_line.mp_id,v_line.qty,v_line.price,
+          'MP','ENTREE',v_line.mp_id,v_line.qty,v_price,
           'BR ' || p_br_id || ' (Cmd ' || p_commande_achat_id || ')',NULLIF(p_date_peremption,''));
         IF v_lot IS NULL OR v_lot->>'lot_id' IS NULL THEN
             RAISE EXCEPTION 'Entrée MP sans lot attribué' USING ERRCODE='23514';

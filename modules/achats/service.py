@@ -120,19 +120,31 @@ def create_commande_achat(
     nature = _text(type_achat, "Type d'achat")
     currency = _text(devise, "Devise", max_len=30)
     change = _number(taux_change, "Taux de change")
+    # Un prix de stock est exprime en DZD ; un achat DZD ne se convertit pas.
+    if currency.upper() == "DZD" and change != Decimal("1"):
+        raise ValueError("Taux de change DZD obligatoire : 1")
     paiement = _text(mode_paiement, "Mode de paiement", allow_empty=True)
     delai = _text(delai_paiement, "Délai de paiement", allow_empty=True)
     date = _text(str(date_voulue), "Date voulue", max_len=40, allow_empty=True)
     lines: list[dict[str, Any]] = []
     for item in _items(panier, "Commande"):
+        qty_cond = _number(item.get("qte_cond"), "Quantité conditionnement")
+        qty_stock = _number(item.get("qte_totale"), "Quantité totale")
+        unit_price = _number(item.get("prix_unitaire"), "Prix unitaire", allow_zero=True)
+        line_total = _number(item.get("total_devise"), "Total ligne", allow_zero=True)
+        # Aucune transformation de conditionnement n'est definie dans le schema actuel.
+        if qty_cond != qty_stock:
+            raise ValueError("Conversion de conditionnement non configuree : quantites differentes")
+        if abs(line_total - qty_stock * unit_price) > Decimal("0.01"):
+            raise ValueError("Total de ligne incoherent avec quantite x prix")
         lines.append({
             "ligne_achat_id": _text(generate_technical_id("LAC"), "ID ligne"),
             "mp_id": _text(item.get("mp_id"), "Matière première"),
-            "unite_cond": _text(item.get("unite_cond"), "Unité conditionnement", allow_empty=True),
-            "qte_cond": _fmt(_number(item.get("qte_cond"), "Quantité conditionnement")),
-            "qte_totale": _fmt(_number(item.get("qte_totale"), "Quantité totale")),
-            "prix_unitaire": _fmt(_number(item.get("prix_unitaire"), "Prix unitaire", allow_zero=True)),
-            "total_devise": _fmt(_number(item.get("total_devise"), "Total ligne", allow_zero=True)),
+            "unite_cond": _text(item.get("unite_cond"), "Unité conditionnement"),
+            "qte_cond": _fmt(qty_cond),
+            "qte_totale": _fmt(qty_stock),
+            "prix_unitaire": _fmt(unit_price),
+            "total_devise": _fmt(line_total),
         })
     # Même branche et même convention d'identifiants métier qu'avant.
     df = get_commandes()
@@ -177,7 +189,9 @@ def creer_bon_reception(
             "ligne_br_id": _text(generate_technical_id("LBR"), "ID ligne réception"),
             "mp_id": _text(item.get("mp_id"), "Matière première"),
             "quantite_recue": _fmt(_number(item.get("quantite_recue"), "Quantité reçue")),
-            "prix_unitaire": _fmt(_number(item.get("prix_unitaire", 0), "Prix entrée", allow_zero=True)),
+            # Champ historique conserve pour compatibilite RPC. Le SQL recalcule
+            # exclusivement le cout DZD depuis la commande et son taux de change.
+            "prix_unitaire": _fmt(_number(item.get("prix_unitaire", 0), "Prix commande", allow_zero=True)),
         })
     df = get_bons_reception()
     exist_ids = df["bon_reception_id"].dropna().tolist() if "bon_reception_id" in df.columns else []

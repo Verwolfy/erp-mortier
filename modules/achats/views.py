@@ -261,8 +261,22 @@ def show_achats_page():
                 dict_devise = liste_to_dict(get_liste("Devise")) or {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
                 devise = col3.selectbox("Devise", options=list(dict_devise),
                                        format_func=lambda x: dict_devise.get(x, x))
-                taux_change = col4.number_input("Taux de change (1 si DZD)",
-                                                min_value=0.000001, value=1.0, step=0.1)
+                # Les prix du panier sont saisis dans la devise selectionnee.
+                currency_key = f"achats_panier_devise_{user_id}"
+                previous_currency = st.session_state.get(currency_key)
+                if previous_currency is not None and previous_currency != devise:
+                    if st.session_state[_cart_key(user_id)]:
+                        st.session_state[_cart_key(user_id)] = []
+                        st.warning("Devise modifiee : panier efface pour eviter de reutiliser des prix dans la mauvaise devise.")
+                st.session_state[currency_key] = devise
+                taux_change = col4.number_input(
+                     "Taux (DZD pour 1 unité de devise)",
+                     min_value=0.000001, value=1.0, step=0.1,
+                     disabled=str(devise).upper() == "DZD",
+                     key=f"achat_taux_{str(devise).upper()}")
+                if str(devise).upper() == "DZD":
+                    taux_change = 1.0
+                st.caption("Exemple : 1 EUR = 150 DZD → taux = 150. La valorisation du stock est toujours en DZD.")
                 date_voulue = col5.date_input("Date de livraison souhaitée")
                 st.divider()
                 st.subheader("2. Lignes de Commande")
@@ -286,6 +300,11 @@ def show_achats_page():
                     df_panier = pd.DataFrame(st.session_state[_cart_key(user_id)])
                     st.dataframe(df_panier[["mp_id", "nom_article", "qte_totale", "prix_unitaire", "total_devise"]],
                                  use_container_width=True)
+                    # Apercu indicatif : PostgreSQL recalcule le total avant d'ecrire.
+                    total_devise = sum((Decimal(str(x["total_devise"]))
+                                         for x in st.session_state[_cart_key(user_id)]), Decimal(0))
+                    total_local = total_devise * Decimal(str(taux_change))
+                    st.caption(f"Total : {total_devise:,.2f} {devise} = {total_local:,.2f} DZD (taux saisi)")
                     if st.button("🗑️ Vider"):
                         st.session_state[_cart_key(user_id)] = []
                         st.rerun()
@@ -336,6 +355,11 @@ def show_achats_page():
                         try:
                             lines = get_lignes_achats(selected)
                             balances = _remaining_quantities(selected, lines, get_bons_reception())
+                            selected_order = available[available["commande_achat_id"] == selected].iloc[0]
+                            order_currency = str(selected_order.get("devise") or "").strip().upper()
+                            order_exchange = _decimal_positive(selected_order.get("taux_change"), "Taux de commande")
+                            if not order_currency or (order_currency == "DZD" and order_exchange != 1):
+                                raise ValueError("Devise et taux de commande non coherents")
                         except (ValueError, KeyError) as exc:
                             _LOG.warning("Solde BC incohérent (%s)", type(exc).__name__)
                             st.error("Historique de cette commande incomplet : réception bloquée.")
@@ -344,6 +368,8 @@ def show_achats_page():
                                 st.info("Toutes les quantités de cette commande sont déjà réceptionnées.")
                             else:
                                 st.markdown("**Quantités restant à réceptionner**")
+                                st.caption(f"Prix de commande : {order_currency} ; valorisation des entrees en DZD "
+                                            f"au taux historique {order_exchange}. Prix non modifiable a la reception.")
                                 items_recus = []
                                 with st.form(f"form_reception_{selected}"):
                                     c1, c2 = st.columns(2)
@@ -364,6 +390,8 @@ def show_achats_page():
                                             value=remaining, step=1.0,
                                             key=f"ach_rec_{selected}_{row['mp_id']}")
                                         if qte > 0:
+                                            stock_unit_cost = (Decimal(str(row["prix_unitaire"])) * order_exchange)
+                                            st.caption(f"Cout d'entree estime : {stock_unit_cost:,.4f} DZD / unite de stock")
                                             items_recus.append({"mp_id": row["mp_id"],
                                                                 "quantite_recue": qte,
                                                                 "prix_unitaire": row["prix_unitaire"]})
