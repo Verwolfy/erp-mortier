@@ -102,14 +102,23 @@ def ctx(monkeypatch):
 @pytest.mark.parametrize("table", [
     "fournisseurs", "matieres_premieres", "produits", "sku_conditionnement",
     "clients", "users", "permissions", "listes_reference",
-    "pipeline", "interactions", "recettes", "lignes_recette",
-    "ordres_fabrication", "employes", "demandes_conges",
+    "pipeline", "interactions", "employes", "demandes_conges",
 ])
 def test_insert_authorized_tables(ctx, table):
     col = ctx.module.SCHEMA_CONFIG[table]["cols"][0]
     value = "TMP-TEST"
     assert ctx.module.insert_hybrid(table, {col: value}) == [{col: value}]
     assert ctx.db.calls[-1][0] == table
+
+
+@pytest.mark.parametrize("table", [
+    "recettes", "lignes_recette", "ordres_fabrication",
+])
+def test_insert_production_creation_tables_denied(ctx, table):
+    """Les créations Production passent uniquement par les RPC atomiques 008."""
+    with pytest.raises(PermissionError, match="RPC"):
+        ctx.module.insert_hybrid(table, {"id": "TMP-TEST"})
+    assert not ctx.db.calls
 
 
 @pytest.mark.parametrize("table", [

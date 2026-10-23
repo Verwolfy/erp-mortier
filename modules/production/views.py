@@ -7,6 +7,7 @@ puis consomme exactement un emballage par unité SKU conforme.
 from __future__ import annotations
 
 from copy import deepcopy
+from uuid import uuid4
 from decimal import Decimal, InvalidOperation
 import logging
 
@@ -123,7 +124,9 @@ def _document_panel(kind: str, user_id: str) -> bool:
         st.error("Dossier de création illisible. Faire intervenir l'administrateur.")
         return True
     if record["status"] == "uncertain":
-        st.error("Création non confirmée : vérifier le document et ses lignes dans Supabase. Ne PAS réessayer ici.")
+        st.error("Création non confirmée : vérifier dans Supabase (operation_id : "
+                 + str(record.get("operation_id", "identifiant indisponible"))
+                 + "). Ne PAS créer une nouvelle opération avant vérification.")
         if st.checkbox("J'ai vérifié le résultat dans Supabase", key=f"verify_{kind}_{user_id}"):
             if st.button("Terminer la vérification", key=f"reset_{kind}_{user_id}"):
                 del st.session_state[key]
@@ -141,14 +144,18 @@ def _create_document(kind: str, user_id: str, payload: dict) -> None:
     if key in st.session_state:
         st.error("Un document est déjà en attente de vérification.")
         return
-    # Stocker la demande avant son exécution. Aucun operation_id côté service.
-    record = {"status": "uncertain", "payload": deepcopy(payload)}
+    # Identifiant stable sauvegardé avant RPC : retrouver l'opération après timeout.
+    record = {"status": "uncertain", "payload": deepcopy(payload),
+              "operation_id": f"PROD-{uuid4()}"}
+    if kind == "recette":
+        record["date_effet"] = get_local_now().strftime("%Y-%m-%d")
     st.session_state[key] = record
     try:
         if kind == "recette":
-            doc_id = create_recette(**deepcopy(payload))
+            doc_id = create_recette(**deepcopy(payload), operation_id=record["operation_id"],
+                                    date_effet=record["date_effet"])
         else:
-            doc_id = create_ordre_fabrication(**deepcopy(payload))
+            doc_id = create_ordre_fabrication(**deepcopy(payload), operation_id=record["operation_id"])
         if not isinstance(doc_id, str) or not doc_id.strip():
             raise RuntimeError("Identifiant du document non confirmé")
     except Exception as exc:

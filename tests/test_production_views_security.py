@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from datetime import datetime
 import types
 from copy import deepcopy
 from pathlib import Path
@@ -39,7 +40,7 @@ def ui(monkeypatch):
     roles = types.ModuleType('config.roles')
     roles.has_permission = MagicMock(return_value=True)
     utils = types.ModuleType('core.utils')
-    utils.get_local_now = MagicMock(return_value='2026-10-21')
+    utils.get_local_now = MagicMock(return_value=datetime(2026, 10, 21, 12, 0))
     production = types.ModuleType('modules.production.service')
     for name in ('create_recette', 'create_ordre_fabrication', 'get_recettes',
                  'get_ordres_fabrication', 'changer_statut_of', 'enregistrer_controle_qualite',
@@ -236,7 +237,12 @@ def test_created_recipe_confirmation_clears_only_own_cart(ui):
     assert ui.st.session_state[key]['status'] == 'confirmed'
     assert ui.mod._cart_key('USR-1') not in ui.st.session_state
     assert ui.mod._cart_key('USR-2') in ui.st.session_state
-    ui.prod.create_recette.assert_called_once_with(**payload)
+    ui.prod.create_recette.assert_called_once()
+    kwargs = ui.prod.create_recette.call_args.kwargs
+    assert {key: kwargs[key] for key in payload} == payload
+    assert kwargs["date_effet"] == "2026-10-21"
+    assert isinstance(kwargs["operation_id"], str)
+    assert kwargs["operation_id"].startswith("PROD-")
 
 
 def test_cart_resets_if_product_or_yield_changes(ui):

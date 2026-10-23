@@ -112,13 +112,11 @@ _PRIMARY_KEY_OVERRIDES = {
 }
 # Ecritures generiques: SEULEMENT les creations encore utilisees par les modules.
 # Stocks, Achats, Ventes et Finance ecrivent exclusivement via les RPC atomiques.
-# Les recettes et OF planifies restent autorises temporairement : leur
-# atomicite de creation doit etre traitee dans une migration distincte.
+# Recettes et OF planifies sont exclusivement crees par les RPC de migration 008.
 _HYBRID_INSERT_TABLES = frozenset({
     "fournisseurs", "matieres_premieres", "produits", "sku_conditionnement",
     "clients", "users", "permissions", "listes_reference",
-    "pipeline", "interactions", "recettes", "lignes_recette",
-    "ordres_fabrication", "employes", "demandes_conges",
+    "pipeline", "interactions", "employes", "demandes_conges",
 })
 
 # Mises a jour generiques: champs standards de l'editeur Administration,

@@ -33,11 +33,17 @@ def scenario(monkeypatch):
     stock_service._stock_rpc_client = Mock()
     rclient = stock_service._stock_rpc_client.return_value
     def rpc(name, params):
-        return types.SimpleNamespace(execute=lambda: types.SimpleNamespace(data={
-            "of_id": params["p_of_id"],
-            "statut": "TERMINE" if params["p_conforme"] == "OUI" else "REJETE",
-            "cout_total": 150, "nb_consommations": 2,
-        }))
+        if name == "erp_create_recipe":
+            data = {"recette_id": "REC-0001", "operation_id": params["p_operation_id"],
+                    "nb_lignes": len(params["p_lignes"])}
+        elif name == "erp_create_manufacturing_order":
+            data = {"of_id": "OF-0001", "operation_id": params["p_operation_id"],
+                    "statut": "PLANIFIE"}
+        else:
+            data = {"of_id": params["p_of_id"],
+                    "statut": "TERMINE" if params["p_conforme"] == "OUI" else "REJETE",
+                    "cout_total": 150, "nb_consommations": 2}
+        return types.SimpleNamespace(execute=lambda: types.SimpleNamespace(data=data))
     rclient.rpc.side_effect = rpc
     for name, mod in [("core", core), ("core.db_service", database),
                       ("core.utils", util), ("modules", types.ModuleType("modules")),
@@ -272,28 +278,128 @@ def test_filtered_fetch_is_server_side(scenario, method, table, column, value):
     db.fetch_data.assert_not_called()
 
 
-def test_create_recipe_failure_not_reported_as_success(scenario):
-    svc, db, _, _, util = scenario
-    util.get_local_now.return_value = types.SimpleNamespace(strftime=lambda x:"2026-10-20")
-    db.insert_hybrid.return_value = None
-    with pytest.raises(RuntimeError, match="créer la recette"):
-        svc.create_recette("PF", "V1", 1000, "", [{"mp_id":"MP", "quantite_par_unite":0.3}])
+def test_create_recipe_one_atomic_rpc(scenario):
+    svc, db, _, client, util = scenario
+    util.get_local_now.return_value = types.SimpleNamespace(strftime=lambda fmt: "2026-10-20")
+    result = svc.create_recette("PF", "V1", 1000, "", [
+        {"mp_id": "MP", "quantite_par_unite": 0.3}], operation_id="REC-OP-001")
+    assert result == "REC-0001"
+    name, params = client.rpc.call_args.args
+    assert name == "erp_create_recipe"
+    assert params["p_lignes"] == [{"mp_id": "MP", "quantite_par_unite": "0.3"}]
+    assert params["p_date_effet"] == "2026-10-20"
+    assert params["p_operation_id"] == "REC-OP-001"
+    db.check_server_permission.assert_any_call("recettes")
+    db.check_server_permission.assert_any_call("lignes_recette")
+    db.insert_hybrid.assert_not_called()
 
 
-def test_create_recipe_partial_failure_explicit(scenario):
-    svc, db, _, _, util = scenario
-    util.get_local_now.return_value = types.SimpleNamespace(strftime=lambda x:"2026-10-20")
-    db.insert_hybrid.side_effect = [[{"ok":True}], None]
-    with pytest.raises(RuntimeError, match="partiellement"):
-        svc.create_recette("PF", "V1", 1000, "", [{"mp_id":"MP", "quantite_par_unite":0.3}])
+def test_create_of_one_atomic_rpc(scenario):
+    svc, db, _, client, _ = scenario
+    out = svc.create_ordre_fabrication("PF", "REC", "SKU", 500, "2026-10-20", "",
+                                       operation_id="OF-OP-001")
+    assert out == "OF-0001"
+    name, params = client.rpc.call_args.args
+    assert name == "erp_create_manufacturing_order"
+    assert params["p_quantite_prevue"] == "500"
+    assert params["p_operation_id"] == "OF-OP-001"
+    db.check_server_permission.assert_called_once_with("ordres_fabrication")
+    db.insert_hybrid.assert_not_called()
 
 
-def test_create_of_failure_not_reported_as_success(scenario):
-    svc, db, _, _, util = scenario
-    util.get_local_now.return_value = types.SimpleNamespace(strftime=lambda x:"2026-10-20")
-    db.insert_hybrid.return_value = None
-    with pytest.raises(RuntimeError, match="fabrication"):
-        svc.create_ordre_fabrication("PF", "REC", "SKU", 500, "2026-10-20", "")
+def test_create_recipe_no_permission_refuses_rpc(scenario):
+    svc, db, _, client, util = scenario
+    util.get_local_now.return_value = types.SimpleNamespace(strftime=lambda fmt: "2026-10-20")
+    db.check_server_permission.side_effect = lambda table: table != "lignes_recette"
+    with pytest.raises(PermissionError):
+        svc.create_recette("PF", "V1", 100, "", [{"mp_id": "MP", "quantite_par_unite": 1}])
+    client.rpc.assert_not_called()
+
+
+def test_create_of_no_permission_refuses_rpc(scenario):
+    svc, db, _, client, _ = scenario
+    db.check_server_permission.return_value = False
+    with pytest.raises(PermissionError):
+        svc.create_ordre_fabrication("PF", "REC", "SKU", 10, "2026-10-20", "")
+    client.rpc.assert_not_called()
+
+
+def test_create_of_timeout_operation_id_recoverable(scenario):
+    svc, _, _, client, _ = scenario
+    client.rpc.side_effect = TimeoutError("secret endpoint address")
+    with pytest.raises(svc.ProductionCreationError) as exc:
+        svc.create_ordre_fabrication("PF", "REC", "SKU", 10, "2026-10-20", "",
+                                     operation_id="ID-STABLE-1")
+    assert exc.value.operation_id == "ID-STABLE-1"
+    assert "secret endpoint" not in str(exc.value)
+
+
+def test_create_recipe_timeout_operation_id_recoverable(scenario):
+    svc, _, _, client, util = scenario
+    util.get_local_now.return_value = types.SimpleNamespace(strftime=lambda fmt: "2026-10-20")
+    client.rpc.side_effect = TimeoutError("secret endpoint address")
+    with pytest.raises(svc.ProductionCreationError) as exc:
+        svc.create_recette("PF", "V1", 100, "", [{"mp_id": "MP", "quantite_par_unite": 1}],
+                           operation_id="ID-STABLE-2")
+    assert exc.value.operation_id == "ID-STABLE-2"
+
+
+@pytest.mark.parametrize("data", [None, {}, [], {"of_id": "OF-1"},
+                                  {"operation_id": "BAD", "of_id": "OF-1"},
+                                  {"operation_id": "FIXED", "of_id": ""}])
+def test_create_of_unverified_rpc_response(scenario, data):
+    svc, _, _, client, _ = scenario
+    client.rpc.side_effect = lambda name, params: types.SimpleNamespace(
+        execute=lambda: types.SimpleNamespace(data=data))
+    with pytest.raises(svc.ProductionCreationError):
+        svc.create_ordre_fabrication("PF", "REC", "SKU", 10, "2026-10-20", "",
+                                     operation_id="FIXED")
+
+
+@pytest.mark.parametrize("rows", [[], None, {}, [{"mp_id": "MP"}],
+     [{"mp_id": "MP", "quantite_par_unite": 0}],
+     [{"mp_id": "MP", "quantite_par_unite": float("nan")}],
+     [{"mp_id": "MP", "quantite_par_unite": 1},
+      {"mp_id": "MP", "quantite_par_unite": 2}]])
+def test_invalid_recipes_do_not_call_rpc(scenario, rows):
+    svc, _, _, client, _ = scenario
+    with pytest.raises(ValueError):
+        svc.create_recette("PF", "V1", 100, "", rows)
+    client.rpc.assert_not_called()
+
+
+@pytest.mark.parametrize("qty", [0, -1, 1.5, "NaN", float("inf"), True, None])
+def test_invalid_of_quantity_do_not_call_rpc(scenario, qty):
+    svc, _, _, client, _ = scenario
+    with pytest.raises(ValueError):
+        svc.create_ordre_fabrication("PF", "REC", "SKU", qty, "2026-10-20", "")
+    client.rpc.assert_not_called()
+
+
+def test_invalid_creation_date_rejected(scenario):
+    svc, _, _, client, _ = scenario
+    with pytest.raises(ValueError):
+        svc.create_ordre_fabrication("PF", "REC", "SKU", 10, "2026-02-30", "")
+    client.rpc.assert_not_called()
+
+
+def test_recipe_explicit_date_kept_for_retry(scenario):
+    svc, _, _, client, util = scenario
+    svc.create_recette("PF", "V1", 100, "", [{"mp_id": "MP", "quantite_par_unite": 1}],
+                       operation_id="RETRY-1", date_effet="2026-10-21")
+    assert client.rpc.call_args.args[1]["p_date_effet"] == "2026-10-21"
+    util.get_local_now.assert_not_called()
+
+
+def test_sql_008_contract_static():
+    sql = (BASE / "sql" / "008_atomic_production_creation.sql").read_text(encoding="utf-8")
+    for fragment in ("public.erp_create_recipe", "public.erp_create_manufacturing_order",
+                     "public.erp_production_creations", "pg_advisory_xact_lock",
+                     "public.lignes_recette", "public.ordres_fabrication", "SECURITY INVOKER",
+                     "ENABLE ROW LEVEL SECURITY", "REVOKE ALL ON FUNCTION",
+                     "TO service_role", "COMMIT;"):
+        assert fragment in sql
+    assert "DELETE FROM" not in sql.upper()
 
 
 def test_sql_contract_static():

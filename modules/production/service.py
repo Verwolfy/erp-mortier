@@ -6,12 +6,13 @@ Conforme au schéma officiel docs/schema_donnees.md.
 import pandas as pd
 from core.db_service import (
     check_server_permission, fetch_data, fetch_data_filtered,
-    insert_hybrid, update_hybrid,
 )
-from core.utils import generate_unique_id, generate_technical_id, get_local_now
+from core.utils import get_local_now
 from modules.stocks.service import _stock_rpc_client
 from decimal import Decimal, InvalidOperation
 from typing import Any
+from uuid import uuid4
+from datetime import date
 
 
 class FabricationOperationError(RuntimeError):
@@ -71,47 +72,114 @@ def get_controles_qualite(of_id: str = None) -> pd.DataFrame:
         return pd.DataFrame(fetch_data_filtered("controle_qualite", "of_id", of_id))
     return pd.DataFrame(fetch_data("controle_qualite"))
 
-def create_recette(pf_id: str, version: str, rendement_unite: float, instructions: str, panier_lignes: list) -> str:
-    """Crée une nouvelle nomenclature/recette et ses lignes de composants."""
-    df_recettes = get_recettes()
-    exist_ids = df_recettes["recette_id"].tolist() if not df_recettes.empty and "recette_id" in df_recettes.columns else []
-    recette_id = generate_unique_id("REC", exist_ids)
-    date_effet = get_local_now().strftime("%Y-%m-%d")
+class ProductionCreationError(RuntimeError):
+    """La transaction a pu réussir malgré une erreur réseau. Utiliser le même ID."""
 
-    data_recette = {
-        "recette_id": recette_id, "pf_id": pf_id, "version": version,
-        "rendement_unite": rendement_unite, "instructions": instructions,
-        "date_effet": date_effet, "actif": "OUI"
-    }
-    if not insert_hybrid("recettes", data_recette):
-        raise RuntimeError("Impossible de créer la recette en base")
+    def __init__(self, message: str, *, operation_id: str):
+        super().__init__(message)
+        self.operation_id = operation_id
 
+
+def _date_creation(value: Any, name: str) -> str:
+    if not isinstance(value, str) or len(value) != 10:
+        raise ValueError(f"{name} doit être au format AAAA-MM-JJ")
+    try:
+        if date.fromisoformat(value).isoformat() != value:
+            raise ValueError()
+    except ValueError as exc:
+        raise ValueError(f"{name} doit être une date valide AAAA-MM-JJ") from exc
+    return value
+
+
+def _comment(value: Any, name: str, *, max_len: int = 5000) -> str:
+    if not isinstance(value, str) or len(value) > max_len:
+        raise ValueError(f"{name} invalide")
+    return value
+
+
+def _create_rpc(name: str, params: dict, *, target: str, permissions: tuple[str, ...]) -> str:
+    op_id = params["p_operation_id"]
+    for table in permissions:
+        if check_server_permission(table) is not True:
+            raise PermissionError("Droit de création Production refusé")
+    try:
+        response = _stock_rpc_client().rpc(name, params).execute()
+    except Exception as exc:
+        raise ProductionCreationError(
+            "Création non confirmée : vérifier Supabase avant de reprendre avec le MÊME operation_id",
+            operation_id=op_id,
+        ) from exc
+    result = response.data
+    if (not isinstance(result, dict)
+            or result.get("operation_id") != op_id
+            or not isinstance(result.get(target), str)
+            or not result[target].strip()):
+        raise ProductionCreationError(
+            "Réponse SQL non vérifiable : vérifier Supabase avec cet operation_id",
+            operation_id=op_id,
+        )
+    return result[target]
+
+
+def create_recette(pf_id: str, version: str, rendement_unite: float,
+                   instructions: str, panier_lignes: list,
+                   *, operation_id: str | None = None,
+                   date_effet: str | None = None) -> str:
+    """Crée la recette ET toutes ses lignes dans la même transaction PostgreSQL."""
+    pf = _identifier(pf_id, "Produit fini")
+    ver = _identifier(version, "Version recette")
+    yield_qty = _quantity(rendement_unite, "Rendement")
+    info = _comment(instructions, "Instructions")
+    if not isinstance(panier_lignes, list) or not 1 <= len(panier_lignes) <= 200:
+        raise ValueError("Recette : entre 1 et 200 composants nécessaires")
+    seen = set()
+    lines = []
     for item in panier_lignes:
-        ligne_id = generate_technical_id("LRC")
-        data_ligne = {
-            "ligne_recette_id": ligne_id, "recette_id": recette_id,
-            "mp_id": item["mp_id"], "quantite_par_unite": item["quantite_par_unite"]
-        }
-        if not insert_hybrid("lignes_recette", data_ligne):
-            raise RuntimeError("Recette partiellement créée : contrôler les lignes en base")
+        if not isinstance(item, dict):
+            raise ValueError("Ligne de recette invalide")
+        mp = _identifier(item.get("mp_id"), "Matière première")
+        if mp in seen:
+            raise ValueError("Matière première en double dans la recette")
+        seen.add(mp)
+        qty = _quantity(item.get("quantite_par_unite"), "Quantité matière")
+        if Decimal(qty) < Decimal("0.000000000001"):
+            raise ValueError("Précision insuffisante pour la quantité matière")
+        lines.append({"mp_id": mp, "quantite_par_unite": qty})
+    op_id = (_identifier(operation_id, "Identifiant d'opération")
+             if operation_id is not None else f"PREC-{uuid4()}")
+    if len(op_id) > 128:
+        raise ValueError("Identifiant d'opération trop long")
+    return _create_rpc("erp_create_recipe", {
+        "p_operation_id": op_id, "p_pf_id": pf, "p_version": ver,
+        "p_rendement_unite": yield_qty, "p_instructions": info,
+        "p_date_effet": _date_creation(
+            date_effet if date_effet is not None else get_local_now().strftime("%Y-%m-%d"),
+            "Date d'effet"),
+        "p_lignes": lines,
+    }, target="recette_id", permissions=("recettes", "lignes_recette"))
 
-    return recette_id
 
-def create_ordre_fabrication(pf_id: str, recette_id: str, sku_id: str, quantite_prevue: float, date_planification: str, notes: str) -> str:
-    """Génère un Ordre de Fabrication (OF) avec préfixe OF-XXXX."""
-    df_ofs = get_ordres_fabrication()
-    exist_ids = df_ofs["of_id"].tolist() if not df_ofs.empty and "of_id" in df_ofs.columns else []
-    of_id = generate_unique_id("OF", exist_ids)
-
-    data_of = {
-        "of_id": of_id, "pf_id": pf_id, "recette_id": recette_id, "sku_id": sku_id,
-        "quantite_prevue": quantite_prevue, "quantite_produite": 0.0,
-        "date_planification": date_planification, "date_debut": "", "date_fin": "",
-        "statut": "PLANIFIE", "cout_total": 0.0, "notes": notes
-    }
-    if not insert_hybrid("ordres_fabrication", data_of):
-        raise RuntimeError("Impossible de créer l’ordre de fabrication en base")
-    return of_id
+def create_ordre_fabrication(pf_id: str, recette_id: str, sku_id: str,
+                              quantite_prevue: float, date_planification: str,
+                              notes: str, *, operation_id: str | None = None) -> str:
+    """Crée un OF planifié avec attribution atomique du numéro OF en base."""
+    pf = _identifier(pf_id, "Produit fini")
+    recipe = _identifier(recette_id, "Recette")
+    sku = _identifier(sku_id, "SKU")
+    qty = _quantity(quantite_prevue, "Quantité prévue")
+    if Decimal(qty) != Decimal(qty).to_integral_value():
+        raise ValueError("Quantité prévue : nombre entier de SKU requis")
+    date_value = _date_creation(date_planification, "Date planifiée")
+    comment = _comment(notes, "Notes")
+    op_id = (_identifier(operation_id, "Identifiant d'opération")
+             if operation_id is not None else f"POF-{uuid4()}")
+    if len(op_id) > 128:
+        raise ValueError("Identifiant d'opération trop long")
+    return _create_rpc("erp_create_manufacturing_order", {
+        "p_operation_id": op_id, "p_pf_id": pf, "p_recette_id": recipe,
+        "p_sku_id": sku, "p_quantite_prevue": qty,
+        "p_date_planification": date_value, "p_notes": comment,
+    }, target="of_id", permissions=("ordres_fabrication",))
 
 def changer_statut_of(of_id: str, nouveau_statut: str):
     """Démarre un OF sans permettre de rouvrir un OF terminé/rejeté.
