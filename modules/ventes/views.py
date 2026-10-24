@@ -22,6 +22,7 @@ from modules.ventes.service import (
     calculer_montants_facture,
     create_facture_brouillon,
     creer_bon_livraison,
+    creer_commande_client,
     get_factures,
     get_lignes_facture,
     valider_facture,
@@ -29,13 +30,14 @@ from modules.ventes.service import (
 
 _LOG = logging.getLogger(__name__)
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
-_ACTIONS = frozenset({"draft", "validate", "cancel", "ship"})
+_ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
     "draft": frozenset({"client_id", "date_echeance", "panier", "remise_globale",
                          "paiement_especes", "is_avoir", "facture_origine_id"}),
     "validate": frozenset({"facture_id"}),
     "cancel": frozenset({"facture_id"}),
     "ship": frozenset({"commande_vente_id", "transporteur", "zone", "items_livraison"}),
+    "order": frozenset({"client_id", "date_commande", "lignes"}),
 }
 _LIMIT = Decimal("1e15")
 _EXPEDIABLE_STATES = frozenset({"EN_ATTENTE", "CONFIRMEE", "VALIDEE", "EN_COURS", "PARTIELLEMENT_LIVREE"})
@@ -123,7 +125,12 @@ def _execute_operation(kind: str, user_id: str) -> None:
                     or result.get("facture_id") != payload["facture_id"]:
                 raise RuntimeError("Annulation non confirmée")
             document_id = payload["facture_id"]
-        else:
+        elif kind == "order":
+            result = creer_commande_client(**payload, operation_id=operation_id)
+            if not isinstance(result, str) or not result.strip():
+                raise RuntimeError("Sales order not confirmed")
+            document_id = result
+        elif kind == "ship":
             result = creer_bon_livraison(**payload, operation_id=operation_id)
             if not isinstance(result, str) or not result.strip():
                 raise RuntimeError("BL non confirmé")
@@ -145,6 +152,8 @@ def _execute_operation(kind: str, user_id: str) -> None:
     record["document_id"] = document_id
     if kind == "draft":
         st.session_state[_cart_key(user_id)] = []
+    elif kind == "order":
+        st.session_state[f"order_cart_{user_id}"] = []
     st.cache_data.clear()
     st.rerun()
 
@@ -346,6 +355,93 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
     st.caption("PDF désactivé : les coordonnées légales de l'entreprise doivent provenir de paramètres vérifiés, pas de valeurs fictives.")
 
 
+def _order_tab(user_id: str, can_write: bool) -> None:
+    st.subheader("Commandes clients")
+    st.caption("Commande et livraison distinctes de la facturation : aucun nouveau document facture n'est cr\u00e9\u00e9.")
+    # Ne jamais autoriser une seconde tentative avec de nouvelles donn\u00e9es avant confirmation.
+    if _operation_panel("order", user_id):
+        return
+    orders = _read_required("commandes_ventes")
+    if not orders.empty:
+        needed = {"commande_vente_id", "client_id", "statut"}
+        if not needed.issubset(orders.columns):
+            st.error("Colonnes Commandes clients manquantes")
+            return
+        st.dataframe(orders[["commande_vente_id", "client_id", "statut"]],
+                     use_container_width=True, hide_index=True)
+    if not can_write:
+        st.info("Mode lecture seule")
+        return
+    clients = _read_required("clients")
+    skus = _read_required("sku_conditionnement")
+    if clients.empty or skus.empty:
+        st.warning("Aucun client ou SKU disponible")
+        return
+    if not {"client_id", "nom", "actif"}.issubset(clients.columns) or not \
+            {"sku_id", "actif", "prix_vente_defaut"}.issubset(skus.columns):
+        st.error("R\u00e9f\u00e9rentiel clients ou SKU incomplet")
+        return
+    clients = clients[clients["actif"].astype(str).str.strip().str.upper() == "OUI"]
+    skus = skus[skus["actif"].astype(str).str.strip().str.upper() == "OUI"]
+    skus = skus[skus["sku_id"] != "SKU-007"]  # Validation physique en attente.
+    if clients.empty or skus.empty:
+        st.warning("Aucun client ou SKU actif et autoris\u00e9")
+        return
+    client_labels = {r["client_id"]: f'{r["client_id"]} - {r["nom"]}'
+                     for _, r in clients.iterrows()}
+    sku_labels = {r["sku_id"]: str(r["sku_id"]) for _, r in skus.iterrows()}
+    client_id = st.selectbox("Client", list(client_labels),
+                             format_func=lambda x: client_labels[x],
+                             key=f"order_client_{user_id}")
+    order_date = st.date_input("Date de commande", key=f"order_date_{user_id}")
+    cart_key = f"order_cart_{user_id}"
+    owner_key = f"order_cart_client_{user_id}"
+    if st.session_state.get(owner_key) != client_id:
+        if st.session_state.get(cart_key):
+            st.info("Changement de client : panier pr\u00e9c\u00e9dent effac\u00e9.")
+        st.session_state[cart_key] = []
+        st.session_state[owner_key] = client_id
+    cart = st.session_state[cart_key]
+    sku_id = st.selectbox("Produit SKU", list(sku_labels),
+                          format_func=lambda x: sku_labels[x],
+                          key=f"order_sku_{user_id}")
+    price_raw = skus.loc[skus["sku_id"] == sku_id, "prix_vente_defaut"].iloc[0]
+    try:
+        default_price = float(_decimal(price_raw, "Prix unitaire"))
+    except (ValueError, TypeError, OverflowError):
+        default_price = 0.0
+    with st.form(f"order_add_line_{user_id}"):
+        qty = st.number_input("Quantit\u00e9 (unit\u00e9s SKU)", min_value=1, value=1, step=1)
+        price = st.number_input("Prix unitaire HT (DZD)", min_value=0.0,
+                                value=default_price, step=0.01, format="%.2f",
+                                key=f"order_price_{user_id}_{sku_id}")
+        add = st.form_submit_button("Ajouter au panier")
+    if add:
+        try:
+            amount = _decimal(qty, "Quantit\u00e9", positive=True)
+            unit_price = _decimal(price, "Prix unitaire")
+            if amount != amount.to_integral_value() or unit_price.as_tuple().exponent < -2:
+                raise ValueError("Quantit\u00e9 ou prix invalide")
+            if len(cart) >= 500 or any(x["sku_id"] == sku_id for x in cart):
+                raise ValueError("SKU d\u00e9j\u00e0 pr\u00e9sent ou limite de lignes atteinte")
+            cart.append({"sku_id": sku_id, "quantite": int(amount),
+                         "prix_unitaire": format(unit_price, ".2f")})
+        except (ValueError, TypeError, OverflowError) as exc:
+            st.error(str(exc))
+    if not cart:
+        st.info("Ajoutez au moins une ligne avant d'enregistrer la commande.")
+        return
+    st.dataframe(pd.DataFrame(cart), use_container_width=True, hide_index=True)
+    if st.button("Vider le panier", key=f"order_clear_{user_id}"):
+        st.session_state[cart_key] = []
+        st.rerun()
+    if st.button("Enregistrer la commande", key=f"order_save_{user_id}", type="primary"):
+        _start_operation("order", user_id, {
+            "client_id": client_id, "date_commande": str(order_date),
+            "lignes": deepcopy(cart),
+        })
+
+
 def _ship_tab(user_id: str, can_write: bool) -> None:
     st.subheader("Expédition / Bons de livraison")
     st.info("Un BL est rattaché à une vraie commande client, jamais à un numéro de facture.")
@@ -450,11 +546,13 @@ def show_ventes_page() -> None:
     # Ces lectures doivent intervenir APRES validation fraîche de l'identité.
     try:
         invoices = get_factures()
-        tab_draft, tab_ship, tab_workflow = st.tabs([
-            "Facture / Avoir", "Bons de livraison", "Suivi factures",
+        tab_draft, tab_order, tab_ship, tab_workflow = st.tabs([
+            "Facture / Avoir", "Commandes clients", "Bons de livraison", "Suivi factures",
         ])
         with tab_draft:
             _draft_tab(user_id, can_write, invoices)
+        with tab_order:
+            _order_tab(user_id, can_write)
         with tab_ship:
             _ship_tab(user_id, can_write)
         with tab_workflow:

@@ -39,11 +39,12 @@ def ui(monkeypatch):
 
     sales = types.ModuleType("modules.ventes.service")
     for name in ("annuler_facture", "calculer_montants_facture", "create_facture_brouillon",
-                 "creer_bon_livraison", "get_factures", "get_lignes_facture", "valider_facture"):
+                 "creer_bon_livraison", "creer_commande_client", "get_factures", "get_lignes_facture", "valider_facture"):
         setattr(sales, name, MagicMock())
     sales.get_factures.return_value = pd.DataFrame()
     sales.create_facture_brouillon.return_value = "FAC-1"
     sales.creer_bon_livraison.return_value = "BL-1"
+    sales.creer_commande_client.return_value = "CDV-1"
     sales.valider_facture.return_value = {"facture_id": "FAC-1", "statut": "VALIDE"}
     sales.annuler_facture.return_value = {"facture_id": "FAC-1", "statut": "ANNULE"}
     sales.calculer_montants_facture.return_value = {
@@ -459,3 +460,107 @@ def test_read_pagination_failure_blocks_screen(ui):
     ui.mod.show_ventes_page()
     ui.st.error.assert_called()
     ui.sales.creer_bon_livraison.assert_not_called()
+
+
+def _order_test_tables():
+    return {
+        "commandes_ventes": pd.DataFrame(),
+        "clients": pd.DataFrame([{"client_id": "CLI-0007", "nom": "EURL Lounes", "actif": "OUI"}]),
+        "sku_conditionnement": pd.DataFrame([
+            {"sku_id": "SKU-001", "actif": "OUI", "prix_vente_defaut": 1250.0},
+            {"sku_id": "SKU-007", "actif": "OUI", "prix_vente_defaut": 1200.0},
+        ]),
+    }
+
+
+def _order_test_payload():
+    return {
+        "client_id": "CLI-0007",
+        "date_commande": "2026-10-24",
+        "lignes": [{"sku_id": "SKU-001", "quantite": 1, "prix_unitaire": "1250.00"}],
+    }
+
+
+def test_order_tab_readonly_no_creation(ui):
+    ui.mod._read_required = MagicMock(return_value=pd.DataFrame())
+    ui.mod._order_tab("USR-1", False)
+    ui.mod._read_required.assert_called_once_with("commandes_ventes")
+    ui.st.form.assert_not_called()
+
+
+def test_order_tab_cart_routes_to_operation_without_direct_write(ui):
+    tables = _order_test_tables()
+    ui.mod._read_required = MagicMock(side_effect=lambda table: tables[table])
+    ui.st.number_input.side_effect = (
+        lambda label, **kwargs: 1 if "Quantit" in label else 1250.0
+    )
+    ui.st.form_submit_button.side_effect = lambda label, **kwargs: label == "Ajouter au panier"
+    ui.st.button.side_effect = lambda label, **kwargs: label == "Enregistrer la commande"
+    ui.mod._start_operation = MagicMock()
+
+    ui.mod._order_tab("USR-1", True)
+
+    ui.mod._start_operation.assert_called_once()
+    kind, user, payload = ui.mod._start_operation.call_args.args
+    assert kind == "order"
+    assert user == "USR-1"
+    assert payload["client_id"] == "CLI-0007"
+    assert payload["lignes"] == [
+        {"sku_id": "SKU-001", "quantite": 1, "prix_unitaire": "1250.00"}
+    ]
+
+
+def test_order_tab_blocks_unvalidated_sku(ui):
+    tables = _order_test_tables()
+    tables["sku_conditionnement"] = tables["sku_conditionnement"].query(
+        "sku_id == 'SKU-007'"
+    )
+    ui.mod._read_required = MagicMock(side_effect=lambda table: tables[table])
+    ui.mod._start_operation = MagicMock()
+
+    ui.mod._order_tab("USR-1", True)
+
+    ui.st.warning.assert_called()
+    ui.mod._start_operation.assert_not_called()
+    ui.st.form.assert_not_called()
+
+
+def test_order_tab_pending_operation_blocks_second_form(ui):
+    key = ui.mod._operation_key("order", "USR-1")
+    ui.st.session_state[key] = {
+        "status": "uncertain", "operation_id": "SALE-UI-test009",
+        "payload": _order_test_payload(),
+    }
+    ui.mod._read_required = MagicMock()
+    ui.mod._order_tab("USR-1", True)
+    ui.mod._read_required.assert_not_called()
+    ui.st.form.assert_not_called()
+
+
+def test_order_click_twice_creates_only_one_operation(ui):
+    ui.mod.creer_commande_client.return_value = "CDV-0001"
+    payload = _order_test_payload()
+    ui.mod._start_operation("order", "USR-1", payload)
+    ui.mod._start_operation("order", "USR-1", payload)
+    ui.mod.creer_commande_client.assert_called_once()
+    key = ui.mod._operation_key("order", "USR-1")
+    assert ui.st.session_state[key]["status"] == "confirmed"
+    assert ui.st.session_state[key]["document_id"] == "CDV-0001"
+
+
+def test_order_timeout_retry_keeps_operation_id(ui):
+    ui.mod.creer_commande_client.side_effect = [RuntimeError("timeout"), "CDV-0001"]
+    payload = _order_test_payload()
+    ui.mod._start_operation("order", "USR-1", payload)
+    key = ui.mod._operation_key("order", "USR-1")
+    assert ui.st.session_state[key]["status"] == "uncertain"
+    previous_id = ui.st.session_state[key]["operation_id"]
+
+    ui.mod._execute_operation("order", "USR-1")
+
+    assert ui.mod.creer_commande_client.call_count == 2
+    assert all(
+        call.kwargs["operation_id"] == previous_id
+        for call in ui.mod.creer_commande_client.call_args_list
+    )
+    assert ui.st.session_state[key]["status"] == "confirmed"

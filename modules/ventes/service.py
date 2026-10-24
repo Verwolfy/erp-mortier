@@ -268,3 +268,78 @@ def creer_bon_livraison(commande_vente_id: str, transporteur: str, zone: str,
     result = _rpc("SHIP", {"commande_vente_id": order_id, "transporteur": carrier,
                            "zone": zone, "lignes": lines}, operation_id=operation_id)
     return _text(result.get("bl_id"), "Numéro de livraison")
+
+
+def creer_commande_client(
+    client_id: str,
+    date_commande: str,
+    lignes: list,
+    *,
+    operation_id: str | None = None,
+) -> str:
+    """Create a sales order atomically with server-side checks."""
+    client = _text(client_id, "Client")
+    order_date = _date(date_commande, "Date commande")
+
+    normalized = []
+    seen = set()
+    for item in _lines(lignes):
+        sku = _text(item.get("sku_id"), "SKU")
+        qty = _decimal(
+            item.get("quantite"), "Quantite", strictly_positive=True
+        )
+        price = _decimal(item.get("prix_unitaire"), "Prix unitaire")
+
+        if qty != qty.to_integral_value():
+            raise ValueError("Quantite SKU non entiere")
+        if price.as_tuple().exponent < -2:
+            raise ValueError("Prix avec plus de deux decimales")
+        if sku in seen:
+            raise ValueError("SKU duplique dans la commande")
+
+        seen.add(sku)
+        normalized.append({
+            "sku_id": sku,
+            "quantite": _fmt(qty),
+            "prix_unitaire": _fmt(price),
+        })
+
+    op_id = (
+        _text(operation_id, "Identifiant operation", max_len=128)
+        if operation_id is not None
+        else f"ORDER-{uuid4()}"
+    )
+
+    if check_server_permission("commandes_ventes") is not True:
+        raise PermissionError("Droit Commandes clients refuse")
+
+    try:
+        response = _stock_rpc_client().rpc(
+            "erp_create_sales_order",
+            {
+                "p_operation_id": op_id,
+                "p_client_id": client,
+                "p_date": order_date,
+                "p_lignes": normalized,
+            },
+        ).execute()
+    except Exception as exc:
+        raise SaleOperationError(
+            "Commande non confirmee : verifier avant toute reprise",
+            operation_id=op_id,
+        ) from exc
+
+    result = response.data
+    if (
+        not isinstance(result, dict)
+        or result.get("operation_id") != op_id
+        or result.get("statut") != "EN_ATTENTE"
+        or not isinstance(result.get("commande_vente_id"), str)
+        or not result["commande_vente_id"].strip()
+    ):
+        raise SaleOperationError(
+            "Reponse de creation non verifiable",
+            operation_id=op_id,
+        )
+
+    return result["commande_vente_id"]
