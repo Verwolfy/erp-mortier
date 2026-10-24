@@ -180,8 +180,8 @@ def show_stocks_page():
 
         if not df_stock.empty and not df_mp_global.empty:
             df_display = pd.merge(df_stock, df_mp_global[['mp_id', 'nom', 'unite_stock', 'stock_mini', 'categorie_mp']], on='mp_id', how='left')
-            df_vrac = df_display[df_display["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
-            df_emb = df_display[df_display["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+            df_vrac = df_display[~df_display["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
+            df_emb = df_display[df_display["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
         else:
             df_vrac = pd.DataFrame()
             df_emb = pd.DataFrame()
@@ -233,9 +233,9 @@ def show_stocks_page():
         elif not df_mp_global.empty:
             type_entree = st.radio("Que souhaitez-vous approvisionner ?", ["🧪 Matière Première (Vrac)", "📦 Emballage"], horizontal=True)
             if "Emballage" in type_entree:
-                df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+                df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
             else:
-                df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
+                df_mp_filtre = df_mp_global[~df_mp_global["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
 
             if df_mp_filtre.empty:
                 st.warning(f"Aucun article de type '{type_entree}' n'a été trouvé dans le référentiel.")
@@ -276,8 +276,8 @@ def show_stocks_page():
         df_mouv = get_mouvements()
         if not df_mouv.empty and not df_mp_global.empty:
             df_mouv_detail = pd.merge(df_mouv, df_mp_global[['mp_id', 'categorie_mp']], on='mp_id', how='left')
-            df_mouv_vrac = df_mouv_detail[df_mouv_detail["categorie_mp"] != "EMBALLAGE_CONSOMMABLE"]
-            df_mouv_emb = df_mouv_detail[df_mouv_detail["categorie_mp"] == "EMBALLAGE_CONSOMMABLE"]
+            df_mouv_vrac = df_mouv_detail[~df_mouv_detail["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
+            df_mouv_emb = df_mouv_detail[df_mouv_detail["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
         else:
             df_mouv_vrac = pd.DataFrame()
             df_mouv_emb = pd.DataFrame()

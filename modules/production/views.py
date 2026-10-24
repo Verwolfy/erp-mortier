@@ -535,8 +535,11 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
                                   "les quantités MP et le nombre d'emballages",
                                   key=f"qc_recipe_ack_{user_id}_{of_id}")
                       if conforme == "OUI" else True)
-        disabled = not recipe_ack or not needs_valid or (conforme == "OUI" and not can_stock)
+        disabled = not needs_valid or (conforme == "OUI" and not can_stock)
         if st.form_submit_button("Valider et clôturer cet OF", disabled=disabled) and not disabled:
+            if not recipe_ack:
+                st.error("Confirmation des quantites obligatoire.")
+                return
             if not isinstance(controller, str) or not controller.strip():
                 st.error("Le contrôleur est obligatoire.")
                 return

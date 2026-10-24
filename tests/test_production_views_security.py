@@ -351,10 +351,21 @@ def test_quality_form_blocks_unsupported_sku(ui):
 
 
 def test_quality_form_requires_explicit_recipe_ack(ui):
-    ui.mod._control_form('USR-1', _orders().iloc[0], _skus(25, 'SAC', 'EMB-1'),
-                         _pack_materials(), _products(), True)
-    assert ui.st.form_submit_button.call_args.kwargs['disabled'] is True
+    ui.st.form_submit_button.return_value = True
+    ui.st.checkbox.return_value = False
+
+    ui.mod._control_form(
+        'USR-1',
+        _orders().iloc[0],
+        _skus(25, 'SAC', 'EMB-1'),
+        _pack_materials(),
+        _products(),
+        True,
+    )
+
+    assert ui.st.form_submit_button.call_args.kwargs['disabled'] is False
     ui.prod.enregistrer_controle_qualite.assert_not_called()
+    ui.st.error.assert_any_call("Confirmation des quantites obligatoire.")
 
 
 def test_quality_rejection_has_zero_qty_packaging(ui):
