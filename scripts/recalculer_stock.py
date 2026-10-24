@@ -9,6 +9,15 @@ from __future__ import annotations
 
 import os
 import sys
+# Compatible avec « python scripts/...py » et « python -m scripts... ».
+from pathlib import Path
+import sys
+if __package__ in (None, ""):
+    sys.path[:0] = [str(Path(__file__).resolve().parents[1])]
+
+from core.environment_guard import (
+    policy_from_environment, require_supabase_target,
+)
 from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
@@ -113,6 +122,7 @@ def main() -> int:
         print("ERREUR: SUPABASE_URL et SUPABASE_KEY requis.", file=sys.stderr)
         return 2
     try:
+        require_supabase_target(policy_from_environment(os.environ), url)
         from supabase import create_client
         client = create_client(url, key)
         reports = [auditer_et_corriger_stock_mp(client), auditer_et_corriger_stock_pf(client)]

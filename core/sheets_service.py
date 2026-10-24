@@ -7,11 +7,16 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from config.settings import SHEETS_IDS
+from core.environment_guard import (
+    policy_from_streamlit, require_supabase_target, require_sheet_id,
+)
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-@st.cache_resource(show_spinner=False)
 def get_google_client():
-    """Initialise et met en cache le client gspread pour éviter les reconnexions inutiles."""
+    """Vérifie la politique avant chaque connexion Google (010-A-01)."""
+    require_supabase_target(
+        policy_from_streamlit(st.secrets), st.secrets["supabase"]["url"]
+    )
     credentials_dict = dict(st.secrets["gcp_service_account"])
     credentials = Credentials.from_service_account_info(
         credentials_dict,
@@ -33,11 +38,11 @@ def get_worksheet(module_name: str, sheet_name: str):
     Récupère une feuille spécifique d'un module donné.
     Le module_name doit correspondre aux clés de SHEETS_IDS (ex: 'referentiels').
     """
+    sheet_id = require_sheet_id(
+        policy_from_streamlit(st.secrets), st.secrets["supabase"]["url"],
+        module_name, SHEETS_IDS
+    )
     client = get_google_client()
-    sheet_id = SHEETS_IDS.get(module_name)
-
-    if not sheet_id:
-        raise ValueError(f"ID introuvable dans settings.py pour le module : {module_name}")
 
     sheet = client.open_by_key(sheet_id)
     return sheet.worksheet(sheet_name)

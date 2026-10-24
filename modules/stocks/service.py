@@ -18,6 +18,7 @@ from uuid import uuid4
 import pandas as pd
 import streamlit as st
 from supabase import Client, create_client
+from core.environment_guard import policy_from_streamlit, require_supabase_target
 
 from core.db_service import check_server_permission, fetch_data, fetch_data_filtered
 
@@ -59,7 +60,6 @@ def get_lots() -> pd.DataFrame:
     return pd.DataFrame(fetch_data("lots"))
 
 
-@st.cache_resource(show_spinner=False)
 def _stock_rpc_client() -> Client:
     """Client *serveur dédié*, jamais authentifié avec un utilisateur final.
 
@@ -75,6 +75,7 @@ def _stock_rpc_client() -> Client:
         raise RuntimeError("URL Supabase incorrecte")
     if not isinstance(key, str) or not key.strip():
         raise RuntimeError("Clé serveur stock_service_key vide")
+    require_supabase_target(policy_from_streamlit(st.secrets), url)
     return create_client(url, key)
 
 

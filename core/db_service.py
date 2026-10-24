@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 import streamlit as st
 from supabase import create_client, Client
+from core.environment_guard import policy_from_streamlit, require_supabase_target
 from core.sheets_service import append_rows_batch, update_multiple_cells_by_id
 from core.logger import log_error
 from config.roles import has_permission
@@ -196,15 +197,15 @@ def _is_active(value: Any) -> bool:
     return str(value).strip().casefold() in _ACTIVE_VALUES
 
 
-@st.cache_resource
 def get_supabase_client() -> Client:
-    """Client serveur Supabase partagé. Ne pas y stocker de session Auth utilisateur.
+    """Vérifie l'environnement à chaque demande, sans client Auth partagé en cache.
 
-    Important : si modules/auth utilise ``client.auth.sign_in_with_password`` sur
-    ce client, il faut isoler les clients par utilisateur avant déploiement.
+    010-A-01 privilégie l'isolation des sessions sur la mise en cache. Les coûts
+    de création du client devront être mesurés avant tout déploiement.
     """
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
+    require_supabase_target(policy_from_streamlit(st.secrets), url)
     return create_client(url, key)
 
 

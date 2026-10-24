@@ -8,6 +8,16 @@ from email.message import EmailMessage
 import pandas as pd
 from datetime import datetime
 from supabase import create_client
+from decimal import Decimal, InvalidOperation
+# Compatible avec « python scripts/...py » et « python -m scripts... ».
+from pathlib import Path
+import sys
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from core.environment_guard import (
+    policy_from_environment, require_supabase_target, EnvironmentSafetyError,
+)
 
 # Configuration Supabase (via variables d'environnement injectées par GitHub Actions)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -78,40 +88,58 @@ Le Service Comptabilité
         return False
 
 
-def main():
-    print("--- DÉMARRAGE DU SCRIPT DE RELANCE ---")
-    if not all([SUPABASE_URL, SUPABASE_KEY, SMTP_USER, SMTP_PASSWORD]):
-        print("❌ Erreur : Variables d'environnement manquantes.")
-        return
+def main() -> int:
+    """Refuse une configuration ambiguë avant toute lecture ou émission d'email."""
+    print("--- AUDIT DES RELANCES ---")
+    try:
+        mode = require_supabase_target(
+            policy_from_environment(os.environ), SUPABASE_URL
+        )
+        if not SUPABASE_KEY:
+            raise EnvironmentSafetyError("Clé Supabase absente")
+        raw_min = os.getenv("ERP_REMINDER_MINIMUM_DZD", "")
+        try:
+            minimum = Decimal(raw_min)
+            if not minimum.is_finite() or minimum < 0:
+                raise ValueError("Borne invalide")
+        except (InvalidOperation, ValueError) as exc:
+            raise EnvironmentSafetyError("Seuil de relance non configuré") from exc
+
+        # Aucun courriel n'est émis en TEST, même si la variable est activée.
+        send_enabled = (mode == "PRODUCTION" and
+                        os.getenv("ERP_ENABLE_EMAIL_SEND") == "true")
+        if send_enabled and not all([SMTP_USER, SMTP_PASSWORD]):
+            raise EnvironmentSafetyError("Configuration SMTP absente")
+    except EnvironmentSafetyError as exc:
+        print(f"REFUS DE DEMARRAGE : {exc}")
+        return 2
 
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
     df_echues = get_factures_echues(supabase)
     if df_echues.empty:
-        print("✅ Aucune facture en retard à relancer aujourd'hui.")
-        return
-
+        print("Aucune facture eligible")
+        return 0
     df_clients = get_clients(supabase)
-
+    count = 0
     for _, facture in df_echues.iterrows():
         client_info = df_clients[df_clients["client_id"] == facture["client_id"]]
         if client_info.empty:
             continue
-
         client = client_info.iloc[0]
-        montant_restant = float(facture.get("montant_ttc", 0)) - float(facture.get("montant_paye", 0))
-
-        # Règle métier : On ne relance que s'il reste au moins 10 DZD à payer
-        if montant_restant > 10.0:
-            envoyer_email_relance(
-                client_nom=client["nom"],
-                client_email=client["email_contact"],
-                facture_id=facture["facture_id"],
-                montant_restant=montant_restant,
-                date_echeance=facture["date_echeance"]
-            )
-
-    print("--- FIN DU SCRIPT ---")
+        remaining = Decimal(str(facture.get("montant_ttc", 0))) - Decimal(
+            str(facture.get("montant_paye", 0)))
+        if remaining > minimum:
+            count += 1
+            if send_enabled:
+                envoyer_email_relance(
+                    client_nom=client["nom"], client_email=client["email_contact"],
+                    facture_id=facture["facture_id"], montant_restant=float(remaining),
+                    date_echeance=facture["date_echeance"]
+                )
+    print(f"Relances eligibles : {count}. "
+          + ("Envoi active en PRODUCTION." if send_enabled else
+             "SIMULATION : aucun email envoye."))
+    return 0
 
 
 if __name__ == "__main__":

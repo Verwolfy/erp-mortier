@@ -26,8 +26,14 @@ jobs:
 
     - name: Exécuter le script de relance
       env:
+        ERP_ENV: ${{ vars.ERP_ENV }}
+        ERP_TEST_SUPABASE_URL: ${{ vars.ERP_TEST_SUPABASE_URL }}
+        ERP_PRODUCTION_SUPABASE_URL: ${{ vars.ERP_PRODUCTION_SUPABASE_URL }}
+        ERP_PRODUCTION_ENABLED: ${{ vars.ERP_PRODUCTION_ENABLED }}
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        ERP_ENABLE_EMAIL_SEND: ${{ vars.ERP_ENABLE_EMAIL_SEND }}
+        ERP_REMINDER_MINIMUM_DZD: ${{ vars.ERP_REMINDER_MINIMUM_DZD }}
         SMTP_USER: ${{ secrets.SMTP_USER }}
         SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       run: python scripts/envoyer_relances.py

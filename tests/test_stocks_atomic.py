@@ -22,11 +22,20 @@ def stock(monkeypatch):
     reader.fetch_data_filtered = Mock(side_effect=lambda t, c, v: [{c: v}])
     reader.check_server_permission = Mock(return_value=True)
     core = types.ModuleType("core")
+    core.__path__ = [str(SERVICE_FILE.parents[2] / "core")]
     monkeypatch.setitem(sys.modules, "core", core)
     monkeypatch.setitem(sys.modules, "core.db_service", reader)
 
     streamlit = types.ModuleType("streamlit")
-    streamlit.secrets = {"supabase": {"url": "https://example.supabase.co", "stock_service_key": "server-test-key"}}
+    streamlit.secrets = {
+        "supabase": {"url": "https://testxyz98765.supabase.co", "stock_service_key": "server-test-key"},
+        "erp_environment": {
+            "name": "TEST",
+            "test_supabase_url": "https://testxyz98765.supabase.co",
+            "production_supabase_url": "https://prodxyz98765.supabase.co",
+            "production_enabled": False,
+        },
+    }
     streamlit.cache_resource = lambda **kwargs: lambda f: f
     monkeypatch.setitem(sys.modules, "streamlit", streamlit)
 

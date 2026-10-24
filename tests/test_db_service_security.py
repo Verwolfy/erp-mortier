@@ -119,12 +119,20 @@ def env(monkeypatch):
     st = types.ModuleType("streamlit")
     st.cache_resource = lambda fun: fun
     st.session_state = {"authenticated": True, "user": {"user_id": "U1", "role": "ADMIN"}}
-    st.secrets = {"supabase": {"url": "fake", "key": "dummy"}}
+    st.secrets = {
+        "supabase": {"url": "https://testxyz98765.supabase.co", "key": "dummy"},
+        "erp_environment": {
+            "name": "TEST",
+            "test_supabase_url": "https://testxyz98765.supabase.co",
+            "production_supabase_url": "https://prodxyz98765.supabase.co",
+            "production_enabled": False,
+        },
+    }
     supabase = types.ModuleType("supabase")
     supabase.Client = Database
     supabase.create_client = lambda url, key: db
     core = types.ModuleType("core")
-    core.__path__ = []
+    core.__path__ = [str(FILE.parents[1] / "core")]
     sheets = types.ModuleType("core.sheets_service")
     sheets.append_rows_batch = lambda *a: tracker["rows"].append(a)
     sheets.update_multiple_cells_by_id = lambda *a: tracker["updates"].append(a)

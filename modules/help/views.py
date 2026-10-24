@@ -22,7 +22,8 @@ def show_help_page():
             "📦 Stocks & Magasin",
             "🏭 Production",
             "🤝 Ventes & CRM",
-            "💰 Finance & Trésorerie"
+            "💰 Finance & Trésorerie",
+            "🔐 Environnements et sécurité (010-A)"
         ]
     )
 
@@ -144,6 +145,36 @@ def show_help_page():
         2. Cliquez sur **Générer le Bon de Livraison**.
         3. Vérifiez les quantités expédiées. La validation du BL déduira immédiatement les articles du stock de produits finis.
         4. Une fois expédié, cliquez sur **Générer la Facture** pour transférer la pièce vers la comptabilité.
+        """)
+
+    elif rubrique == "🔐 Environnements et sécurité (010-A)":
+        st.header("🔐 Environnements et sécurité")
+        st.info("La migration 010-A est en préparation. Aucune mise en production n'est autorisée par cette page.")
+        st.markdown("""
+        **Pourquoi distinguer TEST et PRODUCTION ?**
+
+        Les essais peuvent créer des stocks, des factures et des relances fictives.
+        Ils doivent utiliser un projet Supabase et des classeurs Google distincts
+        de ceux de l'entreprise réelle.
+
+        **Signification des messages de sécurité :**
+
+        - *Politique absente* : l'administrateur n'a pas encore déclaré
+          l'environnement dans Streamlit Secrets.
+        - *Projet Supabase différent* : l'application est reliée à une URL
+          qui ne correspond pas à l'environnement annoncé ; aucune connexion
+          ne doit être autorisée.
+        - *Classeur TEST identique* : un classeur de test correspond à un
+          classeur de production déjà référencé.
+        - *PRODUCTION désactivée* : le déploiement n'a pas reçu
+          l'autorisation explicite nécessaire.
+
+        Les tâches de relance exécutées en mode TEST ne doivent envoyer
+        aucun e-mail. En cas d'erreur, ne désactivez pas ces contrôles :
+        contactez l'administrateur.
+
+        **Documentation technique pour l'administrateur :**
+        `docs/guide_migration_010A_01.md`.
         """)
 
     elif rubrique == "💰 Finance & Trésorerie":
