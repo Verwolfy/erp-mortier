@@ -23,8 +23,10 @@ def show_help_page():
             "🏭 Production",
             "🤝 Ventes & CRM",
             "💰 Finance & Trésorerie",
-            "🔐 Environnements et sécurité (010-A)"
-        ]
+            "🔐 Environnements et sécurité (010-A)",
+            "🔎 Vérification des droits SQL (010-A-02)"
+        ],
+        help="Sélectionnez une rubrique pour afficher la procédure et les contrôles correspondants."
     )
 
     st.divider()
@@ -175,6 +177,34 @@ def show_help_page():
 
         **Documentation technique pour l'administrateur :**
         `docs/guide_migration_010A_01.md`.
+        """)
+
+    elif rubrique == "🔎 Vérification des droits SQL (010-A-02)":
+        st.header("🔎 Contrôle des autorisations Supabase")
+        st.info("Vérification en lecture seule sur Supabase TEST ; aucune correction automatique.")
+        st.markdown("""
+        **À quoi servent ces contrôles ?**
+
+        - **RLS** : contrôle quelles lignes peuvent être accessibles selon le rôle.
+          Activer la RLS sans politique peut refuser l'accès normal, sans prouver
+          à lui seul une faille de sécurité.
+        - **GRANT / REVOKE** : autorisations SQL sur les tables, schémas et fonctions.
+        - **RPC** : fonctions PostgreSQL appelées par l'ERP.
+        - **service_role** : rôle à privilèges élevés, réservé au serveur ;
+          il contourne habituellement les politiques RLS.
+
+        **Procédure administrateur :**
+        1. Vérifier le projet **TEST** dans Supabase SQL Editor.
+        2. Exécuter `sql/010A_02_permissions_audit_readonly.sql` (SELECT uniquement).
+        3. Exporter les lignes du résultat en CSV, sans clés ni secrets.
+        4. Analyser le CSV avec `scripts/verifier_audit_permissions_010a.py`.
+        5. Corriger seulement après examen des risques et plan de retour arrière.
+
+        **Interprétation :** `BLOQUANT` interdit toute promotion du lot,
+        `A_VERIFIER` requiert une revue humaine, `INFO` n'est pas une preuve
+        de conformité et `OK` porte uniquement sur le contrôle effectué.
+
+        **Aide détaillée :** `docs/guide_migration_010A_02.md`.
         """)
 
     elif rubrique == "💰 Finance & Trésorerie":
