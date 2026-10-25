@@ -7,6 +7,7 @@ Gestion dynamique des listes de référence synchronisées avec import_data.py.
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
+from core.security_service import is_security_manager, STANDARD_ROLES, STANDARD_MODULES
 from core.listes_service import get_liste, liste_to_dict
 from core.db_service import fetch_data, insert_hybrid, update_hybrid
 from modules.admin.service import (
@@ -470,10 +471,9 @@ def show_user_management():
     st.title("🔐 Sécurité & Utilisateurs")
 
     user_role = st.session_state.get("user", {}).get("role", "")
-    can_write = has_permission(user_role, "Administration", "ecriture")
-
-    if not can_write:
-        st.error("Vous n'avez pas les droits d'administration pour accéder à cette page.")
+    # Un droit Administration/ecriture ne confère PAS l'autorité de sécurité.
+    if not is_security_manager():
+        st.error("Habilitation SECURITY_MANAGER requise.")
         return
 
     tab1, tab2, tab3, tab4 = st.tabs(["Créer un Utilisateur", "Définir les Permissions", "Annuaire Existant", "Piste d'Audit (Logs)"])
@@ -487,7 +487,7 @@ def show_user_management():
                 nom = st.text_input("Nom complet de l'employé *")
                 login = st.text_input("Identifiant de connexion (ex: jdupont) *")
             with col2:
-                role = st.text_input("Rôle (ex: ADMIN, COMMERCIAL, MAGASINIER) *").upper()
+                role = st.selectbox("Rôle non privilégié *", STANDARD_ROLES)
                 mdp = st.text_input("Mot de passe temporaire *", type="password")
 
             submit_user = st.form_submit_button("Enregistrer l'utilisateur", use_container_width=True)
@@ -510,8 +510,8 @@ def show_user_management():
         st.info("Rappel : Les statuts doivent s'écrire 'OUI' ou 'NON'.")
 
         with st.form("form_add_perm", clear_on_submit=True):
-            role_cible = st.text_input("Rôle concerné (ex: COMMERCIAL) *").upper()
-            modules_disponibles = ["Administration", "Achats", "Stocks", "Production", "Ventes", "Finance", "CRM", "RH", "Logs"]
+            role_cible = st.selectbox("Rôle concerné *", STANDARD_ROLES)
+            modules_disponibles = STANDARD_MODULES
             module_cible = st.selectbox("Module de l'ERP", modules_disponibles)
 
             col_l, col_e = st.columns(2)
@@ -554,7 +554,7 @@ def show_user_management():
     # ONGLET 4 : Piste d'audit (Logs)
     with tab4:
         st.subheader("Historique des Actions (Audit Trail)")
-        st.info("Traçabilité complète et automatique des modifications de la base de données.")
+        st.info("Les créations sensibles réalisées via RPC sont auditées atomiquement ; les anciennes actions peuvent être en mode best-effort.")
 
         if st.button("🔄 Rafraîchir les logs"):
             st.cache_data.clear()

@@ -134,9 +134,10 @@ def _allowed_menu(role: str) -> dict[str, str]:
         if name.casefold() not in modules:
             continue
         menu[name] = label
-        if name == "Administration" and has_permission(role, "Administration", "ecriture"):
-            # Conserver l'ordre de navigation historique : Sécurité après Admin.
-            menu["Securite"] = "🔐 Utilisateurs & Sécurité"
+    # Habilitation nominative et fraîche, jamais déduite de ADMIN/ecriture.
+    from core.security_service import is_security_manager
+    if is_security_manager():
+        menu["Securite"] = "🔐 Utilisateurs & Sécurité"
     menu["Help"] = "📚 Guide & Aide"
     return menu
 
@@ -147,8 +148,9 @@ def _render_menu_page(choice: str | None, role: str) -> None:
         from modules.admin.views import show_admin_page
         show_admin_page()
     elif choice == "Securite":
-        # Seule l'administration en écriture peut atteindre cette page.
-        if not has_permission(role, "Administration", "ecriture"):
+        # Contrôle nominatif revalidé au moment d'ouvrir l'écran.
+        from core.security_service import is_security_manager
+        if not is_security_manager():
             st.error("Accès non autorisé.")
             return
         from modules.admin.views import show_user_management

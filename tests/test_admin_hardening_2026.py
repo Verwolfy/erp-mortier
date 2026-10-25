@@ -15,6 +15,7 @@ import pytest
 def service(monkeypatch):
     st = types.ModuleType("streamlit")
     st.cache_data = lambda **kwargs: lambda fn: fn
+    st.session_state = {"authenticated": True, "user": {"user_id": "USR-ADMIN"}}
     monkeypatch.setitem(sys.modules, "streamlit", st)
 
     db = types.ModuleType("core.db_service")
@@ -23,6 +24,12 @@ def service(monkeypatch):
     db.update_hybrid = MagicMock(return_value=[{"client_id": "CLI-001"}])
     db.get_supabase_client = MagicMock()
     monkeypatch.setitem(sys.modules, "core.db_service", db)
+
+    security = types.ModuleType("core.security_service")
+    security.require_security_manager = MagicMock(return_value="USR-ADMIN")
+    security.create_user_secure = MagicMock(side_effect=lambda user_id, nom, login, hashed, role: user_id)
+    security.add_permission_secure = MagicMock(return_value=True)
+    monkeypatch.setitem(sys.modules, "core.security_service", security)
 
     utils = types.ModuleType("core.utils")
     utils.generate_unique_id = MagicMock(side_effect=lambda prefix, _: f"{prefix}-001")
@@ -118,17 +125,36 @@ def test_user_directory_never_selects_hash(service):
 
 
 def test_new_user_uses_central_password_policy(service):
-    service.get_supabase_client.return_value.table.return_value.select.return_value.execute.return_value.data = []
-    assert service.add_user("Test", "test", "mot-de-passe-test", "ADMIN") == "USR-001"
-    data = service.insert_hybrid.call_args.args[1]
-    assert data["hash_mdp"] == "bcrypt-hash-for-test"
-    assert data["hash_mdp"] != "mot-de-passe-test"
+    result = service.add_user("Test", "test", "mot-de-passe-test", "RH")
+    args = service.create_user_secure.call_args.args
+    assert result == args[0]
+    assert args[1:] == ("Test", "test", "bcrypt-hash-for-test", "RH")
+    assert "mot-de-passe-test" not in args
+    service.insert_hybrid.assert_not_called()
 
 
-def test_permission_creation_fails_if_insert_unconfirmed(service):
-    service.insert_hybrid.return_value = []
-    with pytest.raises(RuntimeError):
-        service.add_permission("TEST", "RH", "OUI", "NON")
+def test_permission_creation_fails_if_rpc_unconfirmed(service):
+    service.add_permission_secure.side_effect = RuntimeError("RPC non confirmee")
+    with pytest.raises(RuntimeError, match="RPC non confirmee"):
+        service.add_permission("RH", "RH", "OUI", "NON")
+    service.insert_hybrid.assert_not_called()
+
+
+def test_security_manager_failure_blocks_sensitive_admin_operations(service):
+    service.require_security_manager.side_effect = PermissionError("SECURITY_MANAGER requis")
+    with pytest.raises(PermissionError):
+        service.get_users()
+    with pytest.raises(PermissionError):
+        service.add_user("Test", "test", "secret", "RH")
+    service.get_supabase_client.assert_not_called()
+    service.create_user_secure.assert_not_called()
+    service.insert_hybrid.assert_not_called()
+
+
+def test_permissions_only_through_audited_rpc(service):
+    assert service.add_permission("RH", "RH", "OUI", "NON") is True
+    service.add_permission_secure.assert_called_once_with("RH", "RH", "OUI", "NON")
+    service.insert_hybrid.assert_not_called()
 
 
 def test_editable_fields_excludes_technical_columns(service):

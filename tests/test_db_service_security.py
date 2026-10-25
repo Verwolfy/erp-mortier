@@ -120,11 +120,11 @@ def env(monkeypatch):
     st.cache_resource = lambda fun: fun
     st.session_state = {"authenticated": True, "user": {"user_id": "U1", "role": "ADMIN"}}
     st.secrets = {
-        "supabase": {"url": "https://testxyz98765.supabase.co", "key": "dummy"},
+        "supabase": {"url": "https://testproject123.supabase.co", "key": "dummy"},
         "erp_environment": {
             "name": "TEST",
-            "test_supabase_url": "https://testxyz98765.supabase.co",
-            "production_supabase_url": "https://prodxyz98765.supabase.co",
+            "test_supabase_url": "https://testproject123.supabase.co",
+            "production_supabase_url": "https://prodproject456.supabase.co",
             "production_enabled": False,
         },
     }
@@ -132,7 +132,14 @@ def env(monkeypatch):
     supabase.Client = Database
     supabase.create_client = lambda url, key: db
     core = types.ModuleType("core")
-    core.__path__ = [str(FILE.parents[1] / "core")]
+    core.__path__ = []
+    # Charger le vrai garde d'environnement dans ce test unitaire isole.
+    # Le module core simule est sans __path__ disque, donc l'import implicite echoue.
+    guard_file = Path(__file__).parents[1] / "core" / "environment_guard.py"
+    guard_spec = importlib.util.spec_from_file_location("core.environment_guard", guard_file)
+    guard = importlib.util.module_from_spec(guard_spec)
+    guard_spec.loader.exec_module(guard)
+    monkeypatch.setitem(sys.modules, "core.environment_guard", guard)
     sheets = types.ModuleType("core.sheets_service")
     sheets.append_rows_batch = lambda *a: tracker["rows"].append(a)
     sheets.update_multiple_cells_by_id = lambda *a: tracker["updates"].append(a)
@@ -278,9 +285,11 @@ def test_sensitive_user_never_mirrored_to_sheets(env):
     module, db, _, tracker = env
     db.tables["users"][0]["role"] = "ADMIN"
     data = {"user_id": "U2", "login": "somebody", "hash_mdp": "SUPER_PRIVATE_HASH", "nom": "test"}
-    module.insert_hybrid("users", data)
+    with pytest.raises(PermissionError, match="API generique"):
+        module.insert_hybrid("users", data)
     assert not tracker["rows"]
-    assert "SUPER_PRIVATE_HASH" not in repr(db.tables["audit_trail"])
+    assert "SUPER_PRIVATE_HASH" not in repr(db.tables.get("audit_trail", []))
+    assert not any(table == "users" and action == "insert" for table, action, _ in db.calls)
 
 
 def test_user_update_direct_blocked_even_for_admin(env):

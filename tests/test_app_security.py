@@ -55,6 +55,8 @@ def env(monkeypatch):
     ]
     db = types.ModuleType("core.db_service")
     db.get_supabase_client = Mock(return_value=client)
+    security = types.ModuleType("core.security_service")
+    security.is_security_manager = Mock(return_value=False)
 
     config = types.ModuleType("config")
     config.__path__ = []
@@ -62,6 +64,7 @@ def env(monkeypatch):
     core = types.ModuleType("core")
     core.__path__ = []
     core.db_service = db
+    core.security_service = security
     modules = types.ModuleType("modules")
     modules.__path__ = []
     modules_auth = types.ModuleType("modules.auth")
@@ -70,7 +73,7 @@ def env(monkeypatch):
 
     for key, mod in {
         "streamlit": st, "config": config, "config.roles": roles,
-        "core": core, "core.db_service": db,
+        "core": core, "core.db_service": db, "core.security_service": security,
         "modules": modules, "modules.auth": modules_auth,
         "modules.auth.views": auth,
     }.items():
@@ -88,7 +91,7 @@ def env(monkeypatch):
         "last_activity": 999,
     })
     monkeypatch.setattr(app.time, "time", lambda: 1000)
-    return types.SimpleNamespace(st=st, app=app, client=client, db=db, auth=auth, roles=roles)
+    return types.SimpleNamespace(st=st, app=app, client=client, db=db, auth=auth, roles=roles, security=security)
 
 
 def test_fresh_role_from_db(env):
@@ -193,7 +196,10 @@ def test_menu_read_only_admin_no_security(env):
 
 def test_menu_with_security_and_deduped(env):
     env.roles.get_allowed_modules.return_value = ["  Administration ", "Stocks", "stocks", "UNKNOWN", "  rH  "]
-    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Securite", "Stocks", "RH", "Help"]
+    # Le role ADMIN seul n'accorde jamais l'habilitation nominative.
+    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Stocks", "RH", "Help"]
+    env.security.is_security_manager.return_value = True
+    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Stocks", "RH", "Securite", "Help"]
 
 
 def test_help_menu_for_no_business_permissions(env):
@@ -281,9 +287,25 @@ def test_security_route_for_authorized_role(env, monkeypatch):
     views.show_user_management = Mock()
     monkeypatch.setitem(sys.modules, "modules.admin", folder)
     monkeypatch.setitem(sys.modules, "modules.admin.views", views)
+    env.security.is_security_manager.return_value = True
     env.app._render_menu_page("Securite", "Admin")
     views.show_user_management.assert_called_once()
-    env.roles.has_permission.assert_called_once_with("Admin", "Administration", "ecriture")
+    env.security.is_security_manager.assert_called_once()
+    env.roles.has_permission.assert_not_called()
+
+
+def test_security_route_denies_admin_without_nominal_habilitation(env, monkeypatch):
+    folder = types.ModuleType("modules.admin")
+    folder.__path__ = []
+    views = types.ModuleType("modules.admin.views")
+    views.show_user_management = Mock()
+    monkeypatch.setitem(sys.modules, "modules.admin", folder)
+    monkeypatch.setitem(sys.modules, "modules.admin.views", views)
+    env.roles.has_permission.return_value = True
+    env.security.is_security_manager.return_value = False
+    env.app._render_menu_page("Securite", "Admin")
+    views.show_user_management.assert_not_called()
+    env.st.error.assert_called_once_with("Accès non autorisé.")
 
 
 def test_unknown_route_does_not_import_or_call_page(env):

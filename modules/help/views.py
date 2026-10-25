@@ -46,6 +46,9 @@ def show_help_page():
     elif rubrique == "⚙️ Administration & Référentiels":
         st.header("⚙️ Administration & Référentiels")
 
+        st.info("Gestion des comptes : habilitation SECURITY_MANAGER nominative "
+                "obligatoire, independante du role ADMIN. Les creations sensibles "
+                "et leurs traces passent par des RPC SQL atomiques.")
         st.subheader("1. Gérer les listes de choix (Menus déroulants)")
         st.markdown("""
         Cette section permet d'alimenter toutes les listes de l'ERP (Catégories, Pays, Unités, etc.).

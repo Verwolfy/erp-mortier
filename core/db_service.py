@@ -116,7 +116,7 @@ _PRIMARY_KEY_OVERRIDES = {
 # Recettes et OF planifies sont exclusivement crees par les RPC de migration 008.
 _HYBRID_INSERT_TABLES = frozenset({
     "fournisseurs", "matieres_premieres", "produits", "sku_conditionnement",
-    "clients", "users", "permissions", "listes_reference",
+    "clients", "listes_reference",
     "pipeline", "interactions", "employes", "demandes_conges",
 })
 
@@ -454,6 +454,9 @@ def insert_hybrid(table_name: str, data: dict):
     Une reponse manquante ou une exception SQL est un resultat INCERTAIN :
     pas de nouvelle operation sans inspection pour eviter les doublons.
     """
+    # 010-A-02D-01 : comptes et habilitations exclusivement via RPC auditée.
+    if table_name in {"users", "permissions"}:
+        raise PermissionError("Mutation de securite interdite par l'API generique")
     if table_name not in _HYBRID_INSERT_TABLES:
         raise PermissionError(f"INSERT direct interdit sur {table_name!r} ; utiliser la RPC metier")
     _check_write_columns(table_name, data)

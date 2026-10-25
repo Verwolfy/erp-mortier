@@ -101,7 +101,7 @@ def ctx(monkeypatch):
 
 @pytest.mark.parametrize("table", [
     "fournisseurs", "matieres_premieres", "produits", "sku_conditionnement",
-    "clients", "users", "permissions", "listes_reference",
+    "clients", "listes_reference",
     "pipeline", "interactions", "employes", "demandes_conges",
 ])
 def test_insert_authorized_tables(ctx, table):
@@ -109,6 +109,13 @@ def test_insert_authorized_tables(ctx, table):
     value = "TMP-TEST"
     assert ctx.module.insert_hybrid(table, {col: value}) == [{col: value}]
     assert ctx.db.calls[-1][0] == table
+
+
+@pytest.mark.parametrize("table", ["users", "permissions"])
+def test_security_sensitive_tables_denied_by_generic_insert(ctx, table):
+    with pytest.raises(PermissionError, match="Mutation de securite interdite"):
+        ctx.module.insert_hybrid(table, {"id": "TMP-TEST"})
+    assert not ctx.db.calls
 
 
 @pytest.mark.parametrize("table", [

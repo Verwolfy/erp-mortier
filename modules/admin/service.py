@@ -4,10 +4,14 @@ Hybride : Lecture sur Supabase, Écriture Supabase + Backup Google Sheets.
 Respect strict du schéma docs/schema_reference.md.
 """
 import pandas as pd
+import uuid
 import streamlit as st
 from core.db_service import fetch_data, insert_hybrid, update_hybrid, get_supabase_client
 from modules.auth.service import hash_password
 from core.utils import generate_unique_id
+from core.security_service import (
+    require_security_manager, create_user_secure, add_permission_secure,
+)
 
 # Petit mapping local uniquement pour faire le lien entre l'UI et la lecture
 READ_MAPPING = {
@@ -158,7 +162,8 @@ def add_client(data: dict):
 # ==========================================
 
 def get_users() -> pd.DataFrame:
-    """Récupère la liste des utilisateurs."""
+    """Récupère la liste des utilisateurs seulement si habilité."""
+    require_security_manager()
     # Projeter explicitement les colonnes non sensibles, sans télécharger hash_mdp.
     response = (get_supabase_client().table("users")
                 .select("user_id,nom,login,role,actif").execute())
@@ -168,11 +173,8 @@ def get_users() -> pd.DataFrame:
 
 def add_user(nom: str, login: str, mot_de_passe_clair: str, role: str):
     """Crée un utilisateur, hache son mot de passe et l'enregistre."""
-    df_users = get_users()
-    exist_ids = df_users["user_id"].tolist() if not df_users.empty else []
-
-    # Génération du préfixe USR
-    nouveau_id = generate_unique_id("USR", exist_ids)
+    require_security_manager()
+    nouveau_id = "USR-" + uuid.uuid4().hex[:16].upper()
 
     # Sécurisation du mot de passe
     hash_mdp = hash_password(mot_de_passe_clair)
@@ -187,12 +189,19 @@ def add_user(nom: str, login: str, mot_de_passe_clair: str, role: str):
         "actif": "OUI"
     }
 
-    _confirmed(insert_hybrid("users", data_user), "Création utilisateur")
-    return nouveau_id
+    return create_user_secure(
+        data_user["user_id"], data_user["nom"], data_user["login"],
+        data_user["hash_mdp"], data_user["role"],
+    )
 
 def get_permissions() -> pd.DataFrame:
     """Récupère la matrice des permissions."""
-    return pd.DataFrame(fetch_data("permissions"))
+    require_security_manager()
+    response = (get_supabase_client().table("permissions")
+                .select("role,module,lecture,ecriture").execute())
+    if not isinstance(response.data, list):
+        raise RuntimeError("Matrice des permissions indisponible")
+    return pd.DataFrame(response.data)
 
 def add_permission(role: str, module: str, lecture: str, ecriture: str):
     """Associe des droits de lecture/écriture à un rôle pour un module précis."""
@@ -204,13 +213,20 @@ def add_permission(role: str, module: str, lecture: str, ecriture: str):
         "ecriture": ecriture
     }
 
-    _confirmed(insert_hybrid("permissions", data_perm), "Création permission")
-    return True
+    return add_permission_secure(
+        data_perm["role"], data_perm["module"],
+        data_perm["lecture"], data_perm["ecriture"],
+    )
 
 def get_audit_logs() -> pd.DataFrame:
     """Récupère l'historique des actions (logs) classé du plus récent au plus ancien."""
-    df = pd.DataFrame(fetch_data("audit_trail"))
+    require_security_manager()
+    response = (get_supabase_client().table("audit_trail")
+                .select("audit_id,timestamp,user_id,module,action,detail").execute())
+    if not isinstance(response.data, list):
+        raise RuntimeError("Piste d'audit indisponible")
+    df = pd.DataFrame(response.data)
     if not df.empty and "timestamp" in df.columns:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed", utc=True, errors="coerce")
         df = df.sort_values(by="timestamp", ascending=False)
     return df
