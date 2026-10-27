@@ -3,16 +3,16 @@ Service de gestion des listes de référence.
 """
 import pandas as pd
 import streamlit as st
-from core.sheets_service import get_all_records
+from core.db_service import fetch_data
 
 def get_liste(liste_code: str, parent_code: str = None) -> list:
     """Récupère une liste de référence active."""
-    df = pd.DataFrame(get_all_records("referentiels", "ListesReference"))
+    df = pd.DataFrame(fetch_data("listes_reference"))
     if df.empty or "liste_code" not in df.columns:
         return []
 
     # CORRECTION : Le statut exact dans la base de données est "ACTIF", pas "OUI"
-    mask = (df["liste_code"] == liste_code) & (df["actif"] == "ACTIF")
+    mask = (df["liste_code"] == liste_code) & (df["actif"].astype(str).str.strip().str.upper().isin(["OUI", "ACTIF"]))
     if parent_code:
         mask &= (df["parent_code"] == parent_code)
 
