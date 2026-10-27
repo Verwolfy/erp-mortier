@@ -142,3 +142,10 @@ FOIRE AUX QUESTIONS (Dépannage)
 - Je n'arrive pas à clôturer un Ordre de Fabrication (OF) : Le système vérifie s'il y a assez de Vrac (chimique) ET assez d'Emballages en stock pour produire la quantité saisie. Si le stock MP est insuffisant, l'OF sera bloqué.
 - Le PDF de ma facture ne se génère pas : Assurez-vous d'avoir bien renseigné les coordonnées complètes du client (Adresse, NIF, RC) dans le module Administration.
 - Ma facture reste au statut PARTIELLE dans la finance : Cela signifie que la somme lettrée (affectée) est inférieure au montant TTC de la facture. Ajoutez un nouveau règlement et lettrez la différence.
+## Migration 010-A-02D-01 — gestion des habilitations (TEST)
+- SECURITY_MANAGER est une habilitation nominative indépendante du rôle ADMIN.
+- Administration/écriture ne suffit pas pour créer des comptes ou gérer les permissions.
+- Création de comptes standard et droits non privilégiés par RPC transactionnelles avec audit.
+- Pas d'attribution d'ADMIN/SUPERADMIN ou de droits Administration via les formulaires.
+- Pour corriger/reprendre une opération incertaine, vérifier l'état SQL avant toute nouvelle tentative.
+- Ne jamais copier les secrets ou la clé service_role du projet TEST dans la production.

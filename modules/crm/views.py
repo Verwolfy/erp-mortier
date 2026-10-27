@@ -8,6 +8,11 @@ from core.db_service import fetch_data
 from core.listes_service import get_liste, liste_to_dict
 from modules.crm.service import create_opportunite, create_interaction, get_pipeline, get_interactions
 
+def _mark_crm_activity() -> None:
+    """Signale une interaction sans renouvellement direct."""
+    st.session_state["_erp_crm_interacted"] = True
+
+
 def get_clients_actifs():
     df = pd.DataFrame(fetch_data("clients"))
     return df[df["actif"] == "OUI"] if not df.empty and "actif" in df.columns else pd.DataFrame()
@@ -35,11 +40,10 @@ def show_crm_page():
                     valeur = c1.number_input("Valeur estimée (DZD)", min_value=0.0, step=1000.0)
                     probabilite = c2.slider("Probabilité de succès (%)", 0, 100, 50)
 
-                    if st.form_submit_button("Ajouter au pipeline", type="primary"):
+                    if st.form_submit_button("Ajouter au pipeline", type="primary", on_click=_mark_crm_activity):
                         if prospect:
                             create_opportunite(prospect, contact, statut, commercial, valeur, float(probabilite))
                             st.success("Opportunité créée !")
-                            st.cache_data.clear()
                             st.rerun()
                         else:
                             st.error("Le nom du prospect est obligatoire.")
@@ -75,10 +79,9 @@ def show_crm_page():
 
                 date_rappel_str = str(date_rappel) if date_rappel else ""
 
-                if st.form_submit_button("Enregistrer l'interaction", type="primary"):
+                if st.form_submit_button("Enregistrer l'interaction", type="primary", on_click=_mark_crm_activity):
                     create_interaction(client_choisi, type_action, notes, date_rappel_str)
                     st.success("Interaction enregistrée !")
-                    st.cache_data.clear()
                     st.rerun()
 
     with tab3:

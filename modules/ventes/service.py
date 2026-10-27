@@ -1,249 +1,345 @@
+"""Services Ventes : factures et expéditions transactionnelles.
+
+Supabase est la source de vérité. Les écritures passent par erp_sale_transaction.
+Aucune annulation de facture ne déclenche un mouvement physique de stock.
+Migration préalable : SQL 002, puis SQL 005, sur un Supabase de TEST.
 """
-Logique métier du module Ventes.
-Cycle de vie : BROUILLON -> VALIDE -> ANNULE.
-Gère les Factures, Avoirs, LignesFacture, Règlements, Bons de Livraison (BL) et Lignes de Livraison.
-Lecture Supabase, Écriture hybride (Supabase + Google Sheets).
-"""
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Any
+from uuid import uuid4
+
 import pandas as pd
-from decimal import Decimal, ROUND_HALF_UP
-from core.db_service import fetch_data, fetch_data_filtered, insert_hybrid, update_hybrid, get_supabase_client
-from core.utils import generate_unique_id, generate_technical_id, get_local_now
-from modules.stocks.service import enregistrer_sortie_pf, enregistrer_entree_pf
+
+from core.db_service import check_server_permission, fetch_data, fetch_data_filtered, get_supabase_client
+from core.utils import get_local_now
+from modules.stocks.service import _stock_rpc_client
 
 try:
     from num2words import num2words
 except ImportError:
     num2words = None
 
+CENT = Decimal("0.01")
+LIMIT = Decimal("1e15")
+TAUX_TVA = Decimal("0.19")  # Convention actuelle, à faire valider par la comptabilité
+TAUX_TIMBRE = Decimal("0.01")
+MAX_TIMBRE = Decimal("2500.00")
+MAX_LINES = 500
+
+
+class SaleOperationError(RuntimeError):
+    """Résultat de transaction incertain : conserver operation_id pour une reprise."""
+
+    def __init__(self, message: str, *, operation_id: str):
+        super().__init__(message)
+        self.operation_id = operation_id
+
+
+def _text(value: Any, field: str, *, max_len: int = 200, optional: bool = False) -> str:
+    if not isinstance(value, str) or len(value.strip()) > max_len or (not optional and not value.strip()):
+        raise ValueError(f"{field} invalide")
+    return value.strip()
+
+
+def _decimal(value: Any, field: str, *, strictly_positive: bool = False) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(f"{field} invalide")
+    raw = str(value)
+    if len(raw) > 64:
+        raise ValueError(f"{field} trop long")
+    try:
+        n = Decimal(raw)
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError(f"{field} invalide") from exc
+    if not n.is_finite() or n >= LIMIT or n < 0 or (strictly_positive and n == 0) or n.as_tuple().exponent < -12:
+        raise ValueError(f"{field} doit être positif, fini et précis")
+    return n
+
+
+def _money(amount: Decimal) -> Decimal:
+    return amount.quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _fmt(amount: Decimal) -> str:
+    return format(amount, "f")
+
+
+def _lines(panier: Any) -> list[dict]:
+    if not isinstance(panier, list) or not 1 <= len(panier) <= MAX_LINES or any(not isinstance(x, dict) for x in panier):
+        raise ValueError("Le panier doit contenir entre 1 et 500 lignes")
+    return panier
+
+
+def _date(value: str, field: str, *, optional: bool = False) -> str:
+    text = _text(value, field, max_len=10, optional=optional)
+    if text:
+        try:
+            parsed = date.fromisoformat(text)
+        except ValueError as exc:
+            raise ValueError(f"{field} : date attendue AAAA-MM-JJ") from exc
+        if parsed.isoformat() != text:
+            raise ValueError(f"{field} : format invalide")
+    return text
+
 
 def get_factures() -> pd.DataFrame:
-    """Récupère l'historique des factures depuis Supabase."""
     return pd.DataFrame(fetch_data("factures"))
 
 
 def get_lignes_facture(facture_id: str) -> list:
-    """Récupère les lignes d'une facture spécifique de manière optimisée."""
     return fetch_data_filtered("lignes_facture", "facture_id", facture_id)
 
 
 def get_bons_livraison() -> pd.DataFrame:
-    """Récupère la liste des bons de livraison."""
     return pd.DataFrame(fetch_data("bons_livraison"))
 
 
 def get_lignes_bons_livraison(bl_id: str = None) -> pd.DataFrame:
-    """Récupère les lignes des bons de livraison, optimisé si filtré par BL."""
     if bl_id:
         return pd.DataFrame(fetch_data_filtered("lignes_bons_livraison", "bl_id", bl_id))
     return pd.DataFrame(fetch_data("lignes_bons_livraison"))
 
 
 def generer_numero_facture_legal(type_document: str) -> str:
-    """Génère un numéro séquentiel strict pour FactureClient ou FactureAvoir via Supabase RPC."""
-    df_compteurs = pd.DataFrame(fetch_data("compteurs"))
-    if df_compteurs.empty or type_document not in df_compteurs["type_document"].values:
-        raise ValueError(f"Le compteur {type_document} n'est pas initialisé dans la base de données.")
+    """API historique pour réservation manuelle ; NE PAS utiliser pour créer un brouillon.
 
-    row = df_compteurs[df_compteurs["type_document"] == type_document].iloc[0]
-    prefixe = str(row.get("prefixe", "FAC"))
-    annee = str(row.get("annee", get_local_now().year))
+    La création transactionnelle calcule son numéro à l'intérieur de la RPC.
+    Cette fonction historique peut réserver un numéro sans créer de facture.
+    """
+    if type_document not in ("FactureClient", "FactureAvoir"):
+        raise ValueError("Type de compteur inconnu")
+    if check_server_permission("factures") is not True:
+        raise PermissionError("Droit Ventes refusé")
+    data = fetch_data_filtered("compteurs", "type_document", type_document)
+    if len(data) != 1:
+        raise RuntimeError("Compteur légal absent ou ambigu")
+    row = data[0]
+    prefixe = _text(row.get("prefixe"), "Préfixe", max_len=30)
+    annee = _text(row.get("annee"), "Année", max_len=10)
+    # Une seule modification en base par increment_compteur ; PAS de update_hybrid en plus.
+    response = get_supabase_client().rpc("increment_compteur", {"p_type_document": type_document}).execute()
+    raw = response.data
+    if isinstance(raw, bool) or not isinstance(raw, int) or not 0 < raw < 1000000000:
+        raise RuntimeError("Numéro légal non vérifiable")
+    return f"{prefixe}-{annee}-{raw:06d}"
 
-    try:
-        supabase = get_supabase_client()
-        response = supabase.rpc("increment_compteur", {"p_type_document": type_document}).execute()
-        nouveau_numero = response.data
 
-        update_hybrid("compteurs", "type_document", type_document, {"dernier_numero": nouveau_numero})
-        return f"{prefixe}-{annee}-{str(nouveau_numero).zfill(6)}"
+def _invoice_lines(panier: list) -> tuple[list[dict], Decimal]:
+    converted: list[dict] = []
+    total = Decimal("0")
+    for item in _lines(panier):
+        sku = _text(item.get("sku_id"), "SKU")
+        qte = _decimal(item.get("quantite"), "Quantité", strictly_positive=True)
+        if qte != qte.to_integral_value():
+            raise ValueError("Une facture de SKU conditionnés exige des unités entières")
+        prix = _decimal(item.get("prix_unitaire"), "Prix unitaire")
+        remise = _decimal(item.get("remise", 0), "Remise de ligne")
+        brut = qte * prix
+        if brut >= LIMIT or remise > brut:
+            raise ValueError("Remise supérieure au montant de ligne")
+        net = _money(brut - remise)
+        total += net
+        if total >= LIMIT:
+            raise ValueError("Montant facture trop élevé")
+        converted.append({"sku_id": sku, "quantite": _fmt(qte), "prix_unitaire": _fmt(prix),
+                          "remise_ligne": _fmt(remise), "total_ligne_ht": _fmt(net)})
+    return converted, total
 
-    except Exception as e:
-        raise Exception(f"Erreur critique lors de la génération du numéro légal : {e}")
+
+def _totals(panier: list, remise_globale: Any, paiement_especes: bool) -> tuple[dict, list[dict]]:
+    if not isinstance(paiement_especes, bool):
+        raise ValueError("Paiement espèces invalide")
+    lines, total_net = _invoice_lines(panier)
+    global_discount = _decimal(remise_globale, "Remise globale")
+    if global_discount > total_net:
+        raise ValueError("La remise globale dépasse le montant HT")
+    ht = _money(total_net - global_discount)
+    tva = _money(ht * TAUX_TVA)
+    ttc_before_stamp = ht + tva
+    stamp = min(_money(ttc_before_stamp * TAUX_TIMBRE), MAX_TIMBRE) if paiement_especes else Decimal("0")
+    ttc = _money(ttc_before_stamp + stamp)
+    gross = sum((Decimal(line["quantite"]) * Decimal(line["prix_unitaire"]) for line in lines), Decimal("0"))
+    discount_lines = sum((Decimal(line["remise_ligne"]) for line in lines), Decimal("0"))
+    amounts = {"total_ht": _money(gross), "total_remise": _money(discount_lines + global_discount),
+               "net_a_payer": ht, "total_tva": tva, "timbre_fiscal": stamp, "total_ttc": ttc}
+    return amounts, lines
 
 
 def calculer_montants_facture(panier: list, remise_globale: float = 0.0, paiement_especes: bool = False) -> dict:
-    """Intègre les remises, la TVA, et le calcul du timbre fiscal avec une précision comptable absolue (Decimal)."""
-
-    # Constantes et initialisation
-    CENT = Decimal('0.01')
-    ZERO = Decimal('0.00')
-    TAUX_TVA = Decimal('0.19')
-    TAUX_TIMBRE = Decimal('0.01')
-    MAX_TIMBRE = Decimal('2500.00')
-
-    montant_ht_brut = ZERO
-    total_remises_lignes = ZERO
-    # Conversion stricte en string avant Decimal pour éviter les artefacts flottants
-    remise_globale_dec = Decimal(str(remise_globale))
-
-    for item in panier:
-        qte = Decimal(str(item.get("quantite", 0)))
-        pu = Decimal(str(item.get("prix_unitaire", 0)))
-        remise_ligne = Decimal(str(item.get("remise", 0)))
-
-        ligne_brut = qte * pu
-        montant_ht_brut += ligne_brut
-        total_remises_lignes += remise_ligne
-
-    total_remise = total_remises_lignes + remise_globale_dec
-    net_a_payer_ht = max(ZERO, montant_ht_brut - total_remise)
-
-    # L'arrondi (ROUND_HALF_UP) comptable est appliqué à chaque étape transactionnelle
-    montant_tva = (net_a_payer_ht * TAUX_TVA).quantize(CENT, rounding=ROUND_HALF_UP)
-    montant_ttc_avant_timbre = net_a_payer_ht + montant_tva
-
-    timbre_fiscal = ZERO
-    if paiement_especes:
-        timbre_calcule = (montant_ttc_avant_timbre * TAUX_TIMBRE).quantize(CENT, rounding=ROUND_HALF_UP)
-        timbre_fiscal = min(timbre_calcule, MAX_TIMBRE)
-
-    montant_ttc_final = (montant_ttc_avant_timbre + timbre_fiscal).quantize(CENT, rounding=ROUND_HALF_UP)
-
-    # Conversion en float uniquement à la toute fin pour la compatibilité avec Supabase JSON et num2words
-    val_ttc_float = float(montant_ttc_final)
-    lettres = ""
+    """Remise de ligne exprimée en montant, et non en pourcentage."""
+    sums, _ = _totals(panier, remise_globale, paiement_especes)
+    ttc = sums["total_ttc"]
+    integer = int(ttc)
+    cents = int((ttc - Decimal(integer)) * 100)
     if num2words:
-        partie_entiere = int(val_ttc_float)
-        partie_decimale = int(round((val_ttc_float - partie_entiere) * 100))
-        lettres = num2words(partie_entiere, lang='fr') + " Dinars Algériens"
-        if partie_decimale > 0:
-            lettres += f" et {num2words(partie_decimale, lang='fr')} Centimes"
+        wording = f"{num2words(integer, lang='fr')} Dinars Algériens"
+        if cents:
+            wording += f" et {num2words(cents, lang='fr')} Centimes"
     else:
-        lettres = f"{val_ttc_float:,.2f} Dinars Algériens"
+        wording = f"{ttc:,.2f} Dinars Algériens"
+    return {**{k: float(v) for k, v in sums.items()}, "montant_lettres": wording.capitalize()}
 
-    return {
-        "total_ht": float(montant_ht_brut.quantize(CENT, rounding=ROUND_HALF_UP)),
-        "total_remise": float(total_remise.quantize(CENT, rounding=ROUND_HALF_UP)),
-        "net_a_payer": float(net_a_payer_ht.quantize(CENT, rounding=ROUND_HALF_UP)),
-        "total_tva": float(montant_tva),
-        "timbre_fiscal": float(timbre_fiscal),
-        "total_ttc": val_ttc_float,
-        "montant_lettres": lettres.capitalize()
+
+def _rpc(action: str, payload: dict, *, operation_id: str | None = None) -> dict:
+    op_id = _text(operation_id, "Identifiant opération", max_len=128) if operation_id is not None else f"SALE-{uuid4()}"
+    if check_server_permission("factures" if action != "SHIP" else "bons_livraison") is not True:
+        raise PermissionError("Droit d'écriture Ventes refusé")
+    if action == "SHIP" and check_server_permission("mouvements_pf") is not True:
+        raise PermissionError("Droit d'écriture Stocks refusé")
+    try:
+        response = _stock_rpc_client().rpc("erp_sale_transaction", {
+            "p_action": action, "p_operation_id": op_id, "p_payload": payload,
+        }).execute()
+    except Exception as exc:
+        raise SaleOperationError(
+            "Opération non confirmée : vérifier Supabase et reprendre avec le MÊME operation_id",
+            operation_id=op_id,
+        ) from exc
+    result = response.data
+    if not isinstance(result, dict) or result.get("operation_id") != op_id or result.get("action") != action:
+        raise SaleOperationError("Réponse SQL non vérifiable", operation_id=op_id)
+    return result
+
+
+def create_facture_brouillon(client_id: str, date_echeance: str, panier: list,
+                             remise_globale: float = 0.0, paiement_especes: bool = False,
+                             is_avoir: bool = False, facture_origine_id: str = "",
+                             *, operation_id: str | None = None) -> str:
+    """Brouillon complet + lignes + compteur dans UNE transaction (aucun mouvement stock)."""
+    client = _text(client_id, "Client")
+    echeance = _date(date_echeance, "Échéance", optional=True)
+    if not isinstance(is_avoir, bool):
+        raise ValueError("Type d'avoir invalide")
+    origine = _text(facture_origine_id, "Facture origine", optional=True)
+    if is_avoir and not origine:
+        raise ValueError("Un avoir doit référencer une facture d'origine")
+    if not is_avoir and origine:
+        raise ValueError("Seul un avoir peut avoir une facture d'origine")
+    if is_avoir and paiement_especes:
+        raise ValueError("Le timbre espèces d'un avoir nécessite un traitement fiscal dédié")
+    amounts, lines = _totals(panier, remise_globale, paiement_especes)
+    payload = {
+        "client_id": client, "date_echeance": echeance,
+        "remise_globale": _fmt(_decimal(remise_globale, "Remise globale")),
+        "paiement_especes": paiement_especes,
+        "type_facture": "FactureAvoir" if is_avoir else "FactureClient",
+        "facture_origine_id": origine,
+        "montant_ht": _fmt(-amounts["net_a_payer"] if is_avoir else amounts["net_a_payer"]),
+        "montant_tva": _fmt(-amounts["total_tva"] if is_avoir else amounts["total_tva"]),
+        "montant_timbre": _fmt(amounts["timbre_fiscal"]),
+        "montant_ttc": _fmt(-amounts["total_ttc"] if is_avoir else amounts["total_ttc"]),
+        "lignes": lines,
     }
+    result = _rpc("DRAFT", payload, operation_id=operation_id)
+    return _text(result.get("facture_id"), "Numéro facture")
 
 
-def create_facture_brouillon(client_id: str, date_echeance: str, panier: list, remise_globale: float = 0.0, paiement_especes: bool = False, is_avoir: bool = False, facture_origine_id: str = "") -> str:
-    """Crée la facture en statut BROUILLON. Aucun impact immédiat sur les stocks."""
-    type_doc = "FactureAvoir" if is_avoir else "FactureClient"
-    facture_id = generer_numero_facture_legal(type_doc)
-    date_jour = get_local_now().strftime("%Y-%m-%d")
+def valider_facture(facture_id: str, *, operation_id: str | None = None):
+    """Valide la facture en base, sans sortie de stock (débit physique au BL)."""
+    doc_id = _text(facture_id, "Facture")
+    return _rpc("VALIDATE", {"facture_id": doc_id}, operation_id=operation_id)
 
-    totaux = calculer_montants_facture(panier, remise_globale, paiement_especes)
 
-    montant_ht = totaux["net_a_payer"]
-    montant_tva = totaux["total_tva"]
-    montant_ttc = totaux["total_ttc"]
-    timbre_fiscal = totaux["timbre_fiscal"]
-    taux_tva = 0.19
+def annuler_facture(facture_id: str, *, operation_id: str | None = None):
+    """Annule exclusivement un brouillon. Aucun mouvement stock créé."""
+    doc_id = _text(facture_id, "Facture")
+    return _rpc("CANCEL", {"facture_id": doc_id}, operation_id=operation_id)
 
-    if is_avoir:
-        montant_ht, montant_tva, montant_ttc = -montant_ht, -montant_tva, -montant_ttc
 
-    data_facture = {
-        "facture_id": facture_id, "commande_vente_id": "", "client_id": client_id,
-        "date": date_jour, "montant_ht": montant_ht, "taux_tva": taux_tva,
-        "montant_tva": montant_tva, "montant_ttc": montant_ttc, "montant_paye": 0.0,
-        "statut": "BROUILLON", "date_echeance": str(date_echeance),
-        "montant_timbre": timbre_fiscal, "type_facture": type_doc,
-        "facture_origine_id": facture_origine_id, "remise_globale": remise_globale
-    }
+def creer_bon_livraison(commande_vente_id: str, transporteur: str, zone: str,
+                        items_livraison: list, *, operation_id: str | None = None) -> str:
+    """BL et sorties FIFO dans UNE transaction ; lots du résultat FIFO réel."""
+    order_id = _text(commande_vente_id, "Commande client")
+    carrier = _text(transporteur, "Transporteur", max_len=200, optional=True)
+    zone = _text(zone, "Zone", max_len=200, optional=True)
+    lines: list[dict] = []
+    for item in _lines(items_livraison):
+        sku = _text(item.get("sku_id"), "SKU")
+        qty = _decimal(item.get("quantite_livree"), "Quantité livrée", strictly_positive=True)
+        if qty != qty.to_integral_value():
+            raise ValueError("Une livraison de SKU conditionnés exige des unités entières")
+        preferred = item.get("lot_id")
+        if preferred not in (None, "", "DEFAUT"):
+            raise ValueError("Choix manuel d'un lot non pris en charge par le FIFO automatique")
+        lines.append({"sku_id": sku, "quantite_livree": _fmt(qty)})
+    result = _rpc("SHIP", {"commande_vente_id": order_id, "transporteur": carrier,
+                           "zone": zone, "lignes": lines}, operation_id=operation_id)
+    return _text(result.get("bl_id"), "Numéro de livraison")
 
-    lignes_a_inserer = []
-    for item in panier:
-        ligne_id = generate_technical_id("LFA")
-        lignes_a_inserer.append({
-            "ligne_facture_id": ligne_id, "facture_id": facture_id, "sku_id": item["sku_id"],
-            "quantite": item["quantite"], "prix_unitaire": item["prix_unitaire"],
-            "remise_ligne": item.get("remise", 0.0), "total_ligne_ht": item.get("total_ht", 0.0)
+
+def creer_commande_client(
+    client_id: str,
+    date_commande: str,
+    lignes: list,
+    *,
+    operation_id: str | None = None,
+) -> str:
+    """Create a sales order atomically with server-side checks."""
+    client = _text(client_id, "Client")
+    order_date = _date(date_commande, "Date commande")
+
+    normalized = []
+    seen = set()
+    for item in _lines(lignes):
+        sku = _text(item.get("sku_id"), "SKU")
+        qty = _decimal(
+            item.get("quantite"), "Quantite", strictly_positive=True
+        )
+        price = _decimal(item.get("prix_unitaire"), "Prix unitaire")
+
+        if qty != qty.to_integral_value():
+            raise ValueError("Quantite SKU non entiere")
+        if price.as_tuple().exponent < -2:
+            raise ValueError("Prix avec plus de deux decimales")
+        if sku in seen:
+            raise ValueError("SKU duplique dans la commande")
+
+        seen.add(sku)
+        normalized.append({
+            "sku_id": sku,
+            "quantite": _fmt(qty),
+            "prix_unitaire": _fmt(price),
         })
 
-    insert_hybrid("factures", data_facture)
-    for ligne in lignes_a_inserer:
-        insert_hybrid("lignes_facture", ligne)
+    op_id = (
+        _text(operation_id, "Identifiant operation", max_len=128)
+        if operation_id is not None
+        else f"ORDER-{uuid4()}"
+    )
 
-    return facture_id
+    if check_server_permission("commandes_ventes") is not True:
+        raise PermissionError("Droit Commandes clients refuse")
 
+    try:
+        response = _stock_rpc_client().rpc(
+            "erp_create_sales_order",
+            {
+                "p_operation_id": op_id,
+                "p_client_id": client,
+                "p_date": order_date,
+                "p_lignes": normalized,
+            },
+        ).execute()
+    except Exception as exc:
+        raise SaleOperationError(
+            "Commande non confirmee : verifier avant toute reprise",
+            operation_id=op_id,
+        ) from exc
 
-def valider_facture(facture_id: str):
-    """Verrouille la facture et met à jour son statut."""
-    lignes = get_lignes_facture(facture_id)
-    df_factures = get_factures()
+    result = response.data
+    if (
+        not isinstance(result, dict)
+        or result.get("operation_id") != op_id
+        or result.get("statut") != "EN_ATTENTE"
+        or not isinstance(result.get("commande_vente_id"), str)
+        or not result["commande_vente_id"].strip()
+    ):
+        raise SaleOperationError(
+            "Reponse de creation non verifiable",
+            operation_id=op_id,
+        )
 
-    if df_factures.empty or facture_id not in df_factures["facture_id"].values:
-        raise ValueError("Facture introuvable.")
-
-    facture_row = df_factures[df_factures["facture_id"] == facture_id].iloc[0]
-    is_avoir = (facture_row.get("type_facture") == "FactureAvoir")
-
-    if not is_avoir:
-        df_stocks = pd.DataFrame(fetch_data("stock_actuel_pf"))
-        if not df_stocks.empty:
-            df_stocks = df_stocks.set_index("sku_id")
-
-        for ligne in lignes:
-            sku = ligne["sku_id"]
-            qte_demandee = float(ligne["quantite"])
-
-            if df_stocks.empty or sku not in df_stocks.index:
-                raise ValueError(f"L'article {sku} est introuvable en stock.")
-
-            qte_dispo = float(df_stocks.loc[sku, "quantite_disponible"])
-            if qte_dispo < qte_demandee:
-                raise ValueError(f"Stock insuffisant pour {sku}. Demandé : {qte_demandee}, Disponible : {qte_dispo}.")
-
-    update_hybrid("factures", "facture_id", facture_id, {"statut": "VALIDE"})
-
-
-def creer_bon_livraison(commande_vente_id: str, transporteur: str, zone: str, items_livraison: list) -> str:
-    """
-    Génère un Bon de Livraison (BL), enregistre les lignes d'expédition avec traçabilité du lot,
-    et déduit les produits finis des stocks.
-    """
-    df_bl = get_bons_livraison()
-    exist_ids = df_bl["bl_id"].tolist() if not df_bl.empty and "bl_id" in df_bl.columns else []
-    bl_id = generate_unique_id("BL", exist_ids)
-    date_jour = get_local_now().strftime("%Y-%m-%d")
-
-    data_bl = {
-        "bl_id": bl_id,
-        "commande_vente_id": commande_vente_id,
-        "date": date_jour,
-        "transporteur": transporteur,
-        "zone": zone,
-        "statut": "EXPEDIE"
-    }
-    insert_hybrid("bons_livraison", data_bl)
-
-    for item in items_livraison:
-        sku_id = item["sku_id"]
-        qte_livree = float(item["quantite_livree"])
-        lot_id = item.get("lot_id", "DEFAUT")
-
-        if qte_livree > 0:
-            enregistrer_sortie_pf(sku_id=sku_id, quantite=qte_livree, reference=f"BL {bl_id}")
-
-            ligne_bl_id = generate_technical_id("LBL")
-            data_ligne_bl = {
-                "ligne_bl_id": ligne_bl_id,
-                "bl_id": bl_id,
-                "sku_id": sku_id,
-                "quantite_livree": qte_livree,
-                "lot_id": lot_id
-            }
-            insert_hybrid("lignes_bons_livraison", data_ligne_bl)
-
-    return bl_id
-
-
-def annuler_facture(facture_id: str):
-    """Annule la facture et réinjecte les articles en stock."""
-    lignes = get_lignes_facture(facture_id)
-    df_factures = get_factures()
-
-    facture_row = df_factures[df_factures["facture_id"] == facture_id].iloc[0]
-    is_avoir = (facture_row.get("type_facture") == "FactureAvoir")
-
-    if not is_avoir:
-        for ligne in lignes:
-            enregistrer_entree_pf(ligne["sku_id"], ligne["quantite"], facture_id, "")
-
-    update_hybrid("factures", "facture_id", facture_id, {"statut": "ANNULE"})
+    return result["commande_vente_id"]

@@ -1,131 +1,143 @@
+"""Audit EN LECTURE SEULE des stocks MP et PF sur Supabase.
+
+Ancienne version: recalcul et réécriture automatique des quantités.
+Cette version NE CONTIENT AUCUNE instruction INSERT/UPDATE/DELETE.
+Les écarts nécessitent une analyse métier et une correction atomique dédiée.
+Les lectures REST successives ne constituent PAS un instantané transactionnel.
 """
-Script d'automatisation : Audit et recalcul des stocks (Matières Premières et Produits Finis).
-À exécuter quotidiennement via GitHub Actions (idéalement la nuit).
-Compare la somme des mouvements avec le solde actuel et corrige les écarts.
-"""
+from __future__ import annotations
+
 import os
-import pandas as pd
+import sys
+# Compatible avec « python scripts/...py » et « python -m scripts... ».
+from pathlib import Path
+import sys
+if __package__ in (None, ""):
+    sys.path[:0] = [str(Path(__file__).resolve().parents[1])]
+
+from core.environment_guard import (
+    policy_from_environment, require_supabase_target,
+)
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
-from supabase import create_client
 
-# Configuration Supabase
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-
-def auditer_et_corriger_stock_mp(supabase):
-    """Vérifie le stock des Matières Premières."""
-    print("--- 📦 AUDIT DES MATIÈRES PREMIÈRES (MP) ---")
-
-    # 1. Récupérer les données
-    mouvements_res = supabase.table("mouvements").select("*").execute()
-    stock_res = supabase.table("stock_actuel").select("*").execute()
-
-    df_mouv = pd.DataFrame(mouvements_res.data)
-    df_stock = pd.DataFrame(stock_res.data)
-
-    if df_mouv.empty:
-        print("Aucun mouvement MP trouvé.")
-        return
-
-    # 2. Convertir les quantités selon le type de mouvement (Entrée = +, Sortie = -)
-    df_mouv["quantite"] = pd.to_numeric(df_mouv["quantite"], errors="coerce").fillna(0)
-    df_mouv["qte_reelle"] = df_mouv.apply(
-        lambda row: row["quantite"] if str(row["type_mouvement"]).upper() == "ENTREE" else -row["quantite"],
-        axis=1
-    )
-
-    # 3. Agréger par MP
-    stock_calcule = df_mouv.groupby("mp_id")["qte_reelle"].sum().reset_index()
-
-    # 4. Comparer et Corriger
-    for _, row_calc in stock_calcule.iterrows():
-        mp_id = row_calc["mp_id"]
-        qte_theorique = round(row_calc["qte_reelle"], 2)
-
-        # Trouver la ligne correspondante dans le stock actuel
-        stock_actuel_row = df_stock[
-            df_stock["mp_id"] == mp_id] if not df_stock.empty and "mp_id" in df_stock.columns else pd.DataFrame()
-        qte_affichee = round(float(stock_actuel_row.iloc[0]["quantite_disponible"]),
-                             2) if not stock_actuel_row.empty else 0.0
-
-        if qte_theorique != qte_affichee:
-            print(f"⚠️ Écart détecté sur {mp_id} : Calculé = {qte_theorique} | Affiché = {qte_affichee}")
-
-            # Correction dans Supabase
-            if stock_actuel_row.empty:
-                supabase.table("stock_actuel").insert({
-                    "mp_id": mp_id, "quantite_disponible": qte_theorique, "derniere_maj": datetime.now().isoformat()
-                }).execute()
-            else:
-                supabase.table("stock_actuel").update({
-                    "quantite_disponible": qte_theorique, "derniere_maj": datetime.now().isoformat()
-                }).eq("mp_id", mp_id).execute()
-
-            print(f"✅ Stock corrigé pour {mp_id}.")
+PAGE_SIZE = 500
+MAX_ROWS = 100_000
+TOLERANCE = Decimal("0.01")
 
 
-def auditer_et_corriger_stock_pf(supabase):
-    """Vérifie le stock des Produits Finis (SKU)."""
-    print("--- 🏭 AUDIT DES PRODUITS FINIS (PF) ---")
-
-    mouvements_pf_res = supabase.table("mouvements_pf").select("*").execute()
-    stock_pf_res = supabase.table("stock_actuel_pf").select("*").execute()
-
-    df_mouv_pf = pd.DataFrame(mouvements_pf_res.data)
-    df_stock_pf = pd.DataFrame(stock_pf_res.data)
-
-    if df_mouv_pf.empty:
-        print("Aucun mouvement PF trouvé.")
-        return
-
-    df_mouv_pf["quantite"] = pd.to_numeric(df_mouv_pf["quantite"], errors="coerce").fillna(0)
-    df_mouv_pf["qte_reelle"] = df_mouv_pf.apply(
-        lambda row: row["quantite"] if str(row["type_mouvement"]).upper() == "ENTREE" else -row["quantite"],
-        axis=1
-    )
-
-    stock_calcule_pf = df_mouv_pf.groupby("sku_id")["qte_reelle"].sum().reset_index()
-
-    for _, row_calc in stock_calcule_pf.iterrows():
-        sku_id = row_calc["sku_id"]
-        qte_theorique = round(row_calc["qte_reelle"], 2)
-
-        stock_actuel_row = df_stock_pf[df_stock_pf[
-                                           "sku_id"] == sku_id] if not df_stock_pf.empty and "sku_id" in df_stock_pf.columns else pd.DataFrame()
-        qte_affichee = round(float(stock_actuel_row.iloc[0]["quantite_disponible"]),
-                             2) if not stock_actuel_row.empty else 0.0
-
-        if qte_theorique != qte_affichee:
-            print(f"⚠️ Écart détecté sur {sku_id} : Calculé = {qte_theorique} | Affiché = {qte_affichee}")
-
-            if stock_actuel_row.empty:
-                supabase.table("stock_actuel_pf").insert({
-                    "sku_id": sku_id, "quantite_disponible": qte_theorique, "derniere_maj": datetime.now().isoformat()
-                }).execute()
-            else:
-                supabase.table("stock_actuel_pf").update({
-                    "quantite_disponible": qte_theorique, "derniere_maj": datetime.now().isoformat()
-                }).eq("sku_id", sku_id).execute()
-
-            print(f"✅ Stock corrigé pour {sku_id}.")
+class StockAuditError(RuntimeError):
+    """Audit non fiable: interdit toute conclusion quantitative."""
 
 
-def main():
-    print(f"=== DÉMARRAGE DE L'AUDIT NOCTURNE DES STOCKS ({datetime.now().strftime('%Y-%m-%d %H:%M')}) ===")
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        print("❌ Erreur : Variables d'environnement manquantes (SUPABASE_URL, SUPABASE_KEY).")
-        return
-
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
+def _amount(value: object, context: str, *, positive: bool = False) -> Decimal:
+    if isinstance(value, bool) or value is None:
+        raise StockAuditError(f"{context}: quantité manquante/invalide")
     try:
-        auditer_et_corriger_stock_mp(supabase)
-        auditer_et_corriger_stock_pf(supabase)
-        print("=== AUDIT TERMINÉ AVEC SUCCÈS ===")
-    except Exception as e:
-        print(f"❌ Erreur critique lors de l'audit : {e}")
+        result = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise StockAuditError(f"{context}: quantité non numérique") from exc
+    if not result.is_finite() or (result <= 0 if positive else result < 0):
+        raise StockAuditError(f"{context}: quantité hors bornes")
+    return result
+
+
+def _fetch_pages(client, table: str, id_col: str, selected_columns: tuple[str, ...]) -> list[dict]:
+    """Pagination explicite et déterministe, sans troncature silencieuse."""
+    rows: list[dict] = []
+    while True:
+        start = len(rows)
+        if start > MAX_ROWS:
+            raise StockAuditError(f"{table}: plus de {MAX_ROWS} lignes, audit interrompu")
+        count = min(PAGE_SIZE, MAX_ROWS + 1 - start)
+        response = (client.table(table)
+                    .select(",".join(selected_columns))
+                    .order(id_col)
+                    .range(start, start + count - 1)
+                    .execute())
+        page = response.data
+        if not isinstance(page, list) or any(not isinstance(row, dict) for row in page):
+            raise StockAuditError(f"{table}: réponse Supabase invalide")
+        if len(page) > count:
+            raise StockAuditError(f"{table}: page plus grande que demandé")
+        rows.extend(page)
+        if len(page) < count:
+            return rows
+
+
+def _audit_type(client, *, item_type: str, movement_table: str,
+                movement_id: str, stock_table: str, item_id: str) -> dict:
+    moves = _fetch_pages(client, movement_table, movement_id,
+                         (movement_id, item_id, "type_mouvement", "quantite"))
+    stocks = _fetch_pages(client, stock_table, item_id, (item_id, "quantite_disponible"))
+    theoretical: dict[str, Decimal] = defaultdict(Decimal)
+    current: dict[str, Decimal] = {}
+
+    for row in moves:
+        key = row.get(item_id)
+        kind = row.get("type_mouvement")
+        if not isinstance(key, str) or not key.strip():
+            raise StockAuditError(f"{movement_table}: identifiant {item_id} invalide")
+        if kind not in ("ENTREE", "SORTIE"):
+            raise StockAuditError(f"{movement_table}/{key}: mouvement non reconnu {kind!r}")
+        quantity = _amount(row.get("quantite"), f"{movement_table}/{key}", positive=True)
+        theoretical[key] += quantity if kind == "ENTREE" else -quantity
+
+    for row in stocks:
+        key = row.get(item_id)
+        if not isinstance(key, str) or not key.strip() or key in current:
+            raise StockAuditError(f"{stock_table}: identifiant absent/dupliqué")
+        current[key] = _amount(row.get("quantite_disponible"), f"{stock_table}/{key}")
+
+    differences: list[dict] = []
+    for key in sorted(theoretical.keys() | current.keys()):
+        expected = theoretical.get(key, Decimal(0))
+        found = current.get(key, Decimal(0))
+        delta = expected - found
+        if abs(delta) > TOLERANCE or (key not in current and key in theoretical):
+            differences.append({"id": key, "mouvements_net": str(expected),
+                                "stock_actuel": str(found) if key in current else "ABSENT",
+                                "ecart": str(delta)})
+    return {"type": item_type, "mouvements": len(moves), "stocks": len(stocks),
+            "ecarts": differences}
+
+
+def auditer_et_corriger_stock_mp(supabase) -> dict:
+    """Nom historique conservé. Audit MP uniquement; ne corrige JAMAIS."""
+    return _audit_type(supabase, item_type="MP", movement_table="mouvements",
+                       movement_id="mouvement_id", stock_table="stock_actuel", item_id="mp_id")
+
+
+def auditer_et_corriger_stock_pf(supabase) -> dict:
+    """Nom historique conservé. Audit PF uniquement; ne corrige JAMAIS."""
+    return _audit_type(supabase, item_type="PF", movement_table="mouvements_pf",
+                       movement_id="mouvement_pf_id", stock_table="stock_actuel_pf", item_id="sku_id")
+
+
+def main() -> int:
+    print(f"=== AUDIT LECTURE SEULE ({datetime.now():%Y-%m-%d %H:%M}) ===")
+    url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        print("ERREUR: SUPABASE_URL et SUPABASE_KEY requis.", file=sys.stderr)
+        return 2
+    try:
+        require_supabase_target(policy_from_environment(os.environ), url)
+        from supabase import create_client
+        client = create_client(url, key)
+        reports = [auditer_et_corriger_stock_mp(client), auditer_et_corriger_stock_pf(client)]
+        for report in reports:
+            print(f"{report['type']}: {report['mouvements']} mouvements, "
+                  f"{report['stocks']} stocks, {len(report['ecarts'])} écart(s)")
+            for diff in report["ecarts"]:
+                print(f"  ÉCART {diff['id']}: mouvements={diff['mouvements_net']}, "
+                      f"stock={diff['stock_actuel']}, différence={diff['ecart']}")
+        print("AUCUNE CORRECTION EXÉCUTÉE. Vérifier aussi les lots FIFO et les stocks d'ouverture.")
+        return 1 if any(r["ecarts"] for r in reports) else 0
+    except Exception as exc:
+        print(f"AUDIT INCOMPLET: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -7,10 +7,11 @@ Gestion dynamique des listes de référence synchronisées avec import_data.py.
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
+from core.security_service import is_security_manager, STANDARD_ROLES, STANDARD_MODULES
 from core.listes_service import get_liste, liste_to_dict
 from core.db_service import fetch_data, insert_hybrid, update_hybrid
 from modules.admin.service import (
-    get_dataframe, add_fournisseur, add_matiere_premiere,
+    get_dataframe, EDITABLE_FIELDS, add_fournisseur, add_matiere_premiere,
     add_produit, add_sku, add_client, sauvegarder_modifications,
     add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
@@ -25,10 +26,30 @@ CAT_PF_FALLBACK = ["MORT_COLLE", "MORT_JOINTS", "END_FACADE", "END_LISS", "MORT_
 HS_CODE_FALLBACK = ["250510", "252220", "252329", "253090", "282110", "283650", "291816", "320611", "320649", "320820", "320910", "381600", "382440", "382450", "390529", "390690", "391239", "392321"]
 
 
+def _mark_admin_activity() -> None:
+    """Signale une interaction sans renouvellement direct."""
+    st.session_state["_erp_admin_interacted"] = True
+
+
 def get_opts(liste_code: str, fallback: list) -> list:
     """Extrait les clés de la liste de référence, ou utilise le fallback si vide."""
     res = liste_to_dict(get_liste(liste_code))
     return [str(k) for k in res.keys()] if res else fallback
+
+
+def _creation_confirmee(operation, data: dict, label: str) -> bool:
+    """Affiche le succès seulement après réponse positive du service."""
+    try:
+        identifiant = operation(data)
+    except (ValueError, RuntimeError, PermissionError):
+        st.error("Enregistrement non confirmé. Vérifiez Supabase avant tout nouvel essai.")
+        return False
+    if not isinstance(identifiant, str) or not identifiant:
+        st.error("Réponse de création invalide ; vérifiez Supabase.")
+        return False
+    st.success(f"{label} enregistré dans Supabase ({identifiant}).")
+    st.rerun()
+    return True
 
 
 def gerer_listes_reference():
@@ -63,7 +84,7 @@ def gerer_listes_reference():
             val_libelle = c2.text_input("Libellé affiché (ex: Algérie, Oran, Mortiers Colles)")
             ordre = c3.number_input("Ordre d'affichage", min_value=1, value=1, step=1)
 
-            if st.form_submit_button("➕ Ajouter l'élément", type="primary"):
+            if st.form_submit_button("➕ Ajouter l'élément", type="primary", on_click=_mark_admin_activity):
                 if val_code and val_libelle:
                     data_nouvel_element = {
                         "liste_code": liste_cible,
@@ -74,9 +95,10 @@ def gerer_listes_reference():
                         "actif": "OUI"
                     }
                     try:
-                        insert_hybrid("listes_reference", data_nouvel_element)
+                        result = insert_hybrid("listes_reference", data_nouvel_element)
+                        if not isinstance(result, list) or len(result) != 1:
+                            raise RuntimeError("Ajout non confirmé : vérifier Supabase")
                         st.success(f"Élément '{val_libelle}' ajouté avec succès !")
-                        st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erreur d'insertion : {e}")
@@ -102,9 +124,11 @@ def gerer_listes_reference():
                     )
 
                     if nouveau_statut != statut_actuel:
-                        update_hybrid("listes_reference", "id", str(row.get('id')), {"actif": nouveau_statut})
+                        result = update_hybrid("listes_reference", "id", str(row.get('id')), {"actif": nouveau_statut})
+                        if not isinstance(result, list) or len(result) != 1:
+                            st.error("Modification non confirmée dans Supabase")
+                            return
                         st.toast(f"Statut mis à jour pour {row.get('valeur_libelle')}")
-                        st.cache_data.clear()
                         st.rerun()
             else:
                 st.info("Cette liste est vide.")
@@ -145,6 +169,7 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
     st.data_editor(
         df,
         key=editor_key,
+        disabled=[col for col in df.columns if col not in EDITABLE_FIELDS[sheet_name]],
         column_config=config,
         use_container_width=True,
         hide_index=True,
@@ -155,15 +180,20 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
 
     if changes:
         st.warning(f"⚠️ {len(changes)} ligne(s) modifiée(s) en attente de sauvegarde.")
-        if st.button(f"💾 Enregistrer les modifications ({sheet_name})", type="primary", key=f"save_{sheet_name}"):
+        if len(changes) > 1:
+            st.info("Pour éviter les enregistrements partiels, modifiez et enregistrez une seule ligne à la fois.")
+        if st.button(f"💾 Enregistrer les modifications ({sheet_name})", type="primary", key=f"save_{sheet_name}", on_click=_mark_admin_activity):
             with st.spinner("Mise à jour dans Google Sheets/Supabase..."):
-                success = sauvegarder_modifications(sheet_name, id_col, df, changes)
+                try:
+                    success = sauvegarder_modifications(sheet_name, id_col, df, changes)
+                except (ValueError, RuntimeError) as exc:
+                    st.error(str(exc))
+                    return
                 if success:
-                    st.success("Modifications enregistrées avec succès !")
-                    st.cache_data.clear()
+                    st.success("Modification confirmée dans Supabase.")
                     st.rerun()
                 else:
-                    st.error("Une erreur est survenue lors de l'enregistrement.")
+                    st.error("Modification non confirmée dans Supabase.")
 
 
 def show_admin_page():
@@ -221,18 +251,15 @@ def show_admin_page():
                 mobile_contact = c12.text_input("Mobile / Téléphone", key="cli_mob_c")
                 email_contact = st.text_input("Email du contact", key="cli_email_c")
 
-                if st.button("Enregistrer le client", type="primary", key="btn_save_client"):
+                if st.button("Enregistrer le client", type="primary", key="btn_save_client", on_click=_mark_admin_activity):
                     if nom:
-                        add_client({
+                        _creation_confirmee(add_client, {
                             "nom": nom, "categorie_client": cat, "type_client": type_c,
                             "pays": pays, "wilaya": wilaya_aj, "adresse": adresse,
                             "rc": rc, "nif": nif, "nis": nis,
                             "nom_contact": nom_contact, "poste_contact": poste_contact,
                             "mobile_contact": mobile_contact, "email_contact": email_contact
-                        })
-                        st.success(f"Client {nom} ajouté.")
-                        st.cache_data.clear()
-                        st.rerun()
+                        }, "Client")
                     else:
                         st.error("Le nom est obligatoire.")
 
@@ -276,18 +303,15 @@ def show_admin_page():
                 mobile_contact = c12.text_input("Mobile / Téléphone", key="fou_mob_c")
                 email_contact = st.text_input("Email du contact", key="fou_email_c")
 
-                if st.button("Enregistrer le fournisseur", type="primary", key="btn_save_fou"):
+                if st.button("Enregistrer le fournisseur", type="primary", key="btn_save_fou", on_click=_mark_admin_activity):
                     if nom:
-                        add_fournisseur({
+                        _creation_confirmee(add_fournisseur, {
                             "nom": nom, "categorie": categorie, "type_entreprise": type_ent,
                             "pays": pays, "wilaya": wilaya_aj, "delai_appro_jours": delai,
                             "rc": rc, "nif": nif, "nis": nis,
                             "nom_contact": nom_contact, "poste_contact": poste_contact,
                             "mobile_contact": mobile_contact, "email_contact": email_contact
-                        })
-                        st.success("Fournisseur ajouté.")
-                        st.cache_data.clear()
-                        st.rerun()
+                        }, "Fournisseur")
                     else:
                         st.error("Le nom du fournisseur est obligatoire.")
 
@@ -328,18 +352,15 @@ def show_admin_page():
                     lien_ft = st.text_input("Lien Fiche Technique (URL)")
                     lien_fds = st.text_input("Lien Fiche de Données de Sécurité - FDS (URL)")
 
-                    if st.form_submit_button("Enregistrer", type="primary"):
+                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity):
                         if nom:
-                            add_matiere_premiere({
+                            _creation_confirmee(add_matiere_premiere, {
                                 "nom": nom, "categorie_mp": cat_mp, "unite_stock": unite,
                                 "origine_pays": origine_pays, "duree_peremption_jours": duree_peremption,
                                 "poids_net": poids_net, "stock_mini": stock_mini, "stock_maxi": stock_maxi,
                                 "hs_code": hs, "taux_dedouanement": taux_dedouanement,
                                 "lien_fiche_technique": lien_ft, "lien_fiche_securite": lien_fds
-                            })
-                            st.success("Matière première ajoutée.")
-                            st.cache_data.clear()
-                            st.rerun()
+                            }, "Matière première")
                         else:
                             st.error("La désignation est obligatoire.")
 
@@ -362,12 +383,9 @@ def show_admin_page():
                     cat_pf = c2.selectbox("Catégorie", options=cat_pf_opts)
                     unite = c1.selectbox("Unité de production", options=unite_opts)
 
-                    if st.form_submit_button("Enregistrer", type="primary"):
+                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity):
                         if nom:
-                            add_produit({"nom": nom, "categorie_pf": cat_pf, "unite_production": unite})
-                            st.success("Produit ajouté.")
-                            st.cache_data.clear()
-                            st.rerun()
+                            _creation_confirmee(add_produit, {"nom": nom, "categorie_pf": cat_pf, "unite_production": unite}, "Produit")
                         else:
                             st.error("Le nom du produit est obligatoire.")
 
@@ -412,15 +430,12 @@ def show_admin_page():
                         unite = c5.selectbox("Unité de vente", options=unite_opts)
                         facteur = c6.number_input("Facteur de conversion (vs unité prod)", min_value=0.001, value=1.0, step=0.1)
 
-                        if st.form_submit_button("Enregistrer", type="primary"):
-                            add_sku({
+                        if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity):
+                            _creation_confirmee(add_sku, {
                                 "pf_id": pf_id, "format": format_val, "prix_vente_defaut": prix,
                                 "emballage_mp_id": emballage_mp_id, "poids_net": poids_net, "unite_vente": unite,
                                 "facteur_conversion": facteur
-                            })
-                            st.success("SKU ajouté avec succès.")
-                            st.cache_data.clear()
-                            st.rerun()
+                            }, "SKU")
             else:
                 st.warning("Créez d'abord un produit actif.")
 
@@ -457,10 +472,9 @@ def show_user_management():
     st.title("🔐 Sécurité & Utilisateurs")
 
     user_role = st.session_state.get("user", {}).get("role", "")
-    can_write = has_permission(user_role, "Administration", "ecriture")
-
-    if not can_write:
-        st.error("Vous n'avez pas les droits d'administration pour accéder à cette page.")
+    # Un droit Administration/ecriture ne confère PAS l'autorité de sécurité.
+    if not is_security_manager():
+        st.error("Habilitation SECURITY_MANAGER requise.")
         return
 
     tab1, tab2, tab3, tab4 = st.tabs(["Créer un Utilisateur", "Définir les Permissions", "Annuaire Existant", "Piste d'Audit (Logs)"])
@@ -474,7 +488,7 @@ def show_user_management():
                 nom = st.text_input("Nom complet de l'employé *")
                 login = st.text_input("Identifiant de connexion (ex: jdupont) *")
             with col2:
-                role = st.text_input("Rôle (ex: ADMIN, COMMERCIAL, MAGASINIER) *").upper()
+                role = st.selectbox("Rôle non privilégié *", STANDARD_ROLES)
                 mdp = st.text_input("Mot de passe temporaire *", type="password")
 
             submit_user = st.form_submit_button("Enregistrer l'utilisateur", use_container_width=True)
@@ -484,7 +498,6 @@ def show_user_management():
                     try:
                         nouveau_id = add_user(nom, login, mdp, role)
                         st.success(f"Utilisateur {nom} ({nouveau_id}) créé avec succès ! Le mot de passe a été crypté.")
-                        st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Une erreur est survenue : {e}")
@@ -497,8 +510,8 @@ def show_user_management():
         st.info("Rappel : Les statuts doivent s'écrire 'OUI' ou 'NON'.")
 
         with st.form("form_add_perm", clear_on_submit=True):
-            role_cible = st.text_input("Rôle concerné (ex: COMMERCIAL) *").upper()
-            modules_disponibles = ["Administration", "Achats", "Stocks", "Production", "Ventes", "Finance", "CRM", "RH", "Logs"]
+            role_cible = st.selectbox("Rôle concerné *", STANDARD_ROLES)
+            modules_disponibles = STANDARD_MODULES
             module_cible = st.selectbox("Module de l'ERP", modules_disponibles)
 
             col_l, col_e = st.columns(2)
@@ -514,7 +527,6 @@ def show_user_management():
                     try:
                         add_permission(role_cible, module_cible, droit_lecture, droit_ecriture)
                         st.success(f"La permission sur le module '{module_cible}' a été ajoutée au rôle '{role_cible}'.")
-                        st.cache_data.clear()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Une erreur est survenue : {e}")
@@ -541,10 +553,10 @@ def show_user_management():
     # ONGLET 4 : Piste d'audit (Logs)
     with tab4:
         st.subheader("Historique des Actions (Audit Trail)")
-        st.info("Traçabilité complète et automatique des modifications de la base de données.")
+        st.info("Les créations sensibles réalisées via RPC sont auditées atomiquement ; les anciennes actions peuvent être en mode best-effort.")
 
-        if st.button("🔄 Rafraîchir les logs"):
-            st.cache_data.clear()
+        if st.button("🔄 Rafraîchir les logs", on_click=_mark_admin_activity):
+            pass
 
         df_logs = get_audit_logs()
         if not df_logs.empty:

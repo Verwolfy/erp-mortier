@@ -5,7 +5,6 @@ import pandas as pd
 import streamlit as st
 from core.sheets_service import get_all_records
 
-@st.cache_data(ttl=300, show_spinner=False)
 def get_liste(liste_code: str, parent_code: str = None) -> list:
     """Récupère une liste de référence active."""
     df = pd.DataFrame(get_all_records("referentiels", "ListesReference"))

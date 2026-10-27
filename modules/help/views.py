@@ -5,6 +5,11 @@ Accessible à tous les utilisateurs. Format "Documentation" avec menu latéral.
 import streamlit as st
 
 
+def _mark_help_activity() -> None:
+    """Signale un changement de rubrique sans prolongation directe."""
+    st.session_state["_erp_help_interacted"] = True
+
+
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
     st.markdown(
@@ -22,9 +27,12 @@ def show_help_page():
             "📦 Stocks & Magasin",
             "🏭 Production",
             "🤝 Ventes & CRM",
-            "💰 Finance & Trésorerie"
-        ]
-    )
+            "💰 Finance & Trésorerie",
+            "🔐 Environnements et sécurité (010-A)",
+            "🔎 Vérification des droits SQL (010-A-02)"
+        ],
+        help="Sélectionnez une rubrique pour afficher la procédure et les contrôles correspondants."
+    , on_change=_mark_help_activity)
 
     st.divider()
 
@@ -43,6 +51,9 @@ def show_help_page():
     elif rubrique == "⚙️ Administration & Référentiels":
         st.header("⚙️ Administration & Référentiels")
 
+        st.info("Gestion des comptes : habilitation SECURITY_MANAGER nominative "
+                "obligatoire, independante du role ADMIN. Les creations sensibles "
+                "et leurs traces passent par des RPC SQL atomiques.")
         st.subheader("1. Gérer les listes de choix (Menus déroulants)")
         st.markdown("""
         Cette section permet d'alimenter toutes les listes de l'ERP (Catégories, Pays, Unités, etc.).
@@ -144,6 +155,64 @@ def show_help_page():
         2. Cliquez sur **Générer le Bon de Livraison**.
         3. Vérifiez les quantités expédiées. La validation du BL déduira immédiatement les articles du stock de produits finis.
         4. Une fois expédié, cliquez sur **Générer la Facture** pour transférer la pièce vers la comptabilité.
+        """)
+
+    elif rubrique == "🔐 Environnements et sécurité (010-A)":
+        st.header("🔐 Environnements et sécurité")
+        st.info("La migration 010-A est en préparation. Aucune mise en production n'est autorisée par cette page.")
+        st.markdown("""
+        **Pourquoi distinguer TEST et PRODUCTION ?**
+
+        Les essais peuvent créer des stocks, des factures et des relances fictives.
+        Ils doivent utiliser un projet Supabase et des classeurs Google distincts
+        de ceux de l'entreprise réelle.
+
+        **Signification des messages de sécurité :**
+
+        - *Politique absente* : l'administrateur n'a pas encore déclaré
+          l'environnement dans Streamlit Secrets.
+        - *Projet Supabase différent* : l'application est reliée à une URL
+          qui ne correspond pas à l'environnement annoncé ; aucune connexion
+          ne doit être autorisée.
+        - *Classeur TEST identique* : un classeur de test correspond à un
+          classeur de production déjà référencé.
+        - *PRODUCTION désactivée* : le déploiement n'a pas reçu
+          l'autorisation explicite nécessaire.
+
+        Les tâches de relance exécutées en mode TEST ne doivent envoyer
+        aucun e-mail. En cas d'erreur, ne désactivez pas ces contrôles :
+        contactez l'administrateur.
+
+        **Documentation technique pour l'administrateur :**
+        `docs/guide_migration_010A_01.md`.
+        """)
+
+    elif rubrique == "🔎 Vérification des droits SQL (010-A-02)":
+        st.header("🔎 Contrôle des autorisations Supabase")
+        st.info("Vérification en lecture seule sur Supabase TEST ; aucune correction automatique.")
+        st.markdown("""
+        **À quoi servent ces contrôles ?**
+
+        - **RLS** : contrôle quelles lignes peuvent être accessibles selon le rôle.
+          Activer la RLS sans politique peut refuser l'accès normal, sans prouver
+          à lui seul une faille de sécurité.
+        - **GRANT / REVOKE** : autorisations SQL sur les tables, schémas et fonctions.
+        - **RPC** : fonctions PostgreSQL appelées par l'ERP.
+        - **service_role** : rôle à privilèges élevés, réservé au serveur ;
+          il contourne habituellement les politiques RLS.
+
+        **Procédure administrateur :**
+        1. Vérifier le projet **TEST** dans Supabase SQL Editor.
+        2. Exécuter `sql/010A_02_permissions_audit_readonly.sql` (SELECT uniquement).
+        3. Exporter les lignes du résultat en CSV, sans clés ni secrets.
+        4. Analyser le CSV avec `scripts/verifier_audit_permissions_010a.py`.
+        5. Corriger seulement après examen des risques et plan de retour arrière.
+
+        **Interprétation :** `BLOQUANT` interdit toute promotion du lot,
+        `A_VERIFIER` requiert une revue humaine, `INFO` n'est pas une preuve
+        de conformité et `OK` porte uniquement sur le contrôle effectué.
+
+        **Aide détaillée :** `docs/guide_migration_010A_02.md`.
         """)
 
     elif rubrique == "💰 Finance & Trésorerie":

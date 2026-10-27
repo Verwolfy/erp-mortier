@@ -1,347 +1,566 @@
+"""Écran Ventes : lecture autorisée, transactions idempotentes et expédition par commande.
+
+Tous les appels DRAFT/VALIDATE/CANCEL/SHIP sont réalisés par le service Ventes.
+Un échec réseau laisse l'opération figée en session : une reprise utilise le
+même operation_id et le même contenu, même après un rerun Streamlit.
 """
-Interface utilisateur du module Ventes.
-Intègre la création de factures, la génération de PDF, la traçabilité des expéditions (BL)
-et le pont direct vers la Production (Make-to-Order).
-"""
-import streamlit as st
+
+from __future__ import annotations
+
+from copy import deepcopy
+from decimal import Decimal, InvalidOperation
+import logging
+from uuid import uuid4
+
 import pandas as pd
+import streamlit as st
+
 from config.roles import has_permission
-from core.db_service import fetch_data
+from core.db_service import fetch_data_paginated, get_supabase_client
 from modules.ventes.service import (
-    create_facture_brouillon,
-    valider_facture,
     annuler_facture,
+    calculer_montants_facture,
+    create_facture_brouillon,
+    creer_bon_livraison,
+    creer_commande_client,
     get_factures,
     get_lignes_facture,
-    calculer_montants_facture,
-    creer_bon_livraison,
-    get_bons_livraison,
-    get_lignes_bons_livraison
+    valider_facture,
 )
-from modules.production.service import auto_create_of_from_vente
-from modules.admin.service import get_dataframe
-from core.utils import get_local_now
-from core.pdf_generator import generer_document_standard
+
+_LOG = logging.getLogger(__name__)
+_ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
+_ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
+_REQUIRED = {
+    "draft": frozenset({"client_id", "date_echeance", "panier", "remise_globale",
+                         "paiement_especes", "is_avoir", "facture_origine_id"}),
+    "validate": frozenset({"facture_id"}),
+    "cancel": frozenset({"facture_id"}),
+    "ship": frozenset({"commande_vente_id", "transporteur", "zone", "items_livraison"}),
+    "order": frozenset({"client_id", "date_commande", "lignes"}),
+}
+_LIMIT = Decimal("1e15")
+_EXPEDIABLE_STATES = frozenset({"EN_ATTENTE", "CONFIRMEE", "VALIDEE", "EN_COURS", "PARTIELLEMENT_LIVREE"})
 
 
-def show_ventes_page():
-    st.title("🧾 Ventes & Facturation")
+def _mark_ventes_activity() -> None:
+    """Signale une interaction sans renouvellement direct."""
+    st.session_state["_erp_ventes_interacted"] = True
 
-    user_role = st.session_state.get("user", {}).get("role", "")
-    can_write = has_permission(user_role, "Ventes", "ecriture")
 
-    if "panier_vente" not in st.session_state:
-        st.session_state["panier_vente"] = []
+def _sale_access() -> tuple[str, bool] | None:
+    """Contrôle actualisé depuis Supabase, y compris pour les lectures."""
+    try:
+        if st.session_state.get("authenticated") is not True:
+            return None
+        session_user = st.session_state.get("user")
+        if not isinstance(session_user, dict):
+            return None
+        user_id = session_user.get("user_id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            return None
+        result = (get_supabase_client().table("users")
+                  .select("user_id,role,actif").eq("user_id", user_id)
+                  .limit(1).execute())
+        records = result.data or []
+        if len(records) != 1 or not isinstance(records[0], dict):
+            return None
+        user = records[0]
+        if user.get("user_id") != user_id:
+            return None
+        active = user.get("actif")
+        if active is not True and str(active).strip().casefold() not in _ACTIVE:
+            return None
+        role = user.get("role")
+        if not isinstance(role, str) or not role.strip():
+            return None
+        if has_permission(role, "Ventes", "lecture") is not True:
+            return None
+        return user_id, has_permission(role, "Ventes", "ecriture") is True
+    except Exception as exc:
+        _LOG.warning("Lecture Ventes refusée : autorisation non vérifiable (%s)", type(exc).__name__)
+        return None
 
-    tab1, tab2, tab3 = st.tabs(["➕ Nouveau Document", "🚚 Expéditions & Bons de Livraison", "📋 Historique & Workflow"])
 
-    df_clients = get_dataframe("Clients", only_active=True)
-    df_skus = get_dataframe("SkuConditionnement", only_active=True)
-    df_produits = get_dataframe("Produits", only_active=True)
-    df_f = get_factures()
+def _decimal(value: object, label: str, *, positive: bool = False) -> Decimal:
+    if isinstance(value, bool):
+        raise ValueError(f"{label} invalide")
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError(f"{label} invalide") from exc
+    if not number.is_finite() or number >= _LIMIT or number < 0 or (positive and number <= 0):
+        raise ValueError(f"{label} invalide")
+    return number
 
-    # --- TAB 1 : CRÉATION (BROUILLON) ---
-    with tab1:
-        st.subheader("Préparer une Facture / Avoir (Brouillon)")
 
-        if "last_pdf" in st.session_state and "last_doc_id" in st.session_state:
-            st.success(f"✅ Document {st.session_state['last_doc_id']} enregistré en tant que brouillon !")
-            st.download_button(
-                label=f"📄 Télécharger {st.session_state['last_doc_id']} (PDF)",
-                data=st.session_state["last_pdf"],
-                file_name=f"{st.session_state['last_doc_id']}.pdf",
-                mime="application/pdf",
-                type="primary"
-            )
-            st.divider()
+def _cart_key(user_id: str) -> str:
+    return f"ventes_panier_{user_id}"
 
-        if not can_write:
-            st.info("🔒 Mode lecture seule.")
-        elif df_clients.empty or df_skus.empty or df_produits.empty:
-            st.warning("Veuillez configurer des Clients, Produits et SKU actifs dans l'Administration.")
-        else:
-            c_cli, c_ech, c_type, c_orig = st.columns(4)
-            liste_clients = {row["client_id"]: f"{row['client_id']} - {row['nom']}" for _, row in df_clients.iterrows()}
-            client_choisi = c_cli.selectbox("Client", options=list(liste_clients.keys()), format_func=lambda x: liste_clients[x])
-            date_echeance = c_ech.date_input("Date d'échéance")
-            type_doc = c_type.selectbox("Type de document", ["FactureClient", "FactureAvoir"])
-            is_avoir = (type_doc == "FactureAvoir")
 
-            facture_origine_id = ""
-            if is_avoir:
-                if not df_f.empty and "type_facture" in df_f.columns:
-                    df_factures_clients = df_f[df_f["type_facture"] == "FactureClient"]
-                    liste_facs = df_factures_clients["facture_id"].tolist()
-                    facture_origine_id = c_orig.selectbox("Facture d'origine", [""] + liste_facs)
-                else:
-                    c_orig.info("Aucune facture passée.")
+def _operation_key(kind: str, user_id: str) -> str:
+    if kind not in _ACTIONS:
+        raise ValueError("Action Ventes inconnue")
+    return f"ventes_{kind}_{user_id}"
 
-            st.markdown("**Panier de produits :**")
-            with st.expander("➕ Ajouter un produit", expanded=True):
-                c_sku, c_qte, c_prix = st.columns(3)
 
-                dict_produits = {row["pf_id"]: row["nom"] for _, row in df_produits.iterrows()}
-                liste_skus = {}
-                for _, row in df_skus.iterrows():
-                    nom_produit = dict_produits.get(row.get("pf_id", ""), "Produit inconnu")
-                    format_val = row.get("format", "")
-                    sku_id = row["sku_id"]
-                    liste_skus[sku_id] = f"{nom_produit} - {format_val} ({sku_id})"
+def _execute_operation(kind: str, user_id: str) -> None:
+    """Ne crée JAMAIS un nouvel identifiant après un échec réseau."""
+    key = _operation_key(kind, user_id)
+    record = st.session_state[key]
+    if record["status"] == "confirmed":
+        return
+    try:
+        payload = deepcopy(record["payload"])
+        operation_id = record["operation_id"]
+        if kind == "draft":
+            result = create_facture_brouillon(**payload, operation_id=operation_id)
+            if not isinstance(result, str) or not result.strip():
+                raise RuntimeError("Numéro de facture non confirmé")
+            document_id = result
+        elif kind == "validate":
+            result = valider_facture(**payload, operation_id=operation_id)
+            if not isinstance(result, dict) or result.get("statut") != "VALIDE" \
+                    or result.get("facture_id") != payload["facture_id"]:
+                raise RuntimeError("Validation non confirmée")
+            document_id = payload["facture_id"]
+        elif kind == "cancel":
+            result = annuler_facture(**payload, operation_id=operation_id)
+            if not isinstance(result, dict) or result.get("statut") != "ANNULE" \
+                    or result.get("facture_id") != payload["facture_id"]:
+                raise RuntimeError("Annulation non confirmée")
+            document_id = payload["facture_id"]
+        elif kind == "order":
+            result = creer_commande_client(**payload, operation_id=operation_id)
+            if not isinstance(result, str) or not result.strip():
+                raise RuntimeError("Sales order not confirmed")
+            document_id = result
+        elif kind == "ship":
+            result = creer_bon_livraison(**payload, operation_id=operation_id)
+            if not isinstance(result, str) or not result.strip():
+                raise RuntimeError("BL non confirmé")
+            document_id = result
+    except (ValueError, PermissionError) as exc:
+        # Le service valide les paramètres et droits avant le RPC.
+        _LOG.warning("Opération Ventes refusée localement (%s)", type(exc).__name__)
+        del st.session_state[key]
+        st.error("Opération refusée : corrigez les données ou les autorisations.")
+        return
+    except Exception as exc:
+        # Échec incertain après éventuel COMMIT : l'opération reste verrouillée.
+        _LOG.warning("Opération Ventes non confirmée (%s)", type(exc).__name__)
+        record["status"] = "uncertain"
+        st.error("Opération non confirmée. Vérifiez-la dans Supabase avant de réessayer.")
+        st.code(record["operation_id"])
+        return
+    record["status"] = "confirmed"
+    record["document_id"] = document_id
+    if kind == "draft":
+        st.session_state[_cart_key(user_id)] = []
+    elif kind == "order":
+        st.session_state[f"order_cart_{user_id}"] = []
+    st.rerun()
 
-                sku_choisi = c_sku.selectbox("Produit", options=list(liste_skus.keys()), format_func=lambda x: liste_skus[x])
 
-                stock_actuel = 0.0
-                df_stocks = pd.DataFrame(fetch_data("stock_actuel_pf"))
-                if sku_choisi and not df_stocks.empty and "sku_id" in df_stocks.columns:
-                    stock_row = df_stocks[df_stocks["sku_id"] == sku_choisi]
-                    if not stock_row.empty:
-                        stock_actuel = float(stock_row.iloc[0].get("quantite_disponible", 0.0))
+def _start_operation(kind: str, user_id: str, payload: dict) -> None:
+    key = _operation_key(kind, user_id)
+    if key in st.session_state:
+        st.error("Une opération est déjà en attente : utilisez son dossier de reprise.")
+        return
+    st.session_state[key] = {
+        "status": "uncertain",
+        "operation_id": f"SALE-UI-{uuid4().hex}",
+        "payload": deepcopy(payload),
+    }
+    _execute_operation(kind, user_id)
 
-                if stock_actuel > 0:
-                    c_sku.success(f"📦 En stock : {stock_actuel:,.2f}")
-                else:
-                    c_sku.warning("⚠️ Rupture : nécessitera une production")
 
-                prix_defaut = float(df_skus[df_skus["sku_id"] == sku_choisi]["prix_vente_defaut"].iloc[0]) if sku_choisi else 0.0
+def _operation_panel(kind: str, user_id: str) -> bool:
+    key = _operation_key(kind, user_id)
+    if key not in st.session_state:
+        return False
+    record = st.session_state[key]
+    valid = (isinstance(record, dict) and record.get("status") in {"uncertain", "confirmed"}
+             and isinstance(record.get("operation_id"), str)
+             and record["operation_id"].startswith("SALE-UI-")
+             and isinstance(record.get("payload"), dict)
+             and _REQUIRED[kind].issubset(record["payload"])
+             and (record["status"] != "confirmed" or
+                  (isinstance(record.get("document_id"), str) and bool(record["document_id"]))))
+    if not valid:
+        st.error("Dossier Ventes illisible : demander une vérification à l'administrateur.")
+        return True
+    st.code(record["operation_id"])
+    if record["status"] == "uncertain":
+        st.warning("Opération en attente de confirmation : ne modifiez pas les quantités.")
+        st.info("Après vérification de la base, la reprise réutilise le même contenu et le même identifiant.")
+        if st.button("Réessayer exactement la même opération", key=f"retry_{kind}_{user_id}", on_click=_mark_ventes_activity):
+            _execute_operation(kind, user_id)
+    else:
+        st.success(f"Document {record['document_id']} confirmé.")
+        if st.button("Préparer une nouvelle opération", key=f"new_{kind}_{user_id}", on_click=_mark_ventes_activity):
+            del st.session_state[key]
+            st.rerun()
+    return True
 
-                qte = c_qte.number_input("Quantité", min_value=1.0, step=1.0)
-                prix_u = c_prix.number_input("Prix unitaire HT", min_value=0.0, value=prix_defaut, step=10.0)
 
-                st.markdown("**Remise applicable sur cet article :**")
-                c_remise_type, c_remise_val, c_btn = st.columns([2, 2, 1])
-                type_remise = c_remise_type.selectbox("Type de remise", ["Montant (DZD)", "Pourcentage (%)"])
-                valeur_remise = c_remise_val.number_input("Valeur Remise", min_value=0.0, step=1.0)
+def _read_required(table: str) -> pd.DataFrame:
+    """Lecture complète ou échec explicite : pas de calcul sur données tronquées."""
+    return pd.DataFrame(fetch_data_paginated(table, max_rows=10000))
 
-                if c_btn.button("Ajouter au panier"):
-                    remise_dzd = valeur_remise if type_remise == "Montant (DZD)" else (qte * prix_u * (valeur_remise / 100))
 
-                    st.session_state["panier_vente"].append({
-                        "sku_id": sku_choisi,
-                        "nom_produit": liste_skus[sku_choisi],
-                        "nom": liste_skus[sku_choisi],
-                        "quantite": qte,
-                        "prix_unitaire": prix_u,
-                        "remise": remise_dzd,
-                        "taux_tva": 0.19,
-                        "total_ht": (qte * prix_u) - remise_dzd
-                    })
-                    st.rerun()
+def _valid_origins(factures: pd.DataFrame, client_id: str) -> list[str]:
+    if factures.empty:
+        return []
+    required = {"client_id", "type_facture", "statut", "facture_id"}
+    if not required.issubset(factures.columns):
+        raise ValueError("Colonnes Factures manquantes")
+    rows = factures[(factures["client_id"] == client_id)
+                    & (factures["type_facture"] == "FactureClient")
+                    & (factures["statut"] == "VALIDE")]
+    return rows["facture_id"].tolist()
 
-            if st.session_state["panier_vente"]:
-                df_panier = pd.DataFrame(st.session_state["panier_vente"])
-                st.dataframe(df_panier[["sku_id", "nom_produit", "quantite", "prix_unitaire", "remise", "total_ht"]], use_container_width=True)
 
-                col_remise, col_especes = st.columns(2)
-                remise_globale = col_remise.number_input("Remise globale supplémentaire (DZD)", min_value=0.0, step=100.0)
-                paiement_especes = col_especes.checkbox("Paiement en espèces (Applique le timbre fiscal)")
+def _remaining_for_order(order_id: str, order_lines: pd.DataFrame,
+                         shipments: pd.DataFrame, shipment_lines: pd.DataFrame) -> dict[str, Decimal]:
+    """Agrège les quantités déjà EXPÉDIÉES, y compris les BL partiels et multi-lots."""
+    if not isinstance(order_id, str) or not order_id.strip():
+        raise ValueError("Commande client absente")
+    if order_lines.empty or not {"commande_vente_id", "sku_id", "quantite"}.issubset(order_lines.columns):
+        raise ValueError("Aucune ligne de commande exploitable")
+    selected = order_lines[order_lines["commande_vente_id"] == order_id]
+    if selected.empty:
+        raise ValueError("Commande client sans lignes")
+    ordered = {}
+    for row in selected.to_dict("records"):
+        sku = str(row["sku_id"] or "").strip()
+        if not sku:
+            raise ValueError("SKU de commande absent")
+        ordered[sku] = ordered.get(sku, Decimal(0)) + _decimal(row["quantite"], "Quantité commandée", positive=True)
+    if shipments.empty:
+        return ordered
+    if not {"bl_id", "commande_vente_id", "statut"}.issubset(shipments.columns):
+        raise ValueError("Colonnes BL manquantes")
+    shipped_bls = set(shipments.loc[(shipments["commande_vente_id"] == order_id)
+                                        & (shipments["statut"] == "EXPEDIE"), "bl_id"])
+    if not shipped_bls:
+        return ordered
+    if shipment_lines.empty or not {"bl_id", "sku_id", "quantite_livree"}.issubset(shipment_lines.columns):
+        raise ValueError("Lignes de BL introuvables")
+    shipped = {}
+    for row in shipment_lines[shipment_lines["bl_id"].isin(shipped_bls)].to_dict("records"):
+        sku = str(row["sku_id"] or "").strip()
+        shipped[sku] = shipped.get(sku, Decimal(0)) + _decimal(row["quantite_livree"], "Quantité livrée", positive=True)
+    if set(shipped) - set(ordered):
+        raise ValueError("Livraison historique incohérente avec la commande")
+    remaining = {sku: qty - shipped.get(sku, Decimal(0)) for sku, qty in ordered.items()}
+    if any(qty < 0 for qty in remaining.values()):
+        raise ValueError("Commande historiquement sur-livrée : vérification requise")
+    return remaining
 
-                totaux = calculer_montants_facture(st.session_state["panier_vente"], remise_globale, paiement_especes)
 
-                st.info(f"**Total HT:** {totaux['total_ht']:,.2f} | **Remises:** {totaux['total_remise']:,.2f} | **Net HT:** {totaux['net_a_payer']:,.2f} | **TVA:** {totaux['total_tva']:,.2f} | **Timbre:** {totaux['timbre_fiscal']:,.2f} | **TTC:** {totaux['total_ttc']:,.2f} DZD")
+def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
+    st.subheader("Créer une facture ou un avoir (brouillon)")
+    if not can_write:
+        st.info("Mode lecture seule")
+        return
+    if _operation_panel("draft", user_id):
+        return
+    clients = _read_required("clients")
+    skus = _read_required("sku_conditionnement")
+    products = _read_required("produits")
+    if clients.empty or skus.empty or products.empty:
+        st.warning("Référentiels client / produits / SKU manquants.")
+        return
+    clients = clients[clients["actif"] == "OUI"] if "actif" in clients.columns else clients
+    skus = skus[skus["actif"] == "OUI"] if "actif" in skus.columns else skus
+    products = products[products["actif"] == "OUI"] if "actif" in products.columns else products
+    if clients.empty or skus.empty or products.empty:
+        st.warning("Aucun client ou produit actif.")
+        return
+    client_labels = {r["client_id"]: f"{r['client_id']} - {r['nom']}" for _, r in clients.iterrows()}
+    client_id = st.selectbox("Client", list(client_labels), format_func=lambda x: client_labels[x], key="vente_client", on_change=_mark_ventes_activity)
+    echeance = st.date_input("Date d'échéance", key="vente_echeance")
+    type_doc = st.selectbox("Type de document", ["FactureClient", "FactureAvoir"], key="vente_type", on_change=_mark_ventes_activity)
+    is_avoir = type_doc == "FactureAvoir"
+    origine = ""
+    if is_avoir:
+        choices = _valid_origins(factures, client_id)
+        if not choices:
+            st.warning("Aucune facture client validée pour cet avoir.")
+            return
+        origine = st.selectbox("Facture d'origine", choices, key="vente_origine", on_change=_mark_ventes_activity)
+    names = {r["pf_id"]: str(r["nom"]) for _, r in products.iterrows()}
+    labels = {r["sku_id"]: f"{names.get(r['pf_id'], 'Produit')} - {r.get('format','')} ({r['sku_id']})"
+              for _, r in skus.iterrows()}
+    if not labels:
+        st.warning("Aucun SKU disponible.")
+        return
+    cart_key = _cart_key(user_id)
+    context_key = f"ventes_panier_contexte_{user_id}"
+    current_context = (client_id, type_doc, origine)
+    previous_context = st.session_state.get(context_key)
+    if previous_context is not None and previous_context != current_context:
+        st.session_state[cart_key] = []
+        st.warning("Client, type de document ou origine modifié : panier vidé pour éviter une erreur de facturation.")
+    st.session_state[context_key] = current_context
+    cart = st.session_state.setdefault(cart_key, [])
+    if not isinstance(cart, list):
+        st.error("Panier non exploitable.")
+        return
+    sku_id = st.selectbox("Produit", list(labels), format_func=lambda x: labels[x], key="vente_sku", on_change=_mark_ventes_activity)
+    product_row = skus[skus["sku_id"] == sku_id].iloc[0]
+    prix = _decimal(product_row.get("prix_vente_defaut", 0) or 0, "Prix par défaut")
+    qte = st.number_input("Quantité (unités SKU entières)", min_value=1, value=1, step=1, key="vente_qte")
+    pu = st.number_input("Prix unitaire HT (DZD)", min_value=0.0, value=float(prix), step=1.0, key="vente_pu")
+    rem_type = st.selectbox("Remise", ["Montant (DZD)", "Pourcentage (%)"], key="vente_rem_type", on_change=_mark_ventes_activity)
+    remise_value = st.number_input("Valeur de remise", min_value=0.0, step=1.0, key="vente_rem_val")
+    if st.button("Ajouter au panier", key="vente_add", on_click=_mark_ventes_activity):
+        quant = _decimal(qte, "Quantité", positive=True)
+        if quant != quant.to_integral_value():
+            st.error("Le nombre de conditionnements doit être entier.")
+            return
+        prix_u = _decimal(pu, "Prix unitaire")
+        discount = _decimal(remise_value, "Remise")
+        gross = quant * prix_u
+        if rem_type == "Pourcentage (%)":
+            if discount > 100:
+                st.error("Remise supérieure à 100 %.")
+                return
+            discount = gross * discount / Decimal(100)
+        if discount > gross:
+            st.error("Remise supérieure au montant de ligne.")
+            return
+        cart.append({"sku_id": sku_id, "nom_produit": labels[sku_id], "quantite": float(quant),
+                     "prix_unitaire": float(prix_u), "remise": float(discount)})
+        st.rerun()
+    if not cart:
+        st.info("Panier vide.")
+        return
+    st.dataframe(pd.DataFrame(cart), hide_index=True, use_container_width=True)
+    if st.button("Vider le panier", key="vente_empty", on_click=_mark_ventes_activity):
+        st.session_state[cart_key] = []
+        st.rerun()
+    global_discount = st.number_input("Remise globale (DZD)", min_value=0.0, step=1.0)
+    cash = st.checkbox("Paiement en espèces (timbre fiscal)", disabled=is_avoir)
+    try:
+        totals = calculer_montants_facture(cart, global_discount, bool(cash) if not is_avoir else False)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    st.info(f"Net HT : {totals['net_a_payer']:,.2f} DZD | TVA : {totals['total_tva']:,.2f} DZD | TTC : {totals['total_ttc']:,.2f} DZD")
+    st.caption("Les taux de TVA/timbre sont ceux du service actuel, à valider par la comptabilité.")
+    if st.button("Enregistrer le brouillon", key="vente_draft_submit", type="primary", on_click=_mark_ventes_activity):
+        _start_operation("draft", user_id, {
+            "client_id": client_id, "date_echeance": str(echeance), "panier": deepcopy(cart),
+            "remise_globale": global_discount, "paiement_especes": bool(cash) if not is_avoir else False,
+            "is_avoir": is_avoir, "facture_origine_id": origine,
+        })
+    st.caption("PDF désactivé : les coordonnées légales de l'entreprise doivent provenir de paramètres vérifiés, pas de valeurs fictives.")
 
-                if st.button("📝 Enregistrer le Brouillon", type="primary"):
-                    try:
-                        doc_id = create_facture_brouillon(client_choisi, str(date_echeance), st.session_state["panier_vente"], remise_globale, paiement_especes, is_avoir, facture_origine_id)
 
-                        client_row = df_clients[df_clients["client_id"] == client_choisi].iloc[0]
-                        client_info = {
-                            "nom": client_row["nom"],
-                            "adresse": client_row.get("adresse", ""),
-                            "telephone": client_row.get("mobile_contact", ""),
-                            "nif": client_row.get("nif", ""),
-                            "rc": client_row.get("rc", "")
-                        }
+def _order_tab(user_id: str, can_write: bool) -> None:
+    st.subheader("Commandes clients")
+    st.caption("Commande et livraison distinctes de la facturation : aucun nouveau document facture n'est cr\u00e9\u00e9.")
+    # Ne jamais autoriser une seconde tentative avec de nouvelles donn\u00e9es avant confirmation.
+    if _operation_panel("order", user_id):
+        return
+    orders = _read_required("commandes_ventes")
+    if not orders.empty:
+        needed = {"commande_vente_id", "client_id", "statut"}
+        if not needed.issubset(orders.columns):
+            st.error("Colonnes Commandes clients manquantes")
+            return
+        st.dataframe(orders[["commande_vente_id", "client_id", "statut"]],
+                     use_container_width=True, hide_index=True)
+    if not can_write:
+        st.info("Mode lecture seule")
+        return
+    clients = _read_required("clients")
+    skus = _read_required("sku_conditionnement")
+    if clients.empty or skus.empty:
+        st.warning("Aucun client ou SKU disponible")
+        return
+    if not {"client_id", "nom", "actif"}.issubset(clients.columns) or not \
+            {"sku_id", "actif", "prix_vente_defaut"}.issubset(skus.columns):
+        st.error("R\u00e9f\u00e9rentiel clients ou SKU incomplet")
+        return
+    clients = clients[clients["actif"].astype(str).str.strip().str.upper() == "OUI"]
+    skus = skus[skus["actif"].astype(str).str.strip().str.upper() == "OUI"]
+    skus = skus[skus["sku_id"] != "SKU-007"]  # Validation physique en attente.
+    if clients.empty or skus.empty:
+        st.warning("Aucun client ou SKU actif et autoris\u00e9")
+        return
+    client_labels = {r["client_id"]: f'{r["client_id"]} - {r["nom"]}'
+                     for _, r in clients.iterrows()}
+    sku_labels = {r["sku_id"]: str(r["sku_id"]) for _, r in skus.iterrows()}
+    client_id = st.selectbox("Client", list(client_labels),
+                             format_func=lambda x: client_labels[x],
+                             key=f"order_client_{user_id}", on_change=_mark_ventes_activity)
+    order_date = st.date_input("Date de commande", key=f"order_date_{user_id}")
+    cart_key = f"order_cart_{user_id}"
+    owner_key = f"order_cart_client_{user_id}"
+    if st.session_state.get(owner_key) != client_id:
+        if st.session_state.get(cart_key):
+            st.info("Changement de client : panier pr\u00e9c\u00e9dent effac\u00e9.")
+        st.session_state[cart_key] = []
+        st.session_state[owner_key] = client_id
+    cart = st.session_state[cart_key]
+    sku_id = st.selectbox("Produit SKU", list(sku_labels),
+                          format_func=lambda x: sku_labels[x],
+                          key=f"order_sku_{user_id}", on_change=_mark_ventes_activity)
+    price_raw = skus.loc[skus["sku_id"] == sku_id, "prix_vente_defaut"].iloc[0]
+    try:
+        default_price = float(_decimal(price_raw, "Prix unitaire"))
+    except (ValueError, TypeError, OverflowError):
+        default_price = 0.0
+    with st.form(f"order_add_line_{user_id}"):
+        qty = st.number_input("Quantit\u00e9 (unit\u00e9s SKU)", min_value=1, value=1, step=1)
+        price = st.number_input("Prix unitaire HT (DZD)", min_value=0.0,
+                                value=default_price, step=0.01, format="%.2f",
+                                key=f"order_price_{user_id}_{sku_id}")
+        add = st.form_submit_button("Ajouter au panier", on_click=_mark_ventes_activity)
+    if add:
+        try:
+            amount = _decimal(qty, "Quantit\u00e9", positive=True)
+            unit_price = _decimal(price, "Prix unitaire")
+            if amount != amount.to_integral_value() or unit_price.as_tuple().exponent < -2:
+                raise ValueError("Quantit\u00e9 ou prix invalide")
+            if len(cart) >= 500 or any(x["sku_id"] == sku_id for x in cart):
+                raise ValueError("SKU d\u00e9j\u00e0 pr\u00e9sent ou limite de lignes atteinte")
+            cart.append({"sku_id": sku_id, "quantite": int(amount),
+                         "prix_unitaire": format(unit_price, ".2f")})
+        except (ValueError, TypeError, OverflowError) as exc:
+            st.error(str(exc))
+    if not cart:
+        st.info("Ajoutez au moins une ligne avant d'enregistrer la commande.")
+        return
+    st.dataframe(pd.DataFrame(cart), use_container_width=True, hide_index=True)
+    if st.button("Vider le panier", key=f"order_clear_{user_id}", on_click=_mark_ventes_activity):
+        st.session_state[cart_key] = []
+        st.rerun()
+    if st.button("Enregistrer la commande", key=f"order_save_{user_id}", type="primary", on_click=_mark_ventes_activity):
+        _start_operation("order", user_id, {
+            "client_id": client_id, "date_commande": str(order_date),
+            "lignes": deepcopy(cart),
+        })
 
-                        params_entreprise = {
-                            "entreprise_nom": "MON ENTREPRISE",
-                            "entreprise_adresse": "123 Zone Industrielle",
-                            "entreprise_tel": "0555 00 00 00",
-                            "devise": "DZD",
-                            "doc_couleur": "#0047AB",
-                            "doc_footer": "SARL MON ENTREPRISE - Capital 1.000.000 DZD"
-                        }
 
-                        date_jour = get_local_now().strftime("%Y-%m-%d")
-                        titre_doc = "FACTURE D'AVOIR (BROUILLON)" if is_avoir else "FACTURE (BROUILLON)"
-
-                        pdf_bytes = generer_document_standard(
-                            doc_type=titre_doc,
-                            doc_id=doc_id,
-                            date_doc=date_jour,
-                            partner_info=client_info,
-                            lignes=st.session_state["panier_vente"],
-                            totaux=totaux,
-                            params=params_entreprise,
-                            is_supplier=False
-                        )
-
-                        st.session_state["last_pdf"] = pdf_bytes
-                        st.session_state["last_doc_id"] = doc_id
-                        st.session_state["panier_vente"] = []
-
-                        st.cache_data.clear()
-                        st.rerun()
-
-                    except ValueError as e:
-                        st.error(f"❌ Erreur : {e}")
-                    except Exception as e:
-                        st.error(f"❌ Erreur système : {e}")
-
-                if st.button("🗑️ Vider le panier"):
-                    st.session_state["panier_vente"] = []
-                    st.rerun()
-
-    # --- TAB 2 : EXPÉDITIONS & BONS DE LIVRAISON (BL) ---
-    with tab2:
-        st.subheader("🚚 Générer un Bon de Livraison (BL)")
-        if not df_f.empty:
-            df_valides = df_f[(df_f["statut"] == "VALIDE") & (df_f.get("type_facture", "FactureClient") == "FactureClient")]
-
-            if not can_write:
-                st.info("🔒 Mode lecture seule.")
-            elif df_valides.empty:
-                st.info("Aucune facture client validée en attente d'expédition.")
+def _ship_tab(user_id: str, can_write: bool) -> None:
+    st.subheader("Expédition / Bons de livraison")
+    st.info("Un BL est rattaché à une vraie commande client, jamais à un numéro de facture.")
+    if not can_write:
+        st.info("Mode lecture seule")
+        return
+    if _operation_panel("ship", user_id):
+        return
+    orders = _read_required("commandes_ventes")
+    if orders.empty:
+        st.warning("Aucune commande client disponible : impossible d'expédier à partir d'une facture seule.")
+        return
+    if not {"commande_vente_id", "statut"}.issubset(orders.columns):
+        st.error("Schéma des commandes incomplet.")
+        return
+    orders = orders[orders["statut"].isin(_EXPEDIABLE_STATES)]
+    if orders.empty:
+        st.info("Aucune commande client expédiable.")
+        return
+    order_labels = {r["commande_vente_id"]: f"{r['commande_vente_id']} ({r.get('statut','')})"
+                    for _, r in orders.iterrows()}
+    order_id = st.selectbox("Commande client", list(order_labels), format_func=lambda x: order_labels[x], on_change=_mark_ventes_activity)
+    order_lines = _read_required("lignes_commande_ventes")
+    shipments = _read_required("bons_livraison")
+    shipment_lines = _read_required("lignes_bons_livraison")
+    try:
+        remaining = _remaining_for_order(order_id, order_lines, shipments, shipment_lines)
+    except ValueError as exc:
+        st.error(f"Expédition bloquée : {exc}")
+        return
+    remaining = {sku: qty for sku, qty in remaining.items() if qty > 0}
+    if not remaining:
+        st.info("Commande intégralement livrée.")
+        return
+    stock_pf = _read_required("stock_actuel_pf")
+    stock_map = {r["sku_id"]: _decimal(r["quantite_disponible"], "Stock PF")
+                 for _, r in stock_pf.iterrows()} if not stock_pf.empty else {}
+    items = []
+    with st.form(f"vente_ship_{order_id}"):
+        transporteur = st.text_input("Transporteur", value="Transport Interne")
+        zone = st.text_input("Zone de livraison")
+        for i, (sku, to_deliver) in enumerate(remaining.items()):
+            if to_deliver != to_deliver.to_integral_value():
+                st.error(f"Quantité de commande fractionnaire pour {sku} : corriger la commande avant expédition.")
+                return
+            stock = stock_map.get(sku, Decimal(0))
+            if stock < 0:
+                st.error("Stock PF incohérent.")
+                return
+            maximum = min(stock, to_deliver)
+            st.write(f"{sku} : reste {to_deliver} | stock PF {stock}")
+            amount = st.number_input(f"Quantité à livrer — {sku}", min_value=0,
+                                     max_value=int(maximum), value=0, step=1,
+                                     key=f"ship_{order_id}_{sku}_{i}")
+            if amount > 0:
+                items.append({"sku_id": sku, "quantite_livree": float(_decimal(amount, "Livraison", positive=True))})
+        if st.form_submit_button("Valider le BL et sortir le stock PF", type="primary", on_click=_mark_ventes_activity):
+            if not items:
+                st.error("Sélectionnez au moins une quantité à livrer.")
             else:
-                liste_facs = {row["facture_id"]: f"{row['facture_id']} - Client: {row['client_id']} ({row['date']})" for _, row in df_valides.iterrows()}
-                fac_choisie = st.selectbox("Sélectionnez la facture à expédier", options=list(liste_facs.keys()), format_func=lambda x: liste_facs[x])
+                _start_operation("ship", user_id, {
+                    "commande_vente_id": order_id, "transporteur": transporteur,
+                    "zone": zone, "items_livraison": items,
+                })
+    st.caption("Aucun lot saisi manuellement : le SQL attribue les lots réellement prélevés en FIFO.")
 
-                if fac_choisie:
-                    lignes_fact = get_lignes_facture(fac_choisie)
-                    df_lots_pf = pd.DataFrame(fetch_data("lots"))
-                    df_lots_dispo = df_lots_pf[df_lots_pf["statut"] == "VALIDE"] if not df_lots_pf.empty and "statut" in df_lots_pf.columns else pd.DataFrame()
 
-                    with st.form("form_bl"):
-                        c_trans, c_zone = st.columns(2)
-                        transporteur = c_trans.text_input("Transporteur / Chauffeur", value="Transport Interne")
-                        zone_livraison = c_zone.text_input("Zone / Adresse de livraison", value="Zone Industrielle")
+def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
+    st.subheader("Factures et workflow")
+    if factures.empty:
+        st.info("Aucune facture")
+        return
+    st.dataframe(factures, use_container_width=True, hide_index=True)
+    if not can_write:
+        return
+    if _operation_panel("validate", user_id) or _operation_panel("cancel", user_id):
+        return
+    if not {"facture_id", "statut"}.issubset(factures.columns):
+        st.error("Colonnes Factures manquantes")
+        return
+    eligible = factures[factures["statut"] == "BROUILLON"]
+    if eligible.empty:
+        st.info("Aucun brouillon pouvant être validé ou annulé.")
+        return
+    labels = eligible["facture_id"].tolist()
+    invoice_id = st.selectbox("Brouillon à traiter", labels, on_change=_mark_ventes_activity)
+    st.info("Validation et annulation n'entraînent aucun mouvement de stock.")
+    if st.button("Valider la facture", key="vente_validate", on_click=_mark_ventes_activity):
+        _start_operation("validate", user_id, {"facture_id": invoice_id})
+    if st.button("Annuler ce brouillon", key="vente_cancel", on_click=_mark_ventes_activity):
+        _start_operation("cancel", user_id, {"facture_id": invoice_id})
+    st.caption("Une facture VALIDÉE n'est pas annulable ici : un avoir doit suivre le processus financier adapté.")
 
-                        st.divider()
-                        st.markdown("**Articles à expédier & Traçabilité des Lots :**")
 
-                        items_expedition = []
-                        for idx, ligne in enumerate(lignes_fact):
-                            sku_id = ligne["sku_id"]
-                            qte_facturee = float(ligne["quantite"])
-
-                            col_a, col_b, col_c = st.columns([2, 1, 2])
-                            col_a.write(f"**Article :** {sku_id}")
-                            qte_expediee = col_b.number_input("Qté livrée", min_value=0.0, value=qte_facturee, key=f"bl_qte_{idx}")
-
-                            options_lots = ["DEFAUT"]
-                            if not df_lots_dispo.empty and "item_id" in df_lots_dispo.columns:
-                                matching_lots = df_lots_dispo[df_lots_dispo["item_id"] == sku_id]["lot_id"].tolist()
-                                if matching_lots:
-                                    options_lots = matching_lots
-
-                            lot_selectionne = col_c.selectbox("Lot expédié", options=options_lots, key=f"bl_lot_{idx}")
-
-                            items_expedition.append({
-                                "sku_id": sku_id,
-                                "quantite_livree": qte_expediee,
-                                "lot_id": lot_selectionne
-                            })
-
-                        if st.form_submit_button("📦 Valider l'expédition & Déduire le stock PF", type="primary"):
-                            try:
-                                bl_id = creer_bon_livraison(
-                                    commande_vente_id=fac_choisie,
-                                    transporteur=transporteur,
-                                    zone=zone_livraison,
-                                    items_livraison=items_expedition
-                                )
-                                st.success(f"✅ Bon de Livraison {bl_id} créé avec succès ! Stock déduit.")
-                                st.cache_data.clear()
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"❌ Échec de l'expédition : {e}")
-        else:
-            st.info("Aucun document émis pour le moment.")
-
-    # --- TAB 3 : HISTORIQUE & WORKFLOW ---
-    with tab3:
-        st.subheader("📚 Registre des Factures (Workflow)")
-        if not df_f.empty:
-            df_f_sorted = df_f.sort_values(by="date", ascending=False)
-            st.dataframe(df_f_sorted[["facture_id", "date", "client_id", "montant_ttc", "statut"]], use_container_width=True, hide_index=True)
-
-            if can_write:
-                st.divider()
-                st.markdown("### ⚡ Actions sur les documents")
-
-                facture_choisie = st.selectbox("Sélectionnez une facture à traiter", df_f_sorted["facture_id"].tolist())
-
-                if facture_choisie:
-                    facture_row = df_f_sorted[df_f_sorted["facture_id"] == facture_choisie].iloc[0]
-                    statut_actuel = facture_row["statut"]
-                    is_avoir = (facture_row.get("type_facture") == "FactureAvoir")
-
-                    st.info(f"Statut actuel : **{statut_actuel}**")
-
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        if statut_actuel == "BROUILLON":
-                            ruptures = []
-                            if not is_avoir:
-                                df_stocks_check = pd.DataFrame(fetch_data("stock_actuel_pf"))
-                                lignes_fact = get_lignes_facture(facture_choisie)
-
-                                for ligne in lignes_fact:
-                                    sku = ligne["sku_id"]
-                                    qte_demandee = float(ligne["quantite"])
-                                    qte_dispo = 0.0
-
-                                    if not df_stocks_check.empty and "sku_id" in df_stocks_check.columns:
-                                        stock_row = df_stocks_check[df_stocks_check["sku_id"] == sku]
-                                        if not stock_row.empty:
-                                            qte_dispo = float(stock_row.iloc[0].get("quantite_disponible", 0.0))
-
-                                    if qte_dispo < qte_demandee:
-                                        ruptures.append({"sku_id": sku, "manquant": qte_demandee - qte_dispo})
-
-                            if not ruptures:
-                                if st.button("✅ VALIDER LA FACTURE", type="primary", use_container_width=True):
-                                    try:
-                                        valider_facture(facture_choisie)
-                                        st.success(f"La facture {facture_choisie} a été validée avec succès !")
-                                        st.cache_data.clear()
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Erreur de validation : {e}")
-                            else:
-                                st.warning("⚠️ Impossible de valider : Stock insuffisant.")
-                                for r in ruptures:
-                                    st.write(f"- Manque {r['manquant']} unité(s) de **{r['sku_id']}**")
-
-                                if st.button("🏭 Lancer en Production (Auto OF)", type="primary", use_container_width=True):
-                                    try:
-                                        for r in ruptures:
-                                            auto_create_of_from_vente(r["sku_id"], r["manquant"], facture_choisie)
-                                        st.success("✅ Ordres de fabrication générés ! Allez dans le module Production.")
-                                        st.cache_data.clear()
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Erreur lors de la création de l'OF : {e}")
-                        else:
-                            st.button("✅ VALIDER LA FACTURE", disabled=True, use_container_width=True)
-
-                    with col2:
-                        if statut_actuel == "VALIDE":
-                            if st.button("❌ ANNULER LA FACTURE (Réinjecter les stocks)", type="secondary", use_container_width=True):
-                                try:
-                                    annuler_facture(facture_choisie)
-                                    st.warning(f"La facture {facture_choisie} a été annulée.")
-                                    st.cache_data.clear()
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erreur d'annulation : {e}")
-                        else:
-                            st.button("❌ ANNULER LA FACTURE", disabled=True, use_container_width=True)
-
-        st.divider()
-        st.subheader("🚚 Registre des Bons de Livraison (BL)")
-        df_bl = get_bons_livraison()
-        if not df_bl.empty:
-            st.dataframe(df_bl.sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
-        else:
-            st.info("Aucun Bon de Livraison généré pour le moment.")
+def show_ventes_page() -> None:
+    st.title("Ventes & Facturation")
+    access = _sale_access()
+    if access is None:
+        st.error("Accès Ventes refusé : session ou droit de lecture non confirmé.")
+        return
+    user_id, can_write = access
+    # Ces lectures doivent intervenir APRES validation fraîche de l'identité.
+    try:
+        invoices = get_factures()
+        tab_draft, tab_order, tab_ship, tab_workflow = st.tabs([
+            "Facture / Avoir", "Commandes clients", "Bons de livraison", "Suivi factures",
+        ])
+        with tab_draft:
+            _draft_tab(user_id, can_write, invoices)
+        with tab_order:
+            _order_tab(user_id, can_write)
+        with tab_ship:
+            _ship_tab(user_id, can_write)
+        with tab_workflow:
+            _workflow_tab(user_id, can_write, invoices)
+    except Exception as exc:
+        _LOG.warning("Interface Ventes interrompue (%s)", type(exc).__name__)
+        st.error("Consultation Ventes interrompue : vérifier la connexion et la cohérence des données.")

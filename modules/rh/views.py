@@ -7,6 +7,11 @@ from config.roles import has_permission
 from modules.rh.service import create_employe, create_demande_conge, get_employes, get_conges
 
 
+def _mark_rh_activity() -> None:
+    """Signale une interaction RH sans renouveler directement la session."""
+    st.session_state["_erp_rh_interacted"] = True
+
+
 def show_rh_page():
     st.title("👥 Ressources Humaines")
 
@@ -28,11 +33,10 @@ def show_rh_page():
                     manager = c2.text_input("ID Manager (Optionnel)")
                     date_embauche = c1.date_input("Date d'embauche")
 
-                    if st.form_submit_button("Enregistrer", type="primary"):
+                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_rh_activity):
                         if nom:
                             create_employe(nom, poste, service, manager, str(date_embauche))
                             st.success(f"Employé {nom} ajouté avec succès !")
-                            st.cache_data.clear()
                             st.rerun()
                         else:
                             st.error("Le nom est obligatoire.")
@@ -61,13 +65,12 @@ def show_rh_page():
                     date_fin = c_fin.date_input("Date de fin")
                     motif = st.text_input("Motif (Ex: Congé annuel, Maladie)")
 
-                    if st.form_submit_button("Soumettre la demande", type="primary"):
+                    if st.form_submit_button("Soumettre la demande", type="primary", on_click=_mark_rh_activity):
                         if date_fin < date_debut:
                             st.error("La date de fin ne peut pas précéder la date de début.")
                         else:
                             create_demande_conge(emp_choisi, str(date_debut), str(date_fin), motif)
                             st.success("Demande enregistrée !")
-                            st.cache_data.clear()
                             st.rerun()
 
         df_conges = get_conges()

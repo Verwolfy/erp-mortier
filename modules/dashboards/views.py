@@ -12,6 +12,11 @@ from modules.dashboards.service import (
     get_kpis_rh, get_kpis_finance
 )
 
+def _mark_dashboards_activity() -> None:
+    """Signale une selection sans renouveler directement la session."""
+    st.session_state["_erp_dashboards_interacted"] = True
+
+
 def show_dashboards_page():
     st.title("📊 Tableaux de bord & KPIs")
 
@@ -120,7 +125,7 @@ def show_dashboards_page():
                 st.markdown("**Évolution des Prix d'Achat**")
                 df_evo = kpis_a["evolution_prix"]
                 if not df_evo.empty:
-                    mp_choisie = st.selectbox("Sélectionnez une Matière", options=df_evo["mp_id"].unique().tolist())
+                    mp_choisie = st.selectbox("Sélectionnez une Matière", options=df_evo["mp_id"].unique().tolist(), on_change=_mark_dashboards_activity)
                     st.line_chart(df_evo[df_evo["mp_id"] == mp_choisie].sort_values(by="date_obj").set_index("date_obj")["prix_unitaire"])
 
     # --- 5. STOCKS ---
