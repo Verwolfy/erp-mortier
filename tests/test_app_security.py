@@ -40,7 +40,7 @@ def env(monkeypatch):
     st.button = Mock(return_value=False)
     st.divider = Mock()
     st.subheader = Mock()
-    st.radio = Mock(side_effect=lambda label, options, format_func: options[0])
+    st.radio = Mock(side_effect=lambda label, options, format_func, **kwargs: options[0])
 
     roles = types.ModuleType("config.roles")
     roles.get_allowed_modules = Mock(return_value=["Administration", "Stocks", "RH"])
@@ -98,7 +98,7 @@ def test_fresh_role_from_db(env):
     user = env.app._verified_user(1000)
     assert user["role"] == "Admin"
     assert env.st.session_state["user"]["role"] == "Admin"
-    assert env.st.session_state["last_activity"] == 1000
+    assert env.st.session_state["last_activity"] == 999
     env.client.table.assert_called_once_with("users")
     q = env.client.table.return_value.select.return_value
     q.eq.assert_called_once_with("user_id", "u1")
@@ -106,12 +106,12 @@ def test_fresh_role_from_db(env):
 
 
 @pytest.mark.parametrize("stamp", [None, "1000", True, False, float("nan"), float("inf"),
-                                   float("-inf"), 1000.0001, -900, -2000])
+                                   float("-inf"), 1000.0001, -800, -900, -2000])
 def test_expired_rejects_bad_time(env, stamp):
     assert env.app._session_expired(stamp, 1000) is True
 
 
-@pytest.mark.parametrize("stamp", [1000, 999, -800, 500])
+@pytest.mark.parametrize("stamp", [1000, 999, 500])
 def test_time_valid(env, stamp):
     assert env.app._session_expired(stamp, 1000) is False
 
@@ -313,6 +313,806 @@ def test_unknown_route_does_not_import_or_call_page(env):
     env.st.error.assert_not_called()
 
 
-def test_exact_timeout_threshold_accepted(env):
-    assert not env.app._session_expired(1000 - env.app.TIMEOUT_SECONDS, 1000)
+def test_exact_timeout_threshold_rejected(env):
+    assert env.app._session_expired(1000 - env.app.TIMEOUT_SECONDS, 1000)
     assert env.app._session_expired(999 - env.app.TIMEOUT_SECONDS, 1000)
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "expired"),
+    [
+        (0, False),
+        (1799.999, False),
+        (1800, True),
+        (1800.001, True),
+    ],
+)
+def test_010a_absolute_timeout_boundary(env, elapsed, expired):
+    assert env.app._session_expired(5000, 5000 + elapsed) is expired
+
+
+def test_010a_multiple_reruns_do_not_extend_session(env):
+    env.st.session_state["last_activity"] = 1000
+
+    for now in (1001, 1900, 2799):
+        assert env.app._verified_user(now) is not None
+        assert env.st.session_state["last_activity"] == 1000
+
+    assert env.app._verified_user(2800) is None
+    env.auth.logout.assert_called_once()
+    assert env.db.get_supabase_client.call_count == 3
+
+
+def test_010a_expired_session_does_not_query_database(env):
+    env.st.session_state["last_activity"] = 1000
+
+    assert env.app._verified_user(2800) is None
+
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_expiration_message(env):
+    env.st.session_state["last_activity"] = 1000
+
+    assert env.app._verified_user(2800) is None
+
+    env.st.warning.assert_called_once_with(
+        "Session expir\u00e9e apr\u00e8s 30 minutes. "
+        "Veuillez vous reconnecter."
+    )
+
+
+
+def test_010a_navigation_callback_registered(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+
+    env.app.main()
+
+    assert env.st.radio.call_args.kwargs["on_change"] is (
+        env.app._mark_navigation_activity
+    )
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_navigation_renews_valid_session(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+
+    env.app._mark_navigation_activity()
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_navigation_changed" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+
+
+def test_010a_navigation_cannot_revive_expired_session(env):
+    env.st.session_state["last_activity"] = -800
+
+    env.app._mark_navigation_activity()
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_unauthorized_navigation_does_not_renew(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+
+    env.st.radio.side_effect = (
+        lambda *args, **kwargs: "RubriqueInterdite"
+    )
+
+    env.app._mark_navigation_activity()
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_backend_error_does_not_renew(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+
+    env.app._mark_navigation_activity()
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_stocks_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.st.radio.side_effect = lambda *args, **kwargs: "Stocks"
+
+    env.st.session_state["_erp_stocks_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_stocks_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_stocks_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Stocks"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_stocks_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_stocks_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_stocks_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_stocks_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_stocks_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_stocks_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Administration"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Stocks"
+
+    env.st.session_state["_erp_stocks_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_stocks_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_stocks_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_achats_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Achats"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Achats"
+
+    env.st.session_state["_erp_achats_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_achats_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_achats_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = ["Achats"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Achats"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_achats_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_achats_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_achats_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_achats_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_achats_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Achats"
+
+    env.st.session_state["_erp_achats_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_achats_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_achats_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_production_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Production"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Production"
+
+    env.st.session_state["_erp_production_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_production_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_production_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = ["Production"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Production"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_production_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_production_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_production_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_production_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_production_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_production_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Production"
+
+    env.st.session_state["_erp_production_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_production_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_production_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+
+
+
+@pytest.mark.parametrize(
+    ("module", "flag"),
+    [
+        ("Ventes", "_erp_ventes_interacted"),
+        ("CRM", "_erp_crm_interacted"),
+    ],
+)
+def test_010a_commercial_activity_valid(env, monkeypatch, module, flag):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = [module]
+    env.st.radio.side_effect = lambda *args, **kwargs: module
+
+    env.st.session_state[flag] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert flag not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("module", "flag"),
+    [
+        ("Ventes", "_erp_ventes_interacted"),
+        ("CRM", "_erp_crm_interacted"),
+    ],
+)
+def test_010a_commercial_no_event(env, monkeypatch, module, flag):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = [module]
+    env.st.radio.side_effect = lambda *args, **kwargs: module
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert flag not in env.st.session_state
+
+
+@pytest.mark.parametrize(
+    ("module", "flag"),
+    [
+        ("Ventes", "_erp_ventes_interacted"),
+        ("CRM", "_erp_crm_interacted"),
+    ],
+)
+def test_010a_commercial_expired(env, module, flag):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state[flag] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert flag not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("module", "flag"),
+    [
+        ("Ventes", "_erp_ventes_interacted"),
+        ("CRM", "_erp_crm_interacted"),
+    ],
+)
+def test_010a_commercial_wrong_module(env, monkeypatch, module, flag):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state[flag] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert flag not in env.st.session_state
+
+
+@pytest.mark.parametrize(
+    ("module", "flag"),
+    [
+        ("Ventes", "_erp_ventes_interacted"),
+        ("CRM", "_erp_crm_interacted"),
+    ],
+)
+def test_010a_commercial_unauthorized(env, monkeypatch, module, flag):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: module
+
+    env.st.session_state[flag] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("module", "flag"),
+    [
+        ("Ventes", "_erp_ventes_interacted"),
+        ("CRM", "_erp_crm_interacted"),
+    ],
+)
+def test_010a_commercial_backend_error(env, module, flag):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state[flag] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert flag not in env.st.session_state
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_finance_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Finance"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Finance"
+
+    env.st.session_state["_erp_finance_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_finance_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_finance_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = ["Finance"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Finance"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_finance_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_finance_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_finance_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_finance_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_finance_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_finance_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Finance"
+
+    env.st.session_state["_erp_finance_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_finance_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_finance_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_finance_interacted" not in env.st.session_state
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_rh_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["RH"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "RH"
+
+    env.st.session_state["_erp_rh_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_rh_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_rh_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = ["RH"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "RH"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_rh_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_rh_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_rh_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_rh_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_rh_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_rh_interacted" not in env.st.session_state
+
+
+def test_010a_rh_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "RH"
+
+    env.st.session_state["_erp_rh_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_rh_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_rh_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_rh_interacted" not in env.st.session_state
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_admin_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Administration"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Administration"
+
+    env.st.session_state["_erp_admin_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_admin_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_admin_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = ["Administration"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Administration"
+
+    env.app.main()
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_admin_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_admin_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_admin_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_admin_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_admin_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_admin_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Administration"
+
+    env.st.session_state["_erp_admin_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_admin_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_admin_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_admin_interacted" not in env.st.session_state
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_dashboards_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Dashboards"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Dashboards"
+
+    env.st.session_state["_erp_dashboards_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_dashboards_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_dashboards_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.roles.get_allowed_modules.return_value = ["Dashboards"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Dashboards"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_dashboards_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_dashboards_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_dashboards_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_dashboards_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_dashboards_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_dashboards_interacted" not in env.st.session_state
+
+
+def test_010a_dashboards_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Dashboards"
+
+    env.st.session_state["_erp_dashboards_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_dashboards_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_dashboards_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_dashboards_interacted" not in env.st.session_state
+    env.st.error.assert_called_once()
+
+
+
+def test_010a_help_activity_valid(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.st.session_state["_erp_help_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 1000
+    assert "_erp_help_interacted" not in env.st.session_state
+    env.auth.logout.assert_not_called()
+    page.assert_called_once()
+
+
+def test_010a_help_activity_no_event(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Help"
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+
+
+def test_010a_help_activity_expired(env):
+    env.st.session_state["last_activity"] = -800
+    env.st.session_state["_erp_help_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == -800
+    assert "_erp_help_interacted" not in env.st.session_state
+    env.auth.logout.assert_called_once()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_010a_help_activity_wrong_module(env, monkeypatch):
+    monkeypatch.setattr(env.app, "_render_menu_page", Mock())
+    env.st.radio.side_effect = lambda *args, **kwargs: "Stocks"
+
+    env.st.session_state["_erp_help_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_help_interacted" not in env.st.session_state
+
+
+def test_010a_help_activity_unauthorized(env, monkeypatch):
+    page = Mock()
+    monkeypatch.setattr(env.app, "_render_menu_page", page)
+    env.roles.get_allowed_modules.return_value = ["Stocks"]
+    env.st.radio.side_effect = lambda *args, **kwargs: "Securite"
+
+    env.st.session_state["_erp_help_interacted"] = True
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    env.st.error.assert_called_once()
+    page.assert_not_called()
+
+
+def test_010a_help_activity_backend_error(env):
+    env.db.get_supabase_client.side_effect = RuntimeError("TEST_OUTAGE")
+    env.st.session_state["_erp_help_interacted"] = True
+
+    env.app.main()
+
+    assert env.st.session_state["last_activity"] == 999
+    assert "_erp_help_interacted" not in env.st.session_state
+    env.st.error.assert_called_once()

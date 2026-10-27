@@ -60,7 +60,6 @@ def _confirmed(result: object, operation: str) -> None:
         raise RuntimeError(f"{operation} non confirmée dans Supabase ; vérifier l'état avant réessai")
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def get_dataframe(sheet_name: str, only_active=False) -> pd.DataFrame:
     """Récupère les données depuis Supabase (SQL) pour une rapidité maximale."""
     table_name = READ_MAPPING.get(sheet_name)

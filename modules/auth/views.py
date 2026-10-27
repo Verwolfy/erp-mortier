@@ -4,6 +4,11 @@ import time
 import streamlit as st
 
 from modules.auth.service import AuthenticationBackendError, authenticate_user
+from core.auth_rate_limit import (
+    AuthRateLimitUnavailable,
+    begin_login_attempt,
+    finish_login_attempt,
+)
 
 
 def show_login_page():
@@ -37,10 +42,33 @@ def show_login_page():
         st.warning("Veuillez remplir tous les champs.")
         return
 
+    # Autorisation partagee avant toute verification du mot de passe.
+    try:
+        token = begin_login_attempt(login)
+    except AuthRateLimitUnavailable:
+        st.error("Connexion temporairement indisponible. Veuillez r?essayer plus tard.")
+        return
+
+    if token is None:
+        st.error("Connexion temporairement bloqu?e ou d?j? en cours. R?essayez plus tard.")
+        return
+
     try:
         user_data = authenticate_user(login, password)
-    except AuthenticationBackendError:
-        st.error("Connexion temporairement indisponible. Veuillez réessayer plus tard.")
+    except Exception:
+        # Une erreur technique ne doit pas compter comme mauvais mot de passe.
+        try:
+            finish_login_attempt(token, "BACKEND_ERROR")
+        except AuthRateLimitUnavailable:
+            pass
+        st.error("Connexion temporairement indisponible. Veuillez r?essayer plus tard.")
+        return
+
+    # La session ne sera ouverte qu'apres confirmation de Supabase.
+    try:
+        finish_login_attempt(token, "SUCCESS" if user_data else "FAILURE")
+    except AuthRateLimitUnavailable:
+        st.error("Connexion temporairement indisponible. Veuillez r?essayer plus tard.")
         return
 
     if user_data:
@@ -62,15 +90,10 @@ def show_login_page():
 
 
 def logout():
-    """Termine la session ; conserve la purge de cache historique de l’ERP.
-
-    Le cache global doit être revu pour isoler les données par utilisateur
-    avant de supprimer cette purge, coûteuse pour les autres sessions.
-    """
+    """Termine la session sans vider les caches globaux."""
     st.session_state["user"] = None
     st.session_state["authenticated"] = False
     st.session_state["last_activity"] = 0
     st.session_state["login_attempts"] = 0
     st.session_state["lockout_time"] = 0
-    st.cache_data.clear()
     st.rerun()

@@ -133,12 +133,40 @@ def ctx(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", st)
     monkeypatch.setitem(sys.modules, "bcrypt", bcrypt)
     monkeypatch.setitem(sys.modules, "core.db_service", db)
+    limiter = types.ModuleType("core.auth_rate_limit")
+
+    class RateError(RuntimeError):
+        pass
+
+    limiter.AuthRateLimitUnavailable = RateError
+    limiter.calls = []
+    limiter.blocked = False
+    limiter.begin_error = False
+    limiter.finish_error = False
+
+    def fake_begin(login):
+        limiter.calls.append(("begin", login))
+        if limiter.begin_error:
+            raise RateError("unavailable")
+        if limiter.blocked:
+            return None
+        return "123e4567-e89b-42d3-a456-426614174000"
+
+    def fake_finish(token, outcome):
+        limiter.calls.append(("finish", outcome))
+        if limiter.finish_error:
+            raise RateError("unavailable")
+
+    limiter.begin_login_attempt = fake_begin
+    limiter.finish_login_attempt = fake_finish
+
+    monkeypatch.setitem(sys.modules, "core.auth_rate_limit", limiter)
     roles = load("config/roles.py", "_test_roles")
     service = load("modules/auth/service.py", "_test_service")
     monkeypatch.setitem(sys.modules, "modules.auth.service", service)
     views = load("modules/auth/views.py", "_test_views")
     yield types.SimpleNamespace(st=st, bcrypt=bcrypt, client=client,
-                                roles=roles, service=service, views=views)
+                                roles=roles, service=service, views=views, limiter=limiter)
     for name in ("_test_roles", "_test_service", "_test_views"):
         sys.modules.pop(name, None)
 
@@ -341,13 +369,13 @@ def test_blank_login_warning(ctx):
     assert any(x[0] == "warning" for x in ctx.st.logs)
 
 
-def test_logout_keeps_historical_cache_purge(ctx):
+def test_logout_does_not_purge_shared_cache(ctx):
     ctx.st.session_state.update(authenticated=True, user={"user_id": "u-01"})
     ctx.views.logout()
     assert ctx.st.session_state["authenticated"] is False
     assert ctx.st.session_state["user"] is None
     assert ("rerun",) in ctx.st.logs
-    assert ("cache_clear",) in ctx.st.logs
+    assert ("cache_clear",) not in ctx.st.logs
 
 
 def test_permissions_query_does_not_fetch_password_hashes(ctx):
@@ -410,3 +438,54 @@ def test_permissions_subtle_invalid_type(ctx):
 def test_roles_with_whitespace_are_normalized(ctx):
     ctx.client.tables["permissions"] = [right(ecriture="OUI")]
     assert ctx.roles.has_permission(" Magasinier ", " stocks ", "ecriture") is True
+
+
+def test_shared_rate_limit_success(ctx):
+    account(ctx)
+    ctx.st.responses = ("bob", "pass123", True)
+    ctx.views.show_login_page()
+    assert ctx.limiter.calls == [("begin", "bob"), ("finish", "SUCCESS")]
+    assert ctx.st.session_state["authenticated"] is True
+
+
+def test_shared_rate_limit_failure(ctx):
+    account(ctx)
+    ctx.st.responses = ("bob", "incorrect", True)
+    ctx.views.show_login_page()
+    assert ctx.limiter.calls == [("begin", "bob"), ("finish", "FAILURE")]
+    assert ctx.st.session_state.get("authenticated") is not True
+
+
+def test_shared_rate_limit_blocked(ctx):
+    ctx.limiter.blocked = True
+    ctx.st.responses = ("bob", "pass123", True)
+    ctx.views.show_login_page()
+    assert ctx.client.calls == []
+    assert ctx.st.session_state.get("authenticated") is not True
+
+
+def test_shared_rate_limit_backend_error(ctx):
+    ctx.client.errors["users"] = OSError("unavailable")
+    ctx.st.responses = ("bob", "pass123", True)
+    ctx.views.show_login_page()
+    assert ctx.limiter.calls == [
+        ("begin", "bob"), ("finish", "BACKEND_ERROR")
+    ]
+    assert ctx.st.session_state["login_attempts"] == 0
+
+
+def test_shared_rate_limit_begin_unavailable(ctx):
+    ctx.limiter.begin_error = True
+    ctx.st.responses = ("bob", "pass123", True)
+    ctx.views.show_login_page()
+    assert ctx.client.calls == []
+    assert ctx.st.session_state.get("authenticated") is not True
+
+
+def test_shared_rate_limit_finish_unavailable(ctx):
+    account(ctx)
+    ctx.limiter.finish_error = True
+    ctx.st.responses = ("bob", "pass123", True)
+    ctx.views.show_login_page()
+    assert ctx.st.session_state.get("authenticated") is not True
+    assert ("rerun",) not in ctx.st.logs

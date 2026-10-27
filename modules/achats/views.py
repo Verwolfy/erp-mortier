@@ -113,7 +113,6 @@ def _execute_operation(kind: str, user_id: str) -> None:
     record["document_id"] = doc_id
     if kind == "commande":
         st.session_state[_cart_key(user_id)] = []
-    st.cache_data.clear()
     st.rerun()
 
 
@@ -152,12 +151,12 @@ def _pending_panel(kind: str, user_id: str) -> bool:
     if record["status"] == "uncertain":
         st.warning("Transaction non confirmée. Ne créez pas une seconde opération identique.")
         st.info("La reprise réutilise exactement le même document, les mêmes quantités et le même identifiant.")
-        if st.button("Réessayer la même opération", key=f"achat_retry_{kind}_{user_id}"):
+        if st.button("Réessayer la même opération", key=f"achat_retry_{kind}_{user_id}", on_click=_mark_achats_activity):
             _execute_operation(kind, user_id)
     else:
         st.success(f"{('Commande' if kind == 'commande' else 'Réception')} "
                    f"{record['document_id']} confirmée.")
-        if st.button("Préparer une nouvelle opération", key=f"achat_new_{kind}_{user_id}"):
+        if st.button("Préparer une nouvelle opération", key=f"achat_new_{kind}_{user_id}", on_click=_mark_achats_activity):
             del st.session_state[key]
             st.rerun()
     return True
@@ -226,6 +225,11 @@ def get_fournisseurs_actifs():
 def get_mp_actives():
     df = pd.DataFrame(fetch_data("matieres_premieres"))
     return df[df["actif"] == "OUI"] if not df.empty and "actif" in df.columns else pd.DataFrame()
+
+
+def _mark_achats_activity() -> None:
+    """Signale une interaction Achats sans renouveler la session."""
+    st.session_state["_erp_achats_interacted"] = True
 
 
 def show_achats_page():
@@ -305,7 +309,7 @@ def show_achats_page():
                                          for x in st.session_state[_cart_key(user_id)]), Decimal(0))
                     total_local = total_devise * Decimal(str(taux_change))
                     st.caption(f"Total : {total_devise:,.2f} {devise} = {total_local:,.2f} DZD (taux saisi)")
-                    if st.button("🗑️ Vider"):
+                    if st.button("🗑️ Vider", on_click=_mark_achats_activity):
                         st.session_state[_cart_key(user_id)] = []
                         st.rerun()
                 else:
@@ -350,7 +354,7 @@ def show_achats_page():
                               f"{row['commande_achat_id']} - {row['fournisseur_id']} ({row['date_commande']})"
                               for _, row in available.iterrows()}
                     selected = st.selectbox("Commande à réceptionner", options=list(labels),
-                                            format_func=lambda x: labels[x])
+                                            format_func=lambda x: labels[x], on_change=_mark_achats_activity)
                     if selected:
                         try:
                             lines = get_lignes_achats(selected)
@@ -395,7 +399,7 @@ def show_achats_page():
                                             items_recus.append({"mp_id": row["mp_id"],
                                                                 "quantite_recue": qte,
                                                                 "prix_unitaire": row["prix_unitaire"]})
-                                    submitted = st.form_submit_button("📦 Valider la réception", type="primary")
+                                    submitted = st.form_submit_button("📦 Valider la réception", type="primary", on_click=_mark_achats_activity)
                                 if submitted:
                                     if conformite != "CONFORME":
                                         st.error("Réception non conforme/réservée : aucun stock créé. "

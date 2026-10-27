@@ -31,6 +31,11 @@ _VALID_STATES = frozenset({"PLANIFIE", "EN_COURS", "TERMINE", "REJETE", "CONTROL
 _PENDING_PHYSICAL_PACKAGING = frozenset({"SKU-007"})
 
 
+def _mark_production_activity() -> None:
+    """Signale une interaction Production sans renouveler la session."""
+    st.session_state["_erp_production_interacted"] = True
+
+
 def _production_access() -> tuple[str, bool, bool] | None:
     """Vérifie l'utilisateur et son rôle ACTUEL dans Supabase avant toute lecture."""
     try:
@@ -128,12 +133,12 @@ def _document_panel(kind: str, user_id: str) -> bool:
                  + str(record.get("operation_id", "identifiant indisponible"))
                  + "). Ne PAS créer une nouvelle opération avant vérification.")
         if st.checkbox("J'ai vérifié le résultat dans Supabase", key=f"verify_{kind}_{user_id}"):
-            if st.button("Terminer la vérification", key=f"reset_{kind}_{user_id}"):
+            if st.button("Terminer la vérification", key=f"reset_{kind}_{user_id}", on_click=_mark_production_activity):
                 del st.session_state[key]
                 st.rerun()
     else:
         st.success(f"Document {record['document_id']} créé.")
-        if st.button("Préparer un nouveau document", key=f"new_{kind}_{user_id}"):
+        if st.button("Préparer un nouveau document", key=f"new_{kind}_{user_id}", on_click=_mark_production_activity):
             del st.session_state[key]
             st.rerun()
     return True
@@ -166,7 +171,6 @@ def _create_document(kind: str, user_id: str, payload: dict) -> None:
     record["document_id"] = doc_id
     if kind == "recette":
         st.session_state.pop(_cart_key(user_id), None)
-    st.cache_data.clear()
     st.rerun()
 
 
@@ -202,7 +206,6 @@ def _execute_closure(user_id: str, can_stock: bool) -> None:
         return
     record["status"] = "confirmed"
     record["result"] = deepcopy(result)
-    st.cache_data.clear()
     st.rerun()
 
 
@@ -224,11 +227,11 @@ def _closure_panel(user_id: str, can_stock: bool) -> bool:
     if record["status"] == "uncertain":
         st.warning("Clôture non confirmée : ne pas modifier la quantité ni le contrôle qualité.")
         st.write("Vérifiez d'abord l'état de l'OF dans Supabase. La reprise rejoue la même demande.")
-        if st.button("Réessayer la même clôture", key=f"retry_close_{user_id}"):
+        if st.button("Réessayer la même clôture", key=f"retry_close_{user_id}", on_click=_mark_production_activity):
             _execute_closure(user_id, can_stock)
     else:
         st.success(f"OF {p['of_id']} clôturé et confirmé.")
-        if st.button("Traiter un autre OF", key=f"next_close_{user_id}"):
+        if st.button("Traiter un autre OF", key=f"next_close_{user_id}", on_click=_mark_production_activity):
             del st.session_state[key]
             st.rerun()
     return True
@@ -255,7 +258,7 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
         st.warning("Configurer d'abord les produits et matières premières actifs.")
         return
     pf_labels = {r["pf_id"]: f"{r['pf_id']} - {r['nom']}" for _, r in products.iterrows()}
-    pf_id = st.selectbox("Produit fabriqué", list(pf_labels), format_func=lambda x: pf_labels[x])
+    pf_id = st.selectbox("Produit fabriqué", list(pf_labels), format_func=lambda x: pf_labels[x], on_change=_mark_production_activity)
     pf_row = products[products["pf_id"] == pf_id].iloc[0]
     production_unit = str(pf_row.get("unite_production") or "").strip()
     version = st.text_input("Version", value="v1.0")
@@ -287,10 +290,10 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
             or any(existing not in labels for existing in cart_ids)):
             st.error("Ancien panier invalide : emballage, matière inactive ou doublon. Vider la recette.")
             return
-    mp_id = st.selectbox("Composant", list(labels), format_func=lambda x: labels[x])
+    mp_id = st.selectbox("Composant", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity)
     qte = st.number_input("Quantité MP nécessaire pour le batch (dans l'unité de stock de la MP)",
                           min_value=0.000001, step=1.0)
-    if st.button("Ajouter le composant", key=f"add_recipe_{user_id}"):
+    if st.button("Ajouter le composant", key=f"add_recipe_{user_id}", on_click=_mark_production_activity):
         if mp_id in {line["mp_id"] for line in cart["lines"]}:
             st.error("Matière déjà présente : évitez les lignes en double.")
         else:
@@ -304,7 +307,7 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
         return
 
     st.dataframe(pd.DataFrame(cart["lines"]), hide_index=True, use_container_width=True)
-    if st.button("Vider la recette", key=f"clear_recipe_{user_id}"):
+    if st.button("Vider la recette", key=f"clear_recipe_{user_id}", on_click=_mark_production_activity):
         cart["lines"] = []
         st.rerun()
 
@@ -324,7 +327,7 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
 
     confirmed = st.checkbox("Je confirme les quantités, les unités et le rendement de ce batch",
                             key=f"recipe_unit_ack_{user_id}_{pf_id}_{batch}")
-    if st.button("Sauvegarder la recette", key=f"save_recipe_{user_id}", disabled=not confirmed):
+    if st.button("Sauvegarder la recette", key=f"save_recipe_{user_id}", disabled=not confirmed, on_click=_mark_production_activity):
         try:
             lines = [{"mp_id": line["mp_id"],
                       "quantite_par_unite": _line_per_unit(line["quantite_batch"], yield_qty)}
@@ -404,7 +407,7 @@ def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
     product_names = {r["pf_id"]: r["nom"] for _, r in products.iterrows()}
     labels = {r["sku_id"]: f"{product_names.get(r['pf_id'], 'Produit inconnu')} - {r.get('format', '')} ({r['sku_id']})"
               for _, r in skus.iterrows()}
-    sku = st.selectbox("SKU", list(labels), format_func=lambda x: labels[x])
+    sku = st.selectbox("SKU", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity)
     sku_row = skus[skus["sku_id"] == sku].iloc[0]
     pf_id = sku_row["pf_id"]
     try:
@@ -432,7 +435,7 @@ def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
         except ValueError as exc:
             st.error(str(exc))
             allowed = False
-        if st.form_submit_button("Créer l'OF", disabled=not allowed) and allowed:
+        if st.form_submit_button("Créer l'OF", disabled=not allowed, on_click=_mark_production_activity) and allowed:
             payload = {"pf_id": pf_id, "recette_id": recipe, "sku_id": sku,
                        "quantite_prevue": int(_decimal(quantity, "Quantité OF")),
                        "date_planification": str(date_planif), "notes": notes}
@@ -536,7 +539,7 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
                                   key=f"qc_recipe_ack_{user_id}_{of_id}")
                       if conforme == "OUI" else True)
         disabled = not needs_valid or (conforme == "OUI" and not can_stock)
-        if st.form_submit_button("Valider et clôturer cet OF", disabled=disabled) and not disabled:
+        if st.form_submit_button("Valider et clôturer cet OF", disabled=disabled, on_click=_mark_production_activity) and not disabled:
             if not recipe_ack:
                 st.error("Confirmation des quantites obligatoire.")
                 return
@@ -573,16 +576,15 @@ def _followup_tab(user_id: str, can_write: bool, can_stock: bool,
         st.info("Aucun OF actif.")
         return
     labels = {r["of_id"]: f"{r['of_id']} — {r['statut']}" for _, r in active.iterrows()}
-    of_id = st.selectbox("OF à traiter", list(labels), format_func=lambda x: labels[x])
+    of_id = st.selectbox("OF à traiter", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity)
     of = active[active["of_id"] == of_id].iloc[0]
     state = of["statut"]
     if state == "PLANIFIE":
-        if st.button("Démarrer la production", key=f"start_{user_id}_{of_id}"):
+        if st.button("Démarrer la production", key=f"start_{user_id}_{of_id}", on_click=_mark_production_activity):
             try:
                 result = changer_statut_of(of_id, "EN_COURS")
                 if not isinstance(result, dict) or result.get("statut") != "EN_COURS":
                     raise RuntimeError("Démarrage non confirmé")
-                st.cache_data.clear()
                 st.rerun()
             except Exception as exc:
                 _LOG.warning("Démarrage OF non confirmé (%s)", type(exc).__name__)

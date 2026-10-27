@@ -54,7 +54,7 @@ def _session_expired(last_activity: object, now: float) -> bool:
             not isinstance(last_activity, (int, float))):
         return True
     stamp = float(last_activity)
-    return not math.isfinite(stamp) or stamp > now or now - stamp > TIMEOUT_SECONDS
+    return not math.isfinite(stamp) or stamp > now or now - stamp >= TIMEOUT_SECONDS
 
 
 def _fetch_active_user(user_id: str) -> dict[str, str] | None:
@@ -99,7 +99,7 @@ def _verified_user(now: float) -> dict[str, str] | None:
         return None
 
     if _session_expired(st.session_state.get("last_activity"), now):
-        st.warning("Votre session a expiré pour cause d'inactivité. Veuillez vous reconnecter.")
+        st.warning("Session expir\u00e9e apr\u00e8s 30 minutes. Veuillez vous reconnecter.")
         logout()
         return None
 
@@ -117,9 +117,7 @@ def _verified_user(now: float) -> dict[str, str] | None:
         return None
 
     st.session_state["user"] = account  # Remplace notamment un rôle obsolète en session.
-    # Limite connue : tout rerun Streamlit est compté comme activité ; les
-    # rafraîchissements automatiques nécessitent une gestion événementielle.
-    st.session_state["last_activity"] = now
+    # Un rerun Streamlit ne renouvelle pas la session.
     return account
 
 
@@ -184,15 +182,54 @@ def _render_menu_page(choice: str | None, role: str) -> None:
         show_help_page()
 
 
+def _mark_navigation_activity() -> None:
+    """Signale un changement de navigation, sans prolonger la session."""
+    st.session_state["_erp_navigation_changed"] = True
+
+
 def main() -> None:
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("user", None)
+    navigation_changed = (
+        st.session_state.pop("_erp_navigation_changed", False) is True
+    )
+    stocks_interacted = (
+        st.session_state.pop("_erp_stocks_interacted", False) is True
+    )
+    achats_interacted = (
+        st.session_state.pop("_erp_achats_interacted", False) is True
+    )
+    production_interacted = (
+        st.session_state.pop("_erp_production_interacted", False) is True
+    )
+    ventes_interacted = (
+        st.session_state.pop("_erp_ventes_interacted", False) is True
+    )
+    crm_interacted = (
+        st.session_state.pop("_erp_crm_interacted", False) is True
+    )
+    finance_interacted = (
+        st.session_state.pop("_erp_finance_interacted", False) is True
+    )
+    rh_interacted = (
+        st.session_state.pop("_erp_rh_interacted", False) is True
+    )
+    admin_interacted = (
+        st.session_state.pop("_erp_admin_interacted", False) is True
+    )
+    dashboards_interacted = (
+        st.session_state.pop("_erp_dashboards_interacted", False) is True
+    )
+    help_interacted = (
+        st.session_state.pop("_erp_help_interacted", False) is True
+    )
 
     if st.session_state["authenticated"] is not True:
         show_login_page()
         return
 
-    user = _verified_user(time.time())
+    now = time.time()
+    user = _verified_user(now)
     if user is None:
         return
     role = user["role"]
@@ -215,12 +252,28 @@ def main() -> None:
         choice = st.radio(
             "Aller vers :", list(menu_options),
             format_func=lambda name: menu_options[name],
+            on_change=_mark_navigation_activity,
         )
 
     # Un choix Streamlit ne doit jamais donner accès à une page hors du menu.
     if choice not in menu_options:
         st.error("Accès non autorisé.")
         return
+    if (
+        navigation_changed
+        or (stocks_interacted and choice == "Stocks")
+        or (achats_interacted and choice == "Achats")
+        or (production_interacted and choice == "Production")
+        or (ventes_interacted and choice == "Ventes")
+        or (crm_interacted and choice == "CRM")
+        or (finance_interacted and choice == "Finance")
+        or (rh_interacted and choice == "RH")
+        or (admin_interacted and choice == "Administration")
+        or (dashboards_interacted and choice == "Dashboards")
+        or (help_interacted and choice == "Help")
+    ):
+        st.session_state["last_activity"] = now
+
     _render_menu_page(choice, role)
 
 

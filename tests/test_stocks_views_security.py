@@ -142,7 +142,7 @@ def test_successful_entry_preserves_confirmation_and_blocks_duplicate(ui):
     args, kwargs = ui.stocks.enregistrer_entree_mp.call_args
     assert args == ("MP-1", 10.0, 2.5, "AJUST-2026-1", "2028-01-01")
     assert kwargs == {"operation_id": record["operation_id"]}
-    ui.st.cache_data.clear.assert_called_once()
+    ui.st.cache_data.clear.assert_not_called()
     ui.st.rerun.assert_called_once()
     # Second rerun: the submitted form is not visible until explicitly reset.
     ui.st.form.reset_mock()

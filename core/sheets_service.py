@@ -47,7 +47,6 @@ def get_worksheet(module_name: str, sheet_name: str):
     sheet = client.open_by_key(sheet_id)
     return sheet.worksheet(sheet_name)
 
-@st.cache_data(ttl=300, show_spinner=False)
 def get_all_records(module_name: str, sheet_name: str) -> list:
     """Lit l'ensemble des enregistrements sous forme de dictionnaire avec mise en cache."""
     try:

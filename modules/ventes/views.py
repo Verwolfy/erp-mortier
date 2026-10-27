@@ -43,6 +43,11 @@ _LIMIT = Decimal("1e15")
 _EXPEDIABLE_STATES = frozenset({"EN_ATTENTE", "CONFIRMEE", "VALIDEE", "EN_COURS", "PARTIELLEMENT_LIVREE"})
 
 
+def _mark_ventes_activity() -> None:
+    """Signale une interaction sans renouvellement direct."""
+    st.session_state["_erp_ventes_interacted"] = True
+
+
 def _sale_access() -> tuple[str, bool] | None:
     """Contrôle actualisé depuis Supabase, y compris pour les lectures."""
     try:
@@ -154,7 +159,6 @@ def _execute_operation(kind: str, user_id: str) -> None:
         st.session_state[_cart_key(user_id)] = []
     elif kind == "order":
         st.session_state[f"order_cart_{user_id}"] = []
-    st.cache_data.clear()
     st.rerun()
 
 
@@ -190,11 +194,11 @@ def _operation_panel(kind: str, user_id: str) -> bool:
     if record["status"] == "uncertain":
         st.warning("Opération en attente de confirmation : ne modifiez pas les quantités.")
         st.info("Après vérification de la base, la reprise réutilise le même contenu et le même identifiant.")
-        if st.button("Réessayer exactement la même opération", key=f"retry_{kind}_{user_id}"):
+        if st.button("Réessayer exactement la même opération", key=f"retry_{kind}_{user_id}", on_click=_mark_ventes_activity):
             _execute_operation(kind, user_id)
     else:
         st.success(f"Document {record['document_id']} confirmé.")
-        if st.button("Préparer une nouvelle opération", key=f"new_{kind}_{user_id}"):
+        if st.button("Préparer une nouvelle opération", key=f"new_{kind}_{user_id}", on_click=_mark_ventes_activity):
             del st.session_state[key]
             st.rerun()
     return True
@@ -275,9 +279,9 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         st.warning("Aucun client ou produit actif.")
         return
     client_labels = {r["client_id"]: f"{r['client_id']} - {r['nom']}" for _, r in clients.iterrows()}
-    client_id = st.selectbox("Client", list(client_labels), format_func=lambda x: client_labels[x], key="vente_client")
+    client_id = st.selectbox("Client", list(client_labels), format_func=lambda x: client_labels[x], key="vente_client", on_change=_mark_ventes_activity)
     echeance = st.date_input("Date d'échéance", key="vente_echeance")
-    type_doc = st.selectbox("Type de document", ["FactureClient", "FactureAvoir"], key="vente_type")
+    type_doc = st.selectbox("Type de document", ["FactureClient", "FactureAvoir"], key="vente_type", on_change=_mark_ventes_activity)
     is_avoir = type_doc == "FactureAvoir"
     origine = ""
     if is_avoir:
@@ -285,7 +289,7 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         if not choices:
             st.warning("Aucune facture client validée pour cet avoir.")
             return
-        origine = st.selectbox("Facture d'origine", choices, key="vente_origine")
+        origine = st.selectbox("Facture d'origine", choices, key="vente_origine", on_change=_mark_ventes_activity)
     names = {r["pf_id"]: str(r["nom"]) for _, r in products.iterrows()}
     labels = {r["sku_id"]: f"{names.get(r['pf_id'], 'Produit')} - {r.get('format','')} ({r['sku_id']})"
               for _, r in skus.iterrows()}
@@ -304,14 +308,14 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
     if not isinstance(cart, list):
         st.error("Panier non exploitable.")
         return
-    sku_id = st.selectbox("Produit", list(labels), format_func=lambda x: labels[x], key="vente_sku")
+    sku_id = st.selectbox("Produit", list(labels), format_func=lambda x: labels[x], key="vente_sku", on_change=_mark_ventes_activity)
     product_row = skus[skus["sku_id"] == sku_id].iloc[0]
     prix = _decimal(product_row.get("prix_vente_defaut", 0) or 0, "Prix par défaut")
     qte = st.number_input("Quantité (unités SKU entières)", min_value=1, value=1, step=1, key="vente_qte")
     pu = st.number_input("Prix unitaire HT (DZD)", min_value=0.0, value=float(prix), step=1.0, key="vente_pu")
-    rem_type = st.selectbox("Remise", ["Montant (DZD)", "Pourcentage (%)"], key="vente_rem_type")
+    rem_type = st.selectbox("Remise", ["Montant (DZD)", "Pourcentage (%)"], key="vente_rem_type", on_change=_mark_ventes_activity)
     remise_value = st.number_input("Valeur de remise", min_value=0.0, step=1.0, key="vente_rem_val")
-    if st.button("Ajouter au panier", key="vente_add"):
+    if st.button("Ajouter au panier", key="vente_add", on_click=_mark_ventes_activity):
         quant = _decimal(qte, "Quantité", positive=True)
         if quant != quant.to_integral_value():
             st.error("Le nombre de conditionnements doit être entier.")
@@ -334,7 +338,7 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         st.info("Panier vide.")
         return
     st.dataframe(pd.DataFrame(cart), hide_index=True, use_container_width=True)
-    if st.button("Vider le panier", key="vente_empty"):
+    if st.button("Vider le panier", key="vente_empty", on_click=_mark_ventes_activity):
         st.session_state[cart_key] = []
         st.rerun()
     global_discount = st.number_input("Remise globale (DZD)", min_value=0.0, step=1.0)
@@ -346,7 +350,7 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         return
     st.info(f"Net HT : {totals['net_a_payer']:,.2f} DZD | TVA : {totals['total_tva']:,.2f} DZD | TTC : {totals['total_ttc']:,.2f} DZD")
     st.caption("Les taux de TVA/timbre sont ceux du service actuel, à valider par la comptabilité.")
-    if st.button("Enregistrer le brouillon", key="vente_draft_submit", type="primary"):
+    if st.button("Enregistrer le brouillon", key="vente_draft_submit", type="primary", on_click=_mark_ventes_activity):
         _start_operation("draft", user_id, {
             "client_id": client_id, "date_echeance": str(echeance), "panier": deepcopy(cart),
             "remise_globale": global_discount, "paiement_especes": bool(cash) if not is_avoir else False,
@@ -392,7 +396,7 @@ def _order_tab(user_id: str, can_write: bool) -> None:
     sku_labels = {r["sku_id"]: str(r["sku_id"]) for _, r in skus.iterrows()}
     client_id = st.selectbox("Client", list(client_labels),
                              format_func=lambda x: client_labels[x],
-                             key=f"order_client_{user_id}")
+                             key=f"order_client_{user_id}", on_change=_mark_ventes_activity)
     order_date = st.date_input("Date de commande", key=f"order_date_{user_id}")
     cart_key = f"order_cart_{user_id}"
     owner_key = f"order_cart_client_{user_id}"
@@ -404,7 +408,7 @@ def _order_tab(user_id: str, can_write: bool) -> None:
     cart = st.session_state[cart_key]
     sku_id = st.selectbox("Produit SKU", list(sku_labels),
                           format_func=lambda x: sku_labels[x],
-                          key=f"order_sku_{user_id}")
+                          key=f"order_sku_{user_id}", on_change=_mark_ventes_activity)
     price_raw = skus.loc[skus["sku_id"] == sku_id, "prix_vente_defaut"].iloc[0]
     try:
         default_price = float(_decimal(price_raw, "Prix unitaire"))
@@ -415,7 +419,7 @@ def _order_tab(user_id: str, can_write: bool) -> None:
         price = st.number_input("Prix unitaire HT (DZD)", min_value=0.0,
                                 value=default_price, step=0.01, format="%.2f",
                                 key=f"order_price_{user_id}_{sku_id}")
-        add = st.form_submit_button("Ajouter au panier")
+        add = st.form_submit_button("Ajouter au panier", on_click=_mark_ventes_activity)
     if add:
         try:
             amount = _decimal(qty, "Quantit\u00e9", positive=True)
@@ -432,10 +436,10 @@ def _order_tab(user_id: str, can_write: bool) -> None:
         st.info("Ajoutez au moins une ligne avant d'enregistrer la commande.")
         return
     st.dataframe(pd.DataFrame(cart), use_container_width=True, hide_index=True)
-    if st.button("Vider le panier", key=f"order_clear_{user_id}"):
+    if st.button("Vider le panier", key=f"order_clear_{user_id}", on_click=_mark_ventes_activity):
         st.session_state[cart_key] = []
         st.rerun()
-    if st.button("Enregistrer la commande", key=f"order_save_{user_id}", type="primary"):
+    if st.button("Enregistrer la commande", key=f"order_save_{user_id}", type="primary", on_click=_mark_ventes_activity):
         _start_operation("order", user_id, {
             "client_id": client_id, "date_commande": str(order_date),
             "lignes": deepcopy(cart),
@@ -463,7 +467,7 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
         return
     order_labels = {r["commande_vente_id"]: f"{r['commande_vente_id']} ({r.get('statut','')})"
                     for _, r in orders.iterrows()}
-    order_id = st.selectbox("Commande client", list(order_labels), format_func=lambda x: order_labels[x])
+    order_id = st.selectbox("Commande client", list(order_labels), format_func=lambda x: order_labels[x], on_change=_mark_ventes_activity)
     order_lines = _read_required("lignes_commande_ventes")
     shipments = _read_required("bons_livraison")
     shipment_lines = _read_required("lignes_bons_livraison")
@@ -498,7 +502,7 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
                                      key=f"ship_{order_id}_{sku}_{i}")
             if amount > 0:
                 items.append({"sku_id": sku, "quantite_livree": float(_decimal(amount, "Livraison", positive=True))})
-        if st.form_submit_button("Valider le BL et sortir le stock PF", type="primary"):
+        if st.form_submit_button("Valider le BL et sortir le stock PF", type="primary", on_click=_mark_ventes_activity):
             if not items:
                 st.error("Sélectionnez au moins une quantité à livrer.")
             else:
@@ -527,11 +531,11 @@ def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None
         st.info("Aucun brouillon pouvant être validé ou annulé.")
         return
     labels = eligible["facture_id"].tolist()
-    invoice_id = st.selectbox("Brouillon à traiter", labels)
+    invoice_id = st.selectbox("Brouillon à traiter", labels, on_change=_mark_ventes_activity)
     st.info("Validation et annulation n'entraînent aucun mouvement de stock.")
-    if st.button("Valider la facture", key="vente_validate"):
+    if st.button("Valider la facture", key="vente_validate", on_click=_mark_ventes_activity):
         _start_operation("validate", user_id, {"facture_id": invoice_id})
-    if st.button("Annuler ce brouillon", key="vente_cancel"):
+    if st.button("Annuler ce brouillon", key="vente_cancel", on_click=_mark_ventes_activity):
         _start_operation("cancel", user_id, {"facture_id": invoice_id})
     st.caption("Une facture VALIDÉE n'est pas annulable ici : un avoir doit suivre le processus financier adapté.")
 

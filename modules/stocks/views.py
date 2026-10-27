@@ -104,7 +104,6 @@ def _execute_entry(user_id: str) -> bool:
         return False
 
     record["status"] = "confirmed"
-    st.cache_data.clear()
     st.rerun()
     return True
 
@@ -131,7 +130,7 @@ def _display_entry_status(user_id: str) -> bool:
     st.code(record["operation_id"])
     if record["status"] == "confirmed":
         st.success("Entrée confirmée. Une nouvelle entrée nécessite une action explicite.")
-        if st.button("Préparer une nouvelle entrée", key=f"stock_new_{user_id}"):
+        if st.button("Préparer une nouvelle entrée", key=f"stock_new_{user_id}", on_click=_mark_stocks_activity):
             del st.session_state[key]
             st.rerun()
     else:
@@ -139,7 +138,7 @@ def _display_entry_status(user_id: str) -> bool:
                    "pour cette même réception.")
         st.info("Réessayer conserve exactement l'article, la quantité, le prix, "
                 "la référence et l'identifiant de l'essai initial.")
-        if st.button("Réessayer la même opération", key=f"stock_retry_{user_id}"):
+        if st.button("Réessayer la même opération", key=f"stock_retry_{user_id}", on_click=_mark_stocks_activity):
             _execute_entry(user_id)
     return True
 
@@ -156,6 +155,11 @@ def get_skus_actifs():
 
 def get_produits():
     return pd.DataFrame(fetch_data("produits"))
+
+
+def _mark_stocks_activity() -> None:
+    """Signale une interaction, sans prolonger directement la session."""
+    st.session_state["_erp_stocks_interacted"] = True
 
 
 def show_stocks_page():
@@ -231,7 +235,7 @@ def show_stocks_page():
         elif _display_entry_status(user_id):
             pass  # On ne crée pas de deuxième opération si l'essai est incertain/confirmé.
         elif not df_mp_global.empty:
-            type_entree = st.radio("Que souhaitez-vous approvisionner ?", ["🧪 Matière Première (Vrac)", "📦 Emballage"], horizontal=True)
+            type_entree = st.radio("Que souhaitez-vous approvisionner ?", ["🧪 Matière Première (Vrac)", "📦 Emballage"], horizontal=True, on_change=_mark_stocks_activity)
             if "Emballage" in type_entree:
                 df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
             else:
@@ -249,7 +253,7 @@ def show_stocks_page():
                     reference = c2.text_input("Référence (ex: Ajustement validé)")
                     date_peremption = c1.date_input("Date de péremption")
 
-                    submitted = st.form_submit_button("Valider l'entrée en stock", type="primary")
+                    submitted = st.form_submit_button("Valider l'entrée en stock", type="primary", on_click=_mark_stocks_activity)
                 if submitted:
                     if not isinstance(reference, str) or not reference.strip():
                         st.error("Veuillez saisir une référence.")

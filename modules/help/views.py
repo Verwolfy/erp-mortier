@@ -5,6 +5,11 @@ Accessible à tous les utilisateurs. Format "Documentation" avec menu latéral.
 import streamlit as st
 
 
+def _mark_help_activity() -> None:
+    """Signale un changement de rubrique sans prolongation directe."""
+    st.session_state["_erp_help_interacted"] = True
+
+
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
     st.markdown(
@@ -27,7 +32,7 @@ def show_help_page():
             "🔎 Vérification des droits SQL (010-A-02)"
         ],
         help="Sélectionnez une rubrique pour afficher la procédure et les contrôles correspondants."
-    )
+    , on_change=_mark_help_activity)
 
     st.divider()
 

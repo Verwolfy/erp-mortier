@@ -41,6 +41,11 @@ _COUNTER_TYPES = {
 }
 
 
+def _mark_finance_activity() -> None:
+    """Signale une interaction sans prolonger directement la session."""
+    st.session_state["_erp_finance_interacted"] = True
+
+
 def _finance_access() -> tuple[str, bool] | None:
     """Contrôle frais du compte actif, avant consultation avec service_role."""
     try:
@@ -129,7 +134,6 @@ def _execute_operation(kind: str, user_id: str) -> None:
         return
     record["status"] = "confirmed"
     record["document_id"] = document_id
-    st.cache_data.clear()
     st.rerun()
 
 
@@ -165,11 +169,11 @@ def _operation_panel(kind: str, user_id: str) -> bool:
     if record["status"] == "uncertain":
         st.warning("Transaction non confirmée. Ne créez pas un deuxième règlement ou lettrage.")
         st.info("La reprise réutilise exactement la même référence, les mêmes montants et le même identifiant.")
-        if st.button("Réessayer la même opération", key=f"finance_retry_{kind}_{user_id}"):
+        if st.button("Réessayer la même opération", key=f"finance_retry_{kind}_{user_id}", on_click=_mark_finance_activity):
             _execute_operation(kind, user_id)
     else:
         st.success(f"Opération confirmée : {record['document_id']}")
-        if st.button("Préparer une nouvelle opération", key=f"finance_new_{kind}_{user_id}"):
+        if st.button("Préparer une nouvelle opération", key=f"finance_new_{kind}_{user_id}", on_click=_mark_finance_activity):
             del st.session_state[key]
             st.rerun()
     return True
@@ -280,7 +284,7 @@ def _accounts_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None
         type_c = st.selectbox("Type de compte", ["Banque", "Caisse", "Tiers client", "Tiers fournisseur"])
         numero = st.text_input("Numéro comptable ou bancaire (unique)")
         solde = st.number_input("Solde initial (DZD)", min_value=0.0, step=0.01, format="%.2f")
-        if st.form_submit_button("Enregistrer le compte", type="primary"):
+        if st.form_submit_button("Enregistrer le compte", type="primary", on_click=_mark_finance_activity):
             try:
                 payload = {"nom_compte": _required(nom, "Nom du compte"),
                            "type_compte": type_c, "numero_compte": _required(numero, "Numéro de compte"),
@@ -306,7 +310,7 @@ def _payment_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
     if not cash:
         st.warning("Créez d'abord un compte Banque ou Caisse actif.")
         return
-    type_flux = st.radio("Sens du règlement", ["ENCAISSEMENT", "DECAISSEMENT"], horizontal=True)
+    type_flux = st.radio("Sens du règlement", ["ENCAISSEMENT", "DECAISSEMENT"], horizontal=True, on_change=_mark_finance_activity)
     try:
         counterparties = _active_account_rows(accounts, _COUNTER_TYPES[type_flux])
         partner_table = "clients" if type_flux == "ENCAISSEMENT" else "fournisseurs"
@@ -342,7 +346,7 @@ def _payment_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
         mode_paiement = st.selectbox("Mode de paiement", modes)
         reference = st.text_input("Référence de règlement unique (obligatoire)")
         montant = st.number_input("Montant (DZD)", min_value=0.01, step=0.01, format="%.2f")
-        if st.form_submit_button("Enregistrer le règlement", type="primary"):
+        if st.form_submit_button("Enregistrer le règlement", type="primary", on_click=_mark_finance_activity):
             try:
                 if cash_id == counter_id:
                     raise ValueError("Les deux comptes doivent être distincts")
@@ -365,7 +369,7 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
         return
     if _operation_panel("allocate", user_id):
         return
-    doc_type = st.radio("Document à régler", ["FactureClient", "FactureFournisseur"], horizontal=True)
+    doc_type = st.radio("Document à régler", ["FactureClient", "FactureFournisseur"], horizontal=True, on_change=_mark_finance_activity)
     flow = "ENCAISSEMENT" if doc_type == "FactureClient" else "DECAISSEMENT"
     try:
         ouverts = _open_payments(reglements, flow)
@@ -377,7 +381,7 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
         return
     options = {r["reglement_id"]: f"{r['reglement_id']} — solde : {r['restant']} DZD"
                for _, r in ouverts.iterrows()}
-    reg_id = st.selectbox("Règlement à affecter", list(options), format_func=options.get)
+    reg_id = st.selectbox("Règlement à affecter", list(options), format_func=options.get, on_change=_mark_finance_activity)
     reg = ouverts[ouverts["reglement_id"] == reg_id].iloc[0]
     table = "factures" if doc_type == "FactureClient" else "factures_fournisseurs"
     try:
@@ -400,7 +404,7 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
         document_id = st.selectbox("Facture à solder", list(invoice_options), format_func=invoice_options.get)
         montant = st.number_input("Montant à affecter (DZD)", min_value=0.01,
                                   step=0.01, format="%.2f")
-        if st.form_submit_button("Valider le lettrage", type="primary"):
+        if st.form_submit_button("Valider le lettrage", type="primary", on_click=_mark_finance_activity):
             try:
                 due = next(item["reste"] for item in eligible if item["document_id"] == document_id)
                 val = _money(montant, "Montant appliqué")

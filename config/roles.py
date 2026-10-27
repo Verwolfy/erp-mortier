@@ -56,7 +56,6 @@ def _permission_rows(role: str | None = None) -> list[dict]:
         return []
 
 
-@st.cache_data(ttl=30, show_spinner=False)
 def get_permissions_data() -> list[dict]:
     """Snapshot court pour les affichages ; ne jamais l'utiliser pour autoriser une écriture."""
     return _permission_rows()
