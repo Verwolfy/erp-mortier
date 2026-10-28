@@ -26,7 +26,7 @@ Ce fichier reprend les contrôles factuels. Ne pas annoncer la réconciliation t
 - Nouveau contrôle : `scripts/auditer_parametres_reglementaires.py` et tests de détection. `--strict` retourne un code d'échec sur les écarts. Scanner volontairement incomplet (à élargir au référentiel total), jamais une certification fiscale.
 
 ## Points d'arrêt (non levés)
-1. Copie PostgreSQL complète **restaurable** datée sur TEST et PRODUCTION non prouvée. Aucun outil connecté de `pg_dump` disponible.
+1. Décision du 28/10/2026 : l'utilisateur ne souhaite pas de sauvegarde PostgreSQL. Cette étape est facultative et ne doit pas être proposée comme prérequis ; aucune sauvegarde ne sera lancée automatiquement.
 2. Changement de RLS/GRANT/permissions non autorisé au cas par cas, avec 66 écarts. Ne pas répliquer automatiquement les permissions PRODUCTION plus larges vers TEST.
 3. Chargement de taux, seuils, barèmes, échéances non autorisé avant vérification primaire et validation.
 4. Synchronisation locale Git, revue de tous les secrets de l'historique, rejouabilité complète sur une base vierge, tests de bout en bout sur `main`/PRODUCTION non démontrés.
