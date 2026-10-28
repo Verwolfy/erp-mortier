@@ -1,0 +1,44 @@
+name: ERP - lots D et F
+
+on:
+  push:
+    branches: [feat/erp-scf-paie-socle-20261028]
+  pull_request:
+    branches: [feat/reglementation-lot-c-socle-20261028]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: df-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Installer les dépendances
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compiler
+        run: python -m compileall -q core modules tests
+      - name: Tester les nouveaux moteurs SCF et paie
+        run: >-
+          python -m pytest -q
+          tests/test_scf_journal.py
+          tests/test_paie_preparation.py
+          tests/test_scf_paie_sql_skeleton.py
+          tests/test_declarations_fiscales.py
+          tests/test_export_scf.py
+      - name: Tester toute la suite ERP
+        run: python -m pytest -q

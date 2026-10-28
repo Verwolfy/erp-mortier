@@ -1,0 +1,169 @@
+"""Moteur générique de tranches marginales, sans barèmes légaux intégrés.
+
+Le barème est une pièce de paramétrage vérifiée, applicable à la date du fait
+juridique ; aucun taux d'IRG ou autre montant réglementaire n'est intégré.
+Ne produit pas de bulletin ou de déclaration.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Any, Iterable, Mapping
+
+
+class BaremeIndisponible(ValueError):
+    """Barème absent, non vérifié, mal formé ou inapplicable."""
+
+
+def _nombre(value: Any, nom: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (int, str, Decimal)):
+        raise BaremeIndisponible(f"{nom}: décimal exact obligatoire")
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise BaremeIndisponible(f"{nom}: valeur invalide") from exc
+    if not number.is_finite():
+        raise BaremeIndisponible(f"{nom}: valeur non finie")
+    return number
+
+
+def _date(value: Any, nom: str) -> date:
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError as exc:
+            raise BaremeIndisponible(f"{nom}: date invalide") from exc
+        if parsed.isoformat() == value:
+            return parsed
+    raise BaremeIndisponible(f"{nom}: date ISO requise")
+
+
+def calculer_bareme_progressif(
+    assiette: int | str | Decimal,
+    regle: Mapping[str, Any],
+    date_operation: date | str,
+    *,
+    code: str,
+    unite_arrondi: str = "0.01",
+) -> dict[str, Any]:
+    """Calcul progressif marginal avec contrôle des bornes et provenance.
+
+    Le champ tranches est une liste croissante d'objets avec jusqua (borne
+    supérieure incluse, None pour +infini) et taux (fraction de 0 à 1).
+    La première tranche part de zéro, chaque tranche suivante reprend exactement
+    la borne précédente, et la dernière doit avoir jusqua = None.
+    Le total est arrondi une seule fois, après sommation des montants non arrondis.
+    Une règle non confirmée ou non datée n'est jamais appliquée.
+    """
+    if not isinstance(regle, Mapping) or not isinstance(code, str) or not code.strip():
+        raise BaremeIndisponible("Barème et code obligatoires")
+    if regle.get("code") != code:
+        raise BaremeIndisponible("Code du barème différent")
+    if (regle.get("statut_juridique") != "en_vigueur"
+            or regle.get("niveau_confiance") != "CONFIRMEE"):
+        raise BaremeIndisponible("Règle non confirmée et en vigueur")
+    source = regle.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise BaremeIndisponible("Source juridique obligatoire")
+    instant = _date(date_operation, "date_operation")
+    debut = _date(regle.get("date_effet"), "date_effet")
+    fin = (_date(regle["date_fin"], "date_fin")
+           if regle.get("date_fin") is not None else None)
+    verification = _date(regle.get("date_verification"), "date_verification")
+    if (fin is not None and fin < debut) or instant < debut or (fin and instant > fin):
+        raise BaremeIndisponible("Barème hors de sa période de validité")
+    base = _nombre(assiette, "assiette")
+    quantum = _nombre(unite_arrondi, "unite_arrondi")
+    if base < 0 or base >= Decimal("1e15") or quantum <= 0:
+        raise BaremeIndisponible("Assiette ou arrondi invalide")
+    donnees = regle.get("donnees")
+    if donnees is not None:
+        if not isinstance(donnees, Mapping) or "tranches" in regle:
+            raise BaremeIndisponible("Données de barème ambiguës")
+        tranches = donnees.get("tranches")
+    else:
+        tranches = regle.get("tranches")
+    if not isinstance(tranches, list) or not tranches:
+        raise BaremeIndisponible("Liste de tranches absente")
+    montant = Decimal(0)
+    precedent = Decimal(0)
+    details = []
+    for index, item in enumerate(tranches):
+        if not isinstance(item, Mapping):
+            raise BaremeIndisponible("Tranche invalide")
+        plafond = None if item.get("jusqua") is None else _nombre(item["jusqua"], "jusqua")
+        taux = _nombre(item.get("taux"), "taux")
+        if not Decimal(0) <= taux <= Decimal(1):
+            raise BaremeIndisponible("Taux marginal invalide")
+        if plafond is None and index != len(tranches) - 1:
+            raise BaremeIndisponible("Tranche ouverte avant la fin")
+        if plafond is not None and plafond <= precedent:
+            raise BaremeIndisponible("Bornes non strictement croissantes")
+        if index == len(tranches) - 1 and plafond is not None:
+            raise BaremeIndisponible("Dernière tranche doit être ouverte")
+        haut = base if plafond is None else min(base, plafond)
+        taxable = max(Decimal(0), haut - precedent)
+        produit = taxable * taux
+        montant += produit
+        details.append({
+            "debut": format(precedent, "f"),
+            "fin": format(plafond, "f") if plafond is not None else None,
+            "assiette_tranche": format(taxable, "f"),
+            "taux": format(taux, "f"),
+            "montant_non_arrondi": format(produit, "f"),
+        })
+        if plafond is not None:
+            precedent = plafond
+    return {
+        "code": code,
+        "assiette": format(base, "f"),
+        "montant": format(montant.quantize(quantum, rounding=ROUND_HALF_UP), "f"),
+        "date_operation": instant.isoformat(),
+        "date_effet": debut.isoformat(),
+        "source": source.strip(),
+        "date_verification": verification.isoformat(),
+        "tranches": details,
+    }
+
+
+def choisir_bareme_reglementaire(
+    lignes: Iterable[Mapping[str, Any]], code: str, date_operation: date | str,
+) -> Mapping[str, Any]:
+    """Choisir une seule version confirmée, ou refuser les versions ambiguës."""
+    if not isinstance(code, str) or not code.strip():
+        raise BaremeIndisponible("Code réglementaire obligatoire")
+    instant = _date(date_operation, "date_operation")
+    candidats = []
+    for regle in lignes:
+        if not isinstance(regle, Mapping):
+            raise BaremeIndisponible("Ligne réglementaire invalide")
+        if regle.get("code") != code:
+            continue
+        if regle.get("statut_juridique") != "en_vigueur" or regle.get("niveau_confiance") != "CONFIRMEE":
+            continue
+        debut = _date(regle.get("date_effet"), "date_effet")
+        fin = (_date(regle["date_fin"], "date_fin")
+               if regle.get("date_fin") is not None else None)
+        if fin is not None and fin < debut:
+            raise BaremeIndisponible("Intervalle de dates invalide")
+        if debut <= instant and (fin is None or instant <= fin):
+            candidats.append(regle)
+    if len(candidats) != 1:
+        raise BaremeIndisponible(f"{code}: {len(candidats)} version(s) applicable(s)")
+    if candidats[0].get("type_regle", "progressif") != "progressif":
+        raise BaremeIndisponible("Type de règle non progressif")
+    return candidats[0]
+
+
+def calculer_bareme_depuis_registre(
+    assiette: int | str | Decimal,
+    lignes: Iterable[Mapping[str, Any]],
+    date_operation: date | str,
+    *,
+    code: str,
+) -> dict[str, Any]:
+    """Sélection et calcul sans valeur implicite, à partir du registre versionné."""
+    regle = choisir_bareme_reglementaire(lignes, code, date_operation)
+    return calculer_bareme_progressif(assiette, regle, date_operation, code=code)

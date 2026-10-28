@@ -516,3 +516,47 @@ def test_payments_unknown_reference_read_error_blocked(ui):
     ui.db.fetch_data_paginated.side_effect = RuntimeError("database offline")
     ui.mod._payment_tab("USR-1", True, _accounts())
     ui.finance.enregistrer_reglement.assert_not_called()
+
+
+def test_scf_balance_vue_refusee_sans_droit_specifique(ui):
+    ui.roles.has_permission.side_effect = lambda role, module, permission: module != "SCF"
+    ui.mod._scf_balance_tab("USR-1")
+    ui.st.button.assert_not_called()
+    ui.st.info.assert_called()
+
+
+def test_scf_balance_aucune_lecture_avant_action(ui):
+    ui.mod._scf_balance_tab("USR-1")
+    ui.st.button.assert_called_once_with("Charger la balance SCF", key="finance_scf_load")
+    ui.st.metric.assert_not_called()
+
+
+def test_scf_balance_lecture_a_la_demande_sans_ecriture(ui, monkeypatch):
+    scf = types.ModuleType("core.scf_service")
+    scf.LectureSCFIndisponible = type("LectureSCFIndisponible", (ValueError,), {})
+    scf.lire_balance_scf = MagicMock(return_value={
+        "pieces": 1, "lignes": 2,
+        "balance": {
+            "411001": {"debit": "100", "credit": "0", "solde": "100"},
+            "701001": {"debit": "0", "credit": "100", "solde": "-100"},
+        },
+    })
+    monkeypatch.setitem(sys.modules, "core.scf_service", scf)
+    ui.st.button.return_value = True
+    ui.mod._scf_balance_tab("USR-1")
+    scf.lire_balance_scf.assert_called_once_with()
+    assert ui.st.metric.call_count == 2
+    ui.st.dataframe.assert_called_once()
+    assert ui.st.session_state["_erp_finance_interacted"] is True
+
+
+def test_scf_balance_erreur_ne_diffuse_pas_de_total(ui, monkeypatch):
+    scf = types.ModuleType("core.scf_service")
+    scf.LectureSCFIndisponible = type("LectureSCFIndisponible", (ValueError,), {})
+    scf.lire_balance_scf = MagicMock(side_effect=scf.LectureSCFIndisponible("invalid rows"))
+    monkeypatch.setitem(sys.modules, "core.scf_service", scf)
+    ui.st.button.return_value = True
+    ui.mod._scf_balance_tab("USR-1")
+    ui.st.metric.assert_not_called()
+    ui.st.dataframe.assert_not_called()
+    ui.st.error.assert_called()
