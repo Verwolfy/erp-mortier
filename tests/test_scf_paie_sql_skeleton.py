@@ -69,3 +69,17 @@ def test_preflight_registres_ne_modifie_rien():
     for mot in ("CREATE ", "ALTER ", "INSERT ", "UPDATE ", "DELETE ",
                 "DROP ", "TRUNCATE ", "GRANT ", "REVOKE ", "DO $$"):
         assert mot not in code
+
+
+def test_periodes_immutables_et_documents_pas_crees_apres_cloture():
+    for champ in ("exercice_id", "date_debut", "date_fin"):
+        assert f"NEW.{champ} IS DISTINCT FROM OLD.{champ}" in SCF
+    assert "Piece SCF hors exercice ouvert" in SCF
+    assert "Modification d une piece hors exercice ouvert" in SCF
+    assert "FOR SHARE" in SCF
+    for champ in ("periode_id", "annee", "mois"):
+        assert f"NEW.{champ} IS DISTINCT FROM OLD.{champ}" in PAIE
+    assert "Bulletin hors periode de paie ouverte" in PAIE
+    assert "Modification bulletin hors periode ouverte" in PAIE
+    assert "EXTRACT(YEAR FROM NEW.date_paie)" in PAIE
+    assert "EXTRACT(MONTH FROM NEW.date_paie)" in PAIE
