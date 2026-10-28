@@ -75,6 +75,12 @@ BEGIN
   IF TG_OP='DELETE' THEN
     RETURN OLD;
   END IF;
+  IF NEW.exercice_id IS DISTINCT FROM OLD.exercice_id
+     OR NEW.date_debut IS DISTINCT FROM OLD.date_debut
+     OR NEW.date_fin IS DISTINCT FROM OLD.date_fin THEN
+    RAISE EXCEPTION 'Dates et identite de l exercice non modifiables'
+      USING ERRCODE='23514';
+  END IF;
   IF NEW.statut='CLOTURE' THEN
     PERFORM 1 FROM public.scf_pieces WHERE exercice_id=OLD.exercice_id AND statut='BROUILLON';
     IF FOUND THEN
@@ -151,10 +157,29 @@ BEGIN
     IF NEW.statut <> 'BROUILLON' OR NEW.date_validation IS NOT NULL THEN
       RAISE EXCEPTION 'Validation initiale directe interdite' USING ERRCODE='23514';
     END IF;
+    -- Le verrou partagé interdit une clôture concurrente pendant la saisie.
+    SELECT * INTO v_periode FROM public.scf_exercices
+      WHERE exercice_id=NEW.exercice_id FOR SHARE;
+    IF NOT FOUND OR v_periode.statut <> 'OUVERT'
+       OR NEW.date_ecriture < v_periode.date_debut
+       OR NEW.date_ecriture > v_periode.date_fin THEN
+      RAISE EXCEPTION 'Piece SCF hors exercice ouvert'
+        USING ERRCODE='23514';
+    END IF;
     RETURN NEW;
   END IF;
   IF OLD.statut='VALIDEE' THEN
     RAISE EXCEPTION 'Piece validee immuable' USING ERRCODE='23514';
+  END IF;
+  -- La modification d'un brouillon doit également rester dans un exercice
+  -- ouvert ; sinon une clôture peut coexister avec de nouveaux brouillons.
+  SELECT * INTO v_periode FROM public.scf_exercices
+    WHERE exercice_id=NEW.exercice_id FOR SHARE;
+  IF NOT FOUND OR v_periode.statut <> 'OUVERT'
+     OR NEW.date_ecriture < v_periode.date_debut
+     OR NEW.date_ecriture > v_periode.date_fin THEN
+    RAISE EXCEPTION 'Modification d une piece hors exercice ouvert'
+      USING ERRCODE='23514';
   END IF;
   IF NEW.statut='VALIDEE' THEN
     -- Interdire de changer simultanément la pièce et son statut.
