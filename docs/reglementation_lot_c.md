@@ -1,22 +1,31 @@
-# Lot C — socle réglementaire algérien, état de développement
+# Lot C — Registre fiscal algérien et facturation paramétrée
 
-**Statut : PR #2 ouverte en brouillon, non fusionnée, non déployée ; aucun paramètre juridique activé.**
+**État : PR #2 en brouillon, non fusionnée, aucune migration appliquée sur Supabase.**
 
-## Développement réalisé
-- `core/reglementation.py` : sélection des taux unitaires validés par code et date d'opération, montants Decimal et traçabilité.
-- `core/baremes.py` : moteur générique de tranches marginales avec sélection d'une seule version applicable ; refus des règles non vérifiées, des chevauchements, des valeurs invalides et des projets. Compatible avec le format JSONB `donnees.tranches`.
-- `sql/012_reglementation_registre.sql` : **proposition de migration, non exécutée** : registres réglementaires datés, suivi de migrations avec empreinte, RLS sur les nouvelles tables et refus d'accès direct anon/authenticated.
-- Tests locaux sur `tests/test_baremes.py` et `tests/test_reglementation_sql_012.py` : **40 réussis** ; la compilation du nouveau moteur réussit. Ce ne sont pas des tests PostgreSQL et la suite ERP complète n'a pas encore été exécutée.
+## Réalisé sur la branche
+- `core/reglementation.py` : recherche d'un paramètre confirmé par code et date.
+- `core/baremes.py` : tranches marginales progressives versionnées, aucune table IRG réelle.
+- `core/fiscalite_facturation.py` : calcul TVA et timbre sur un montant HT standard avec trace des taux et plafonds, sans taux en dur ; limites : factures à taux réduit, exonération, multi-taux.
+- `core/fiscalite_service.py` : lecture Supabase du registre avec contrôle du compte exact, refus des lectures incomplètes ou non confirmées.
+- `modules/ventes/service.py` et `views.py` : prévisualisation et brouillon reliés au lecteur de paramètres. La date réelle du brouillon est transmise à SQL. **Un registre vide provoquera le refus de créer une facture, et non le recours aux anciens taux.**
+- `sql/012_reglementation_registre.sql` : schéma des règles et paramètres datés. Nouveau RLS/GRANT non appliqué.
+- `sql/013_facturation_parametree.sql` : remplace la RPC 005 par une version qui prend TVA/timbre depuis le registre, conserve l'historique des pièces et refuse un avoir au taux historique différent. **À tester sur TEST avant toute mise en service.**
+- `A_VALIDER.md` : restrictions et points juridiques à valider.
 
-## Format de données
-Une entrée `regles_reglementaires` de type `progressif` contient dans `donnees` une liste `tranches` avec `jusqua` (borne supérieure ou null pour la dernière tranche ouverte) et `taux` (fraction décimale). L'algorithme applique les taux marginalement et arrondit une fois en fin de calcul. Les valeurs de test sont fictives et ne doivent jamais être présentées comme un barème IRG officiel.
+## Vérifications
+- 26 tests locaux exécutés avec succès sur les nouveaux calculateurs et la lecture simulée (pytest).
+- CI GitHub (workflow `.github/workflows/lot_c_tests.yml`) : compilation + tests ciblés + suite ERP ; consulter le dernier run pour le statut à jour.
+- Les tests statiques SQL ne remplacent ni un `psql` de test ni un scénario transactionnel bout en bout.
+- Aucun taux fiscal algérien chargé ou appliqué dans Supabase.
 
-## Contrôles obligatoires avant la mise en service
-1. Audit des textes officiels et validation des paramètres fiscaux et sociaux ; aucun taux légal en dur.
-2. Revue et tests SQL de la migration 012 sur **TEST**, incluant privilèges RLS. Son exécution nécessite l'accord distinct sur les modifications des droits ; ne pas toucher à la base principale.
-3. Préparation d'un lanceur transactionnel des migrations avec empreinte SHA-256, contrôle du schéma et gestion d'erreur ; les tests statiques ne prouvent pas l'exécution SQL.
-4. Brancher les services Finance, Ventes, RH à la source unique des paramètres ; remplacer **en même temps** TVA/timbre côté Python et SQL, sans casser les documents validés.
-5. Préserver les changements locaux du Guide & Aide, README et de la sauvegarde Google Sheets avant toute réconciliation avec la branche.
-6. Exécuter la suite complète de tests ERP, contrôler les secrets et vérifier la branche Streamlit déployée avant fusion/production.
+## Risques et blocages avant fusion
+1. Sources officielles et validation des taux/plafonds applicables par date et régime fiscal.
+2. Une facture avec TVA réduite, mixte ou exonérée n'est pas encore prise en charge : bloquer ou différencier selon classification SKU et client.
+3. Pour les marchandises, la date du fait générateur peut être la livraison, pas la date de facture : établir le lien réel avant conformité.
+4. Appliquer 012 puis 013 sur Supabase TEST **uniquement après autorisation de la modification des droits** ; vérifier service_role, RLS et concurrence.
+5. Suite complète verte, tests SQL et vérifications de production et de sauvegardes avant merge. Préserver les trois fichiers locaux modifiés : `README.md`, `modules/help/views.py` et `scripts/sauvegarder_google_sheets.py`.
+6. Les paramètres en vigueur ne doivent jamais être créés automatiquement avec des valeurs fictives.
 
-Ces développements ne sont pas encore visibles dans l'application Streamlit.
+## Source primaire identifiée
+DGI Algérie, « La taxe sur la valeur ajoutée », mise à jour du 23 février 2026 : https://www.mfdgi.gov.dz/fr/professionnels/services-pro/regime-reel/la-taxe-sur-la-valeur-ajoutee.
+Ce document officiel décrit le taux normal et le taux réduit, ainsi que des faits générateurs distincts selon l'opération. Vérifier aussi le texte légal et l'assujettissement effectif avant toute activation.
