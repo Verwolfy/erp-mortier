@@ -18,7 +18,13 @@ def show_rh_page():
     user_role = st.session_state.get("user", {}).get("role", "")
     can_write = has_permission(user_role, "RH", "ecriture")
 
-    tab1, tab2 = st.tabs(["👨‍💼 Registre des Employés", "🌴 Gestion des Congés"])
+    # Autorisation Paie spécifique et relue sur le serveur ; l'accès RH ne suffit pas.
+    can_read_paie = has_permission(user_role, "Paie", "lecture")
+    noms_onglets = ["👨‍💼 Registre des Employés", "🌴 Gestion des Congés"]
+    if can_read_paie:
+        noms_onglets.append("🧮 Simulation IRG (non validée)")
+    onglets = st.tabs(noms_onglets)
+    tab1, tab2 = onglets[:2]
 
     with tab1:
         st.subheader("Employés")
@@ -78,3 +84,51 @@ def show_rh_page():
             st.dataframe(df_conges, use_container_width=True)
         else:
             st.info("Aucune demande de congé.")
+    if can_read_paie:
+        with onglets[2]:
+            st.subheader("Simulation IRG - traitements et salaires")
+            st.warning(
+                "Simulation interne uniquement : ni bulletin de paie, "
+                "ni calcul fiscal homologué, ni déclaration."
+            )
+            st.caption(
+                "Seules les assiettes imposables déjà déterminées et les "
+                "règles vérifiées disponibles dans Supabase sont acceptées."
+            )
+            from core.utils import get_local_now
+            date_fiscale = st.date_input(
+                "Date de paie", value=get_local_now().date(),
+                key="rh_irg_date",
+            )
+            assiette = st.text_input(
+                "Assiette imposable mensuelle (DZD) - montant exact",
+                key="rh_irg_assiette",
+                placeholder="Ex. 50000.00",
+            )
+            profil = st.selectbox(
+                "Catégorie de revenu mensuel",
+                ["SALARIE", "HANDICAPE_RETRAITE"],
+                key="rh_irg_profil",
+            )
+            if st.button(
+                "Simuler IRG", key="rh_irg_simuler",
+                on_click=_mark_rh_activity,
+            ):
+                from core.irg_salaires import IRGNonDisponible
+                from core.irg_service import simuler_irg_depuis_supabase
+                try:
+                    irg = simuler_irg_depuis_supabase(
+                        assiette, date_fiscale.isoformat(), profil,
+                    )
+                except IRGNonDisponible:
+                    st.error(
+                        "Simulation indisponible : assiette invalide, règle "
+                        "IRG manquante ou réglementation non confirmée."
+                    )
+                else:
+                    st.metric("IRG mensuel simulé (DZD)", irg["irg_simule"])
+                    st.caption(
+                        f"Barème : {irg['code']} | "
+                        f"Date effet : {irg['date_effet']} | "
+                        "Statut : simulation non validée"
+                    )
