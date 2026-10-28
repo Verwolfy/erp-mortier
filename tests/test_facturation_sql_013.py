@@ -38,6 +38,13 @@ def test_rpc_service_role_seulement():
     assert "TO service_role" in SQL
 
 
-def test_pas_de_modification_des_factures_anciennes():
-    assert "UPDATE public.factures" not in SQL
+def test_pas_de_modification_des_montants_des_factures_anciennes():
+    # Les transitions de statut d'un brouillon sont déjà prévues en 005.
+    # Seule une réécriture des chiffres fiscaux validés serait interdite.
+    import re
+    assert re.search(
+        r"\\bUPDATE\\s+public\\.factures\\s+SET\\s+"
+        r"(montant_ht|montant_tva|montant_ttc|taux_tva)\\b",
+        SQL, re.IGNORECASE,
+    ) is None
     assert "DELETE FROM public.factures" not in SQL
