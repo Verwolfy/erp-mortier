@@ -57,6 +57,46 @@ CREATE TABLE IF NOT EXISTS public.scf_lignes (
   CHECK ((debit > 0 AND credit = 0) OR (credit > 0 AND debit = 0))
 );
 
+-- Clôture irréversible d'un exercice comptable (hors écritures rectificatives).
+CREATE OR REPLACE FUNCTION public.scf_garder_exercices()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public
+AS $func$
+BEGIN
+  IF TG_OP='INSERT' THEN
+    IF NEW.statut<>'OUVERT' THEN
+      RAISE EXCEPTION 'Exercice initialement ferme interdit' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF OLD.statut='CLOTURE' THEN
+    RAISE EXCEPTION 'Exercice cloture immuable' USING ERRCODE='23514';
+  END IF;
+  IF TG_OP='DELETE' THEN
+    RETURN OLD;
+  END IF;
+  IF NEW.statut='CLOTURE' THEN
+    PERFORM 1 FROM public.scf_pieces WHERE exercice_id=OLD.exercice_id AND statut='BROUILLON';
+    IF FOUND THEN
+      RAISE EXCEPTION 'Exercice avec brouillons non cloturable' USING ERRCODE='23514';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$func$;
+
+DO $triggers$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+      WHERE tgrelid='public.scf_exercices'::regclass
+        AND tgname='scf_exercices_cloture' AND NOT tgisinternal) THEN
+    CREATE TRIGGER scf_exercices_cloture
+      BEFORE INSERT OR UPDATE OR DELETE ON public.scf_exercices
+      FOR EACH ROW EXECUTE FUNCTION public.scf_garder_exercices();
+  END IF;
+END;
+$triggers$;
+
 -- Toute édition de lignes verrouille d'abord la pièce parente.
 -- Un document validé ne peut être modifié ou supprimé. Une correction
 -- future doit générer une nouvelle contrepassation et non un UPDATE.
