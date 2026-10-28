@@ -15,7 +15,6 @@ import pandas as pd
 
 from core.db_service import check_server_permission, fetch_data, fetch_data_filtered, get_supabase_client
 from core.utils import get_local_now
-from core.fiscalite_service import fiscalite_facture_reglementee
 from modules.stocks.service import _stock_rpc_client
 
 try:
@@ -25,6 +24,9 @@ except ImportError:
 
 CENT = Decimal("0.01")
 LIMIT = Decimal("1e15")
+TAUX_TVA = Decimal("0.19")  # Convention actuelle, à faire valider par la comptabilité
+TAUX_TIMBRE = Decimal("0.01")
+MAX_TIMBRE = Decimal("2500.00")
 MAX_LINES = 500
 
 
@@ -147,8 +149,7 @@ def _invoice_lines(panier: list) -> tuple[list[dict], Decimal]:
     return converted, total
 
 
-def _totals(panier: list, remise_globale: Any, paiement_especes: bool, *,
-            date_facture: str) -> tuple[dict, list[dict]]:
+def _totals(panier: list, remise_globale: Any, paiement_especes: bool) -> tuple[dict, list[dict]]:
     if not isinstance(paiement_especes, bool):
         raise ValueError("Paiement espèces invalide")
     lines, total_net = _invoice_lines(panier)
@@ -156,10 +157,10 @@ def _totals(panier: list, remise_globale: Any, paiement_especes: bool, *,
     if global_discount > total_net:
         raise ValueError("La remise globale dépasse le montant HT")
     ht = _money(total_net - global_discount)
-    taxes = fiscalite_facture_reglementee(ht, paiement_especes, date_facture)
-    tva = taxes["montant_tva"]
-    stamp = taxes["montant_timbre"]
-    ttc = taxes["montant_ttc"]
+    tva = _money(ht * TAUX_TVA)
+    ttc_before_stamp = ht + tva
+    stamp = min(_money(ttc_before_stamp * TAUX_TIMBRE), MAX_TIMBRE) if paiement_especes else Decimal("0")
+    ttc = _money(ttc_before_stamp + stamp)
     gross = sum((Decimal(line["quantite"]) * Decimal(line["prix_unitaire"]) for line in lines), Decimal("0"))
     discount_lines = sum((Decimal(line["remise_ligne"]) for line in lines), Decimal("0"))
     amounts = {"total_ht": _money(gross), "total_remise": _money(discount_lines + global_discount),
@@ -167,14 +168,9 @@ def _totals(panier: list, remise_globale: Any, paiement_especes: bool, *,
     return amounts, lines
 
 
-def calculer_montants_facture(panier: list, remise_globale: float = 0.0,
-                            paiement_especes: bool = False, *,
-                            date_facture: str | None = None) -> dict:
-    """Prévisualisation : paramètres confirmés à la date fiscale du document."""
-    instant = (_date(date_facture, "Date facture") if date_facture is not None
-               else get_local_now().date().isoformat())
-    sums, _ = _totals(panier, remise_globale, paiement_especes,
-                      date_facture=instant)
+def calculer_montants_facture(panier: list, remise_globale: float = 0.0, paiement_especes: bool = False) -> dict:
+    """Remise de ligne exprimée en montant, et non en pourcentage."""
+    sums, _ = _totals(panier, remise_globale, paiement_especes)
     ttc = sums["total_ttc"]
     integer = int(ttc)
     cents = int((ttc - Decimal(integer)) * 100)
@@ -224,12 +220,9 @@ def create_facture_brouillon(client_id: str, date_echeance: str, panier: list,
         raise ValueError("Seul un avoir peut avoir une facture d'origine")
     if is_avoir and paiement_especes:
         raise ValueError("Le timbre espèces d'un avoir nécessite un traitement fiscal dédié")
-    date_facture = get_local_now().date().isoformat()
-    amounts, lines = _totals(panier, remise_globale, paiement_especes,
-                             date_facture=date_facture)
+    amounts, lines = _totals(panier, remise_globale, paiement_especes)
     payload = {
         "client_id": client, "date_echeance": echeance,
-        "date_facture": date_facture,
         "remise_globale": _fmt(_decimal(remise_globale, "Remise globale")),
         "paiement_especes": paiement_especes,
         "type_facture": "FactureAvoir" if is_avoir else "FactureClient",
