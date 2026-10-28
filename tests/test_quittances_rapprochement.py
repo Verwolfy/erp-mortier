@@ -87,7 +87,7 @@ def test_un_encaissement_sur_deux_factures_sans_double_timbre():
     x = run(p, letters, invoices)
     assert len(x["reglements"]) == 1
     assert len(x["reglements"][0]["factures"]) == 2
-    assert len(x["reglements"][0]["factures"]) != x["nombre_reglements"] + 1
+    assert x["nombre_reglements"] == 1  # timbre par paiement, pas par facture
     # La simulation utilise le total encaissé (110), pas les lettrages (50 et 60).
     simulation = simuler_timbre_sur_encaissement(p[0], [regle()])
     assert simulation["montant_regle"] == Decimal("110.00")
