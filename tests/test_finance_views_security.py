@@ -544,7 +544,7 @@ def test_scf_balance_lecture_a_la_demande_sans_ecriture(ui, monkeypatch):
     monkeypatch.setitem(sys.modules, "core.scf_service", scf)
     ui.st.button.return_value = True
     ui.mod._scf_balance_tab("USR-1")
-    scf.lire_balance_scf.assert_called_once_with(autorisation_serveur=True)
+    scf.lire_balance_scf.assert_called_once_with()
     assert ui.st.metric.call_count == 2
     ui.st.dataframe.assert_called_once()
     assert ui.st.session_state["_erp_finance_interacted"] is True
