@@ -11,6 +11,8 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping
 
+from core.arrondis import ArrondiNonDisponible, arrondir_multiple
+
 
 class RegleIndisponible(ValueError):
     """Aucune valeur juridique active vérifiée, ou plusieurs valeurs concurrentes."""
@@ -112,7 +114,10 @@ def calculer_pourcentage(
     param = chercher_parametre(lignes, code_taux, date_operation)
     if not Decimal("0") <= param.valeur <= Decimal("1"):
         raise RegleIndisponible("Taux hors de l'intervalle [0,1]")
-    montant = (base * param.valeur).quantize(quantum, rounding=ROUND_HALF_UP)
+    try:
+        montant = arrondir_multiple(base * param.valeur, quantum)
+    except ArrondiNonDisponible as exc:
+        raise RegleIndisponible("Unité d'arrondi non prise en charge") from exc
     return {
         "code": code_taux,
         "assiette": format(base, "f"),
