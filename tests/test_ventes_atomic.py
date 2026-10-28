@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import importlib.util
+from datetime import datetime
 import sys
 import types
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -23,10 +24,22 @@ def sales(monkeypatch):
     db.fetch_data_filtered = Mock(return_value=[])
     db.get_supabase_client = Mock()
     utils = types.ModuleType('core.utils')
-    utils.get_local_now = Mock()
+    utils.get_local_now = Mock(return_value=datetime(2026, 10, 28, 10, 30))
     stock = types.ModuleType('modules.stocks.service')
     stock._stock_rpc_client = Mock()
     client = stock._stock_rpc_client.return_value
+    fiscal = types.ModuleType('core.fiscalite_service')
+
+    def fiscalite_fictive(ht, cash, date_facture):
+        assert date_facture == '2026-10-28'
+        tva = (ht * Decimal('0.19')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        before_stamp = ht + tva
+        stamp = (min((before_stamp * Decimal('0.01')).quantize(Decimal('0.01'),
+                     rounding=ROUND_HALF_UP), Decimal('2500')) if cash else Decimal(0))
+        return {'montant_tva': tva, 'montant_timbre': stamp,
+                'montant_ttc': before_stamp + stamp}
+
+    fiscal.fiscalite_facture_reglementee = Mock(side_effect=fiscalite_fictive)
 
     def rpc(name, params):
         assert name == 'erp_sale_transaction'
@@ -39,6 +52,7 @@ def sales(monkeypatch):
     modules = [
         ('core', types.ModuleType('core')),
         ('core.db_service', db),
+        ('core.fiscalite_service', fiscal),
         ('core.utils', utils),
         ('modules', types.ModuleType('modules')),
         ('modules.stocks', types.ModuleType('modules.stocks')),
@@ -73,6 +87,7 @@ def test_invoice_rpc_single_transaction_no_stock(sales):
     assert params['p_payload']['montant_ht'] == '185.00'
     assert params['p_payload']['lignes'][0]['total_ligne_ht'] == '195.00'
     assert params['p_payload']['montant_tva'] == '35.15'
+    assert params['p_payload']['date_facture'] == '2026-10-28'
     assert params['p_payload']['montant_ttc'] == '220.15'
     db.check_server_permission.assert_called_once_with('factures')
 
@@ -283,3 +298,11 @@ def test_sql_contract(sales):
     assert 'p_operation_id' in text
     assert 'Seuls les brouillons peuvent être validés ou annulés' in text
     assert 'Aucune entrée en stock' in text
+
+
+def test_refus_si_parametre_fiscal_non_valide(sales):
+    mod, _, client = sales
+    mod.fiscalite_facture_reglementee.side_effect = ValueError('Paramètre non confirmé')
+    with pytest.raises(ValueError, match='Paramètre non confirmé'):
+        facture(mod)
+    client.rpc.assert_not_called()
