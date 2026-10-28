@@ -484,7 +484,7 @@ def show_finance_page() -> None:
     st.title("🏦 Comptabilité & Trésorerie")
     tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
                     "🔗 Lettrage", "📖 Journal des écritures",
-                    "📚 Balance SCF (lecture seule)"])
+                    "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -511,6 +511,90 @@ def show_finance_page() -> None:
 
     with tabs[5]:
         _scf_balance_tab(user_id)
+    with tabs[6]:
+        _quittances_rapprochement_tab(user_id)
+
+
+def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
+    """Lecture intégrale bornée, échec si pagination tronquée ou erreur API."""
+    if table not in {"reglements", "lettrage", "factures"}:
+        raise ValueError("Table non autorisée pour l'audit des quittances")
+    response = (
+        get_supabase_client().table(table)
+        .select(colonnes, count="exact")
+        .range(0, 999)
+        .execute()
+    )
+    rows = response.data
+    count = response.count
+    if (not isinstance(rows, list) or isinstance(count, bool)
+            or not isinstance(count, int) or count != len(rows)
+            or len(rows) > 1000 or not all(isinstance(r, dict) for r in rows)):
+        raise ValueError("Historique de règlement tronqué ou incorrect")
+    return rows
+
+
+def _quittances_rapprochement_tab(user_id: str) -> None:
+    """Contrôle en lecture seule ; aucun reçu fiscal n'est créé ni exporté."""
+    st.subheader("Rapprochement des règlements et factures clients")
+    st.caption(
+        "État interne uniquement : les paiements partiels et les affectations "
+        "multiples sont vérifiés sans émission d'une quittance fiscale."
+    )
+    st.warning(
+        "Le timbre ne peut être liquidé automatiquement : règlement effectif, "
+        "exceptions et règle juridique datée doivent être validés. "
+        "Le timbre historique des factures n'est pas recalculé."
+    )
+    if not st.button("Vérifier les encaissements", key="finance_quittances_verifier"):
+        st.info("Contrôle à la demande, sans modification de la comptabilité.")
+        return
+    _mark_finance_activity()
+    access = _finance_access()  # Permission et compte actif relus au moment du clic.
+    if access is None or access[0] != user_id:
+        st.error("Autorisation Finance non vérifiable, aucune donnée affichée.")
+        return
+    from core.quittances_rapprochement import (
+        RapprochementIndisponible, rapprocher_reglements_clients,
+    )
+    try:
+        paiements = _lecture_complete_quittances(
+            "reglements",
+            "reglement_id,date_reglement,type_flux,partenaire_id,mode_paiement,"
+            "montant_total,montant_alloue,statut",
+        )
+        lettrages = _lecture_complete_quittances(
+            "lettrage",
+            "lettrage_id,reglement_id,document_id,type_document,montant_applique",
+        )
+        factures = _lecture_complete_quittances(
+            "factures",
+            "facture_id,client_id,statut,type_facture,montant_ttc,montant_paye",
+        )
+        resultat = rapprocher_reglements_clients(paiements, lettrages, factures)
+    except (RapprochementIndisponible, ValueError) as exc:
+        _LOG.warning("Rapprochement quittances refusé (%s)", type(exc).__name__)
+        st.error("Rapprochement impossible : historiques incomplets ou incohérents.")
+        return
+    except Exception as exc:
+        _LOG.warning("Lecture quittances inaccessible (%s)", type(exc).__name__)
+        st.error("Lecture Finance indisponible ; aucun total partiel présenté.")
+        return
+    st.metric("Encaissements rapprochés", resultat["nombre_reglements"])
+    st.metric("Total des encaissements (DZD)", resultat["montant_encaisse_total"])
+    if not resultat["reglements"]:
+        st.info("Aucun encaissement client validé.")
+        return
+    rows = [
+        {**{k: v for k, v in p.items() if k not in ("factures", "statut")},
+         "factures_lettrées": ", ".join(
+             f"{f['facture_id']} ({f['montant_applique']} DZD)"
+             for f in p["factures"]
+         )}
+        for p in resultat["reglements"]
+    ]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.caption("Ce tableau n'est pas une quittance légale et ne constate aucun droit de timbre.")
 
 
 def _scf_balance_tab(user_id: str) -> None:
