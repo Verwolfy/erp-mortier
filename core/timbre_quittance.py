@@ -47,6 +47,8 @@ def _regle_applicable(regles: Iterable[Mapping[str, Any]], instant: date) -> Map
             raise TimbreNonDisponible("Enregistrement de barème mal formé")
         if rule.get("code") != "TIMBRE_QUITTANCE_ESPECES_BAREME":
             continue
+        if rule.get("type_regle") != "calcul":
+            raise TimbreNonDisponible("Type de règle de quittance incorrect")
         if (rule.get("statut_juridique") != "en_vigueur"
                 or rule.get("niveau_confiance") != "CONFIRMEE"):
             continue
@@ -94,6 +96,8 @@ def calculer_timbre_quittance(
     minimum = _decimal(cfg.get("minimum_perception"), "minimum")
     if unite <= 0 or unite > Decimal("1e9"):
         raise TimbreNonDisponible("Unité de tranche invalide")
+    if minimum != minimum.quantize(Decimal("0.01")):
+        raise TimbreNonDisponible("Minimum : deux décimales maximum")
     bareme = cfg.get("tarifs")
     if not isinstance(bareme, list) or not bareme:
         raise TimbreNonDisponible("Classes de tarifs absentes")
@@ -105,6 +109,8 @@ def calculer_timbre_quittance(
         borne = (_decimal(part["jusqua"], "jusqua")
                  if part.get("jusqua") is not None else None)
         taux = _decimal(part.get("tarif_par_tranche"), "tarif_par_tranche")
+        if taux != taux.quantize(Decimal("0.01")):
+            raise TimbreNonDisponible("Tarif : deux décimales maximum")
         if (borne is None and index != len(bareme) - 1
                 or borne is not None and borne <= borne_precedente
                 or index == len(bareme) - 1 and borne is not None):
