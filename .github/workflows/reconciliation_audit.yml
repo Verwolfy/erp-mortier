@@ -2,7 +2,7 @@ name: ERP - audit de reconciliation sans modification
 
 on:
   push:
-    branches: [audit/reconciliation-reglementaire-20261028]
+    branches: [main, audit/reconciliation-reglementaire-20261028, ops/sauvegardes-erp-preflight-20261028]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -34,6 +34,15 @@ jobs:
         run: python scripts/auditer_parametres_reglementaires.py
       - name: Tests du scanner (doivent détecter les exemples erronés)
         run: python -m pytest -q tests/test_auditer_parametres_reglementaires.py
+      - name: Analyser syntaxe PowerShell (sans aucune sauvegarde)
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "scripts/sauvegarder_supabase_pg.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) { $errors; exit 1 }
       - name: Compilation
         run: python -m compileall -q core modules tests scripts
       - name: Suite complète ERP
