@@ -1,0 +1,17 @@
+# Registre documentaire préparatoire pour le futur Guide & Aide.
+# Les droits doivent être vérifiés côté serveur avant l'affichage.
+version: 1
+langue: fr
+pages:
+  - chemin: docs/guide/comptabilite/scf.md
+    module: comptabilite
+    titre: Comptabilité SCF
+    roles_autorises: [ADMIN, COMPTABLE, DIRECTION]
+  - chemin: docs/guide/rh/paie.md
+    module: rh
+    titre: Paie et confidentialité
+    roles_autorises: [ADMIN, RH]
+  - chemin: docs/guide/fiscalite/tva.md
+    module: fiscalite
+    titre: TVA et brouillons internes
+    roles_autorises: [ADMIN, COMPTABLE]
