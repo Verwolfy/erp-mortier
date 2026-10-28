@@ -47,17 +47,58 @@ def _uuid(value: Any) -> str:
     return ident
 
 
-def lire_balance_scf(*, autorisation_serveur: bool, db_client: Any = None) -> dict[str, Any]:
-    """Calcule la balance à partir des seules pièces VALIDEE vérifiées.
+def _exiger_droit_scf(db_client: Any) -> None:
+    """Revalide l'acteur depuis la session et les autorisations PostgreSQL.
 
-    Une anomalie de paginage, une pièce privée sans lignes ou une somme
-    déséquilibrée bloque l'intégralité de l'affichage : aucun total partiel.
+    Aucun booléen ni identifiant fourni par le code appelant ne peut tenir
+    lieu d'autorisation. Ce contrôle doit précéder toute lecture comptable.
     """
-    if autorisation_serveur is not True:
-        raise PermissionError("Lecture de la comptabilité SCF interdite")
+    try:
+        import streamlit as st
+        from config.roles import has_permission
+
+        if st.session_state.get("authenticated") is not True:
+            raise PermissionError("Session SCF non authentifiée")
+        actor = st.session_state.get("user")
+        actor_id = actor.get("user_id") if isinstance(actor, dict) else None
+        if not isinstance(actor_id, str) or not actor_id.strip():
+            raise PermissionError("Identité SCF manquante")
+        result = (
+            db_client.table("users")
+            .select("user_id,role,actif")
+            .eq("user_id", actor_id)
+            .limit(2)
+            .execute()
+        )
+        rows = result.data
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise PermissionError("Compte SCF non vérifiable")
+        account = rows[0]
+        active = account.get("actif")
+        if (
+            account.get("user_id") != actor_id
+            or (active is not True and str(active).strip().upper() not in
+                {"OUI", "TRUE", "1", "ACTIF", "ACTIVE", "YES"})
+            or not isinstance(account.get("role"), str)
+            or has_permission(account["role"], "SCF", "lecture") is not True
+        ):
+            raise PermissionError("Droit SCF absent ou révoqué")
+    except PermissionError:
+        raise
+    except Exception as exc:
+        raise PermissionError("Vérification des droits SCF indisponible") from exc
+
+
+def lire_balance_scf(*, db_client: Any = None) -> dict[str, Any]:
+    """Calcule la balance des pièces validées sous habilitation serveur fraîche.
+
+    Une anomalie de paginage, une pièce sans lignes ou une somme déséquilibrée
+    bloque tout l'affichage ; aucun total partiel n'est retourné.
+    """
     if db_client is None:
         from core.db_service import get_supabase_client
         db_client = get_supabase_client()
+    _exiger_droit_scf(db_client)
     try:
         response = (
             db_client.table("scf_pieces")
