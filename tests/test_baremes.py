@@ -136,3 +136,45 @@ def test_bareme_ambigu_refuse():
         calculer_bareme_progressif(
             "300", configuration, "2026-06-30", code="TEST_PROGRESSIF"
         )
+
+
+def test_selection_dans_registre_versionne():
+    ancien = regle(date_fin="2026-06-30")
+    nouveau = regle(date_effet="2026-07-01")
+    ancien["donnees"] = {"tranches": ancien.pop("tranches")}
+    nouveau["donnees"] = {"tranches": nouveau.pop("tranches")}
+    assert calculer_bareme_depuis_registre(
+        "300", [ancien, nouveau], "2026-06-30", code="TEST_PROGRESSIF"
+    )["montant"] == "30.00"
+    assert calculer_bareme_depuis_registre(
+        "300", [ancien, nouveau], "2026-07-01", code="TEST_PROGRESSIF"
+    )["montant"] == "30.00"
+
+
+def test_selection_refuse_chevauchement():
+    with pytest.raises(BaremeIndisponible):
+        calculer_bareme_depuis_registre(
+            "100", [regle(), regle()], "2026-01-01", code="TEST_PROGRESSIF"
+        )
+
+
+def test_selection_refuse_absence():
+    with pytest.raises(BaremeIndisponible):
+        calculer_bareme_depuis_registre(
+            "100", [], "2026-01-01", code="TEST_PROGRESSIF"
+        )
+
+
+def test_selection_ignore_projet_non_active():
+    assert calculer_bareme_depuis_registre(
+        "201", [regle(statut_juridique="projet"), regle()],
+        "2026-01-01", code="TEST_PROGRESSIF"
+    )["montant"] == "10.20"
+
+
+def test_selection_refuse_type_incompatible():
+    with pytest.raises(BaremeIndisponible):
+        calculer_bareme_depuis_registre(
+            "201", [regle(type_regle="echeance")],
+            "2026-01-01", code="TEST_PROGRESSIF"
+        )
