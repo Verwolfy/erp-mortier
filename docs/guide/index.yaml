@@ -15,3 +15,7 @@ pages:
     module: fiscalite
     titre: TVA et brouillons internes
     roles_autorises: [ADMIN, COMPTABLE]
+  - chemin: docs/guide/fiscalite/timbre.md
+    module: fiscalite
+    titre: Timbre de quittance — règlements
+    roles_autorises: [ADMIN, COMPTABLE]
