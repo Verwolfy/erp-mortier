@@ -106,12 +106,22 @@ BEGIN
 END;
 $func$;
 
-CREATE TRIGGER paie_v2_immutabilite_bulletins
-  BEFORE INSERT OR UPDATE OR DELETE ON public.paie_bulletins_v2
-  FOR EACH ROW EXECUTE FUNCTION public.paie_v2_garder_bulletins();
-CREATE TRIGGER paie_v2_immutabilite_lignes
-  BEFORE INSERT OR UPDATE OR DELETE ON public.paie_lignes_v2
-  FOR EACH ROW EXECUTE FUNCTION public.paie_v2_garder_lignes();
+DO $triggers$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+      WHERE tgrelid='public.paie_bulletins_v2'::regclass AND tgname='paie_v2_immutabilite_bulletins' AND NOT tgisinternal) THEN
+    CREATE TRIGGER paie_v2_immutabilite_bulletins
+      BEFORE INSERT OR UPDATE OR DELETE ON public.paie_bulletins_v2
+      FOR EACH ROW EXECUTE FUNCTION public.paie_v2_garder_bulletins();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+      WHERE tgrelid='public.paie_lignes_v2'::regclass AND tgname='paie_v2_immutabilite_lignes' AND NOT tgisinternal) THEN
+    CREATE TRIGGER paie_v2_immutabilite_lignes
+      BEFORE INSERT OR UPDATE OR DELETE ON public.paie_lignes_v2
+      FOR EACH ROW EXECUTE FUNCTION public.paie_v2_garder_lignes();
+  END IF;
+END;
+$triggers$;
 
 ALTER TABLE public.paie_periodes_v2 ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.paie_bulletins_v2 ENABLE ROW LEVEL SECURITY;
