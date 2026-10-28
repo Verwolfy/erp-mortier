@@ -47,6 +47,45 @@ CREATE TABLE IF NOT EXISTS public.paie_lignes_v2 (
     UNIQUE (bulletin_id, numero)
 );
 
+-- Une période clôturée ne peut être réouverte ni supprimée.
+CREATE OR REPLACE FUNCTION public.paie_v2_garder_periodes()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public
+AS $func$
+BEGIN
+    IF TG_OP='INSERT' THEN
+        IF NEW.statut<>'OUVERTE' THEN
+            RAISE EXCEPTION 'Periode non ouverte a la creation' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF OLD.statut='CLOTUREE' THEN
+        RAISE EXCEPTION 'Periode de paie cloturee immuable' USING ERRCODE='23514';
+    END IF;
+    IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+    IF NEW.statut='CLOTUREE' THEN
+        PERFORM 1 FROM public.paie_bulletins_v2
+          WHERE periode_id=OLD.periode_id AND statut='PREPARE';
+        IF FOUND THEN
+            RAISE EXCEPTION 'Periode de paie avec brouillons' USING ERRCODE='23514';
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$func$;
+
+DO $triggers$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+      WHERE tgrelid='public.paie_periodes_v2'::regclass
+        AND tgname='paie_v2_cloture_periodes' AND NOT tgisinternal) THEN
+    CREATE TRIGGER paie_v2_cloture_periodes
+      BEFORE INSERT OR UPDATE OR DELETE ON public.paie_periodes_v2
+      FOR EACH ROW EXECUTE FUNCTION public.paie_v2_garder_periodes();
+  END IF;
+END;
+$triggers$;
+
 CREATE OR REPLACE FUNCTION public.paie_v2_garder_bulletins()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = pg_catalog, public
