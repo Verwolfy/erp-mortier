@@ -75,7 +75,7 @@ def preparer_tva_periodique(
         if piece.get("statut") != "VALIDE":
             raise DeclarationNonDisponible("Pièce non validée")
         nature = piece.get("nature_tva")
-        if nature not in totals:
+        if not isinstance(nature, str) or nature not in totals:
             raise DeclarationNonDisponible("Nature fiscale non prise en charge")
         if (piece.get("classification_verifiee") is not True
                 or not isinstance(piece.get("source_juridique"), str)
