@@ -85,6 +85,12 @@ def simuler_irg_mensuel(
     config = regle.get("donnees")
     if not isinstance(config, Mapping):
         raise IRGNonDisponible("Configuration IRG absente")
+    if (not isinstance(regle.get("source"), str)
+            or not regle["source"].strip()):
+        raise IRGNonDisponible("Source juridique IRG manquante")
+    _date(regle.get("date_verification"))
+    if not isinstance(config.get("tranches"), list) or not config["tranches"]:
+        raise IRGNonDisponible("Tranches réglementaires manquantes")
     if _field(config, "periode_an") != 12:
         raise IRGNonDisponible("Calcul IRG réservé aux revenus mensuels")
     plafond_exonere = _field(config, "exoneration")
@@ -125,7 +131,9 @@ def simuler_irg_mensuel(
             facteur = _ratio(ab, "multiplicateur_num", "multiplicateur_den")
             deduction = _ratio(ab, "deduction_num", "deduction_den")
             apres = max(net_apres_abat1 * facteur - deduction, Decimal(0))
-            abat2 = max(net_apres_abat1 - apres, Decimal(0))
+            if apres > net_apres_abat1:
+                raise IRGNonDisponible("Second abattement non réducteur : paramètres incohérents")
+            abat2 = net_apres_abat1 - apres
             final = apres
     centime = Decimal("0.01")
     return {
