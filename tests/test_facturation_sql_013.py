@@ -39,12 +39,9 @@ def test_rpc_service_role_seulement():
 
 
 def test_pas_de_modification_des_montants_des_factures_anciennes():
-    # Les transitions de statut d'un brouillon sont déjà prévues en 005.
-    # Seule une réécriture des chiffres fiscaux validés serait interdite.
-    import re
-    assert re.search(
-        r"\\bUPDATE\\s+public\\.factures\\s+SET\\s+"
-        r"(montant_ht|montant_tva|montant_ttc|taux_tva)\\b",
-        SQL, re.IGNORECASE,
-    ) is None
+    # Le passage de BROUILLON à VALIDE peut modifier uniquement le statut.
+    # Aucune écriture en place des taux ou montants calculés n'est admise.
+    compact = " ".join(SQL.split()).upper()
+    for field in ("MONTANT_HT", "MONTANT_TVA", "MONTANT_TTC", "TAUX_TVA"):
+        assert f"UPDATE PUBLIC.FACTURES SET {field}" not in compact
     assert "DELETE FROM public.factures" not in SQL
