@@ -63,6 +63,12 @@ BEGIN
         RAISE EXCEPTION 'Periode de paie cloturee immuable' USING ERRCODE='23514';
     END IF;
     IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+    IF NEW.periode_id IS DISTINCT FROM OLD.periode_id
+       OR NEW.annee IS DISTINCT FROM OLD.annee
+       OR NEW.mois IS DISTINCT FROM OLD.mois THEN
+        RAISE EXCEPTION 'Periode de paie : identite et dates immuables'
+          USING ERRCODE='23514';
+    END IF;
     IF NEW.statut='CLOTUREE' THEN
         PERFORM 1 FROM public.paie_bulletins_v2
           WHERE periode_id=OLD.periode_id AND statut='PREPARE';
@@ -91,7 +97,7 @@ RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = pg_catalog, public
 AS $func$
 DECLARE
-    v_periode text;
+    v_periode record;
 BEGIN
     IF TG_OP='DELETE' THEN
         IF OLD.statut='VALIDE' THEN
@@ -103,10 +109,26 @@ BEGIN
         IF NEW.statut <> 'PREPARE' OR NEW.valide_le IS NOT NULL THEN
             RAISE EXCEPTION 'Insertion bulletin valide interdite' USING ERRCODE='23514';
         END IF;
+        SELECT * INTO v_periode FROM public.paie_periodes_v2
+          WHERE periode_id=NEW.periode_id FOR SHARE;
+        IF NOT FOUND OR v_periode.statut IS DISTINCT FROM 'OUVERTE'
+           OR EXTRACT(YEAR FROM NEW.date_paie)::integer <> v_periode.annee
+           OR EXTRACT(MONTH FROM NEW.date_paie)::integer <> v_periode.mois THEN
+            RAISE EXCEPTION 'Bulletin hors periode de paie ouverte'
+              USING ERRCODE='23514';
+        END IF;
         RETURN NEW;
     END IF;
     IF OLD.statut='VALIDE' THEN
         RAISE EXCEPTION 'Bulletin valide immuable' USING ERRCODE='23514';
+    END IF;
+    SELECT * INTO v_periode FROM public.paie_periodes_v2
+      WHERE periode_id=NEW.periode_id FOR SHARE;
+    IF NOT FOUND OR v_periode.statut IS DISTINCT FROM 'OUVERTE'
+       OR EXTRACT(YEAR FROM NEW.date_paie)::integer <> v_periode.annee
+       OR EXTRACT(MONTH FROM NEW.date_paie)::integer <> v_periode.mois THEN
+        RAISE EXCEPTION 'Modification bulletin hors periode ouverte'
+          USING ERRCODE='23514';
     END IF;
     IF NEW.statut='VALIDE' THEN
         -- Validation uniquement du statut ; les assiettes et preuves doivent
@@ -128,10 +150,7 @@ BEGIN
             RAISE EXCEPTION 'Validation paie : modification simultanee interdite'
               USING ERRCODE='23514';
         END IF;
-        SELECT statut INTO v_periode FROM public.paie_periodes_v2
-          WHERE periode_id=NEW.periode_id FOR SHARE;
-        IF v_periode IS DISTINCT FROM 'OUVERTE'
-           OR NEW.preuve_calcul->>'statut_irg' IS DISTINCT FROM 'CONFIRMEE'
+        IF NEW.preuve_calcul->>'statut_irg' IS DISTINCT FROM 'CONFIRMEE'
            OR nullif(btrim(NEW.preuve_calcul->>'source_irg'),'') IS NULL
            OR nullif(btrim(NEW.preuve_calcul->>'source_cnas'),'') IS NULL THEN
             RAISE EXCEPTION 'Preuve fiscale/sociale ou periode manquante' USING ERRCODE='23514';
