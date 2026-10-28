@@ -425,15 +425,48 @@ def fetch_data_paginated(table_name: str, *, page_size: int = 500,
     raise ValueError(f"Résultat trop volumineux : plus de {max_rows} lignes")
 
 
+def _signal_sheets_failure(table_name: str, action: str,
+                          exc: Exception) -> None:
+    """Report an uncertain Sheets backup after Supabase success."""
+    _LOG.error(
+        "Google Sheets backup unconfirmed: %s %s (%s)",
+        action, table_name, type(exc).__name__
+    )
+
+    try:
+        st.session_state["_erp_sheets_sync_alert"] = (
+            f"{action} sur {table_name} confirme dans Supabase, "
+            "mais sauvegarde Google Sheets non confirmee. "
+            "Ne recommencez pas cette operation. "
+            "Verifiez Supabase et Google Sheets avant toute nouvelle tentative."
+        )
+    except Exception as state_exc:
+        _LOG.warning(
+            "Session alert unavailable (%s)",
+            type(state_exc).__name__
+        )
+
+    try:
+        log_error(
+            "Google Sheets sync failure: " + table_name,
+            type(exc).__name__
+        )
+    except Exception as log_exc:
+        _LOG.warning(
+            "Google Sheets error log unavailable (%s)",
+            type(log_exc).__name__
+        )
+
+
 def _sync_google_sheets_insert(table_name: str, data: dict[str, Any]) -> None:
     if table_name in _NO_SHEETS_SYNC:
         return
     config = SCHEMA_CONFIG[table_name]
     try:
         ligne = [data.get(col, "") for col in config["cols"]]
-        append_rows_batch(config["module"], config["sheet"], [ligne])
+        append_rows_batch(config["module"], config["sheet"], [ligne], config["cols"])
     except Exception as exc:
-        log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", type(exc).__name__)
+        _signal_sheets_failure(table_name, "INSERT", exc)
 
 
 def _sync_google_sheets_update(table_name: str, id_col: str, target_id: Any,
@@ -445,7 +478,7 @@ def _sync_google_sheets_update(table_name: str, id_col: str, target_id: Any,
         update_multiple_cells_by_id(config["module"], config["sheet"], id_col,
                                     target_id, updates)
     except Exception as exc:
-        log_error(f"Désynchronisation Google Sheets pour {config['sheet']}", type(exc).__name__)
+        _signal_sheets_failure(table_name, "UPDATE", exc)
 
 
 def insert_hybrid(table_name: str, data: dict):

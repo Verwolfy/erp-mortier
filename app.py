@@ -234,6 +234,16 @@ def main() -> None:
         return
     role = user["role"]
 
+    sync_alert = st.session_state.get("_erp_sheets_sync_alert")
+    if sync_alert:
+        st.error(sync_alert)
+        if st.button(
+            "Alerte verifiee : masquer",
+            key="_erp_sheets_alert_ack"
+        ):
+            st.session_state.pop("_erp_sheets_sync_alert", None)
+            st.rerun()
+
     try:
         menu_options = _allowed_menu(role)
     except Exception as exc:

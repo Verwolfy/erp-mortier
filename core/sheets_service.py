@@ -56,17 +56,35 @@ def get_all_records(module_name: str, sheet_name: str) -> list:
         st.error(f"Erreur de lecture Google Sheets [{module_name}/{sheet_name}]: {e}")
         return []
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=5),
-    retry=retry_if_exception_type(Exception),
-    reraise=True
-)
-def append_rows_batch(module_name: str, sheet_name: str, rows: list):
-    """Ajoute plusieurs lignes en une seule requête API."""
+# Pas de retry automatique sur les ajouts de lignes.
+def append_rows_batch(module_name: str, sheet_name: str, rows: list,
+                      column_names: list[str] | None = None):
+    """Ajoute les lignes selon les en-tetes reels Google Sheets."""
     if not rows:
         return
+
     worksheet = get_worksheet(module_name, sheet_name)
+
+    if column_names is not None:
+        headers = worksheet.row_values(1)
+
+        if (
+            not headers
+            or len(headers) != len(set(headers))
+            or len(column_names) != len(set(column_names))
+            or len(headers) != len(column_names)
+            or set(headers) != set(column_names)
+        ):
+            raise ValueError(
+                f"En-tetes incompatibles : {module_name}/{sheet_name}"
+            )
+
+        if any(len(row) != len(column_names) for row in rows):
+            raise ValueError("Nombre de valeurs incorrect")
+
+        indexes = [column_names.index(header) for header in headers]
+        rows = [[row[index] for index in indexes] for row in rows]
+
     worksheet.append_rows(rows)
 
 @retry(
@@ -107,28 +125,38 @@ def update_multiple_cells_by_id(module_name: str, sheet_name: str, id_col: str, 
     Met à jour plusieurs colonnes d'une même ligne en une seule requête API groupée.
     updates est un dictionnaire: {'nom_colonne': nouvelle_valeur, ...}
     """
+    if not updates:
+        return
+
     ws = get_worksheet(module_name, sheet_name)
     headers = ws.row_values(1)
 
-    try:
-        id_col_idx = headers.index(id_col)
-    except ValueError:
-        return  # La colonne ID n'existe pas
+    if not headers or len(headers) != len(set(headers)):
+        raise ValueError("En-tetes Google Sheets invalides")
 
-    col_values = ws.col_values(id_col_idx + 1)
-    try:
-        row_idx = col_values.index(str(target_id)) + 1
-    except ValueError:
-        return  # L'ID ciblé n'a pas été trouvé
+    missing = [key for key in [id_col, *updates] if key not in headers]
+    if missing:
+        raise KeyError(f"Colonnes manquantes : {missing}")
 
-    cells_to_update = []
-    for col_name, new_val in updates.items():
-        if col_name in headers:
-            col_idx = headers.index(col_name) + 1
-            cells_to_update.append(gspread.Cell(row=row_idx, col=col_idx, value=new_val))
+    values = ws.col_values(headers.index(id_col) + 1)
+    matches = [
+        i for i, value in enumerate(values, start=1)
+        if i > 1 and str(value) == str(target_id)
+    ]
 
-    if cells_to_update:
-        ws.update_cells(cells_to_update)
+    if len(matches) != 1:
+        raise ValueError("Identifiant absent ou duplique dans Google Sheets")
+
+    cells = [
+        gspread.Cell(
+            row=matches[0],
+            col=headers.index(column) + 1,
+            value=value
+        )
+        for column, value in updates.items()
+    ]
+
+    ws.update_cells(cells)
 
 def check_optimistic_lock(module_name: str, sheet_name: str, id_col: str, target_id: str, lock_col: str, expected_lock_value: str) -> bool:
     """
