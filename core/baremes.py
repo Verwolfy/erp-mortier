@@ -10,6 +10,8 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping
 
+from core.arrondis import ArrondiNonDisponible, arrondir_multiple
+
 
 class BaremeIndisponible(ValueError):
     """Barème absent, non vérifié, mal formé ou inapplicable."""
@@ -116,10 +118,14 @@ def calculer_bareme_progressif(
         })
         if plafond is not None:
             precedent = plafond
+    try:
+        arrondi = arrondir_multiple(montant, quantum)
+    except ArrondiNonDisponible as exc:
+        raise BaremeIndisponible("Unité d'arrondi non prise en charge") from exc
     return {
         "code": code,
         "assiette": format(base, "f"),
-        "montant": format(montant.quantize(quantum, rounding=ROUND_HALF_UP), "f"),
+        "montant": format(arrondi, "f"),
         "date_operation": instant.isoformat(),
         "date_effet": debut.isoformat(),
         "source": source.strip(),
