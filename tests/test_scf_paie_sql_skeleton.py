@@ -42,3 +42,9 @@ def test_aucune_table_existante_modifiee():
                           "ALTER TABLE public.factures", "UPDATE public.factures",
                           "ALTER TABLE public.fiches_de_paie"):
             assert forbidden not in sql
+
+def test_clotures_non_reouvrables():
+    assert "Exercice cloture immuable" in SCF
+    assert "Periode de paie cloturee immuable" in PAIE
+    assert "scf_exercices_cloture" in SCF
+    assert "paie_v2_cloture_periodes" in PAIE
