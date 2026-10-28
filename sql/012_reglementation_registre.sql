@@ -77,6 +77,13 @@ REVOKE ALL ON public.schema_migrations FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.parametres_reglementaires FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.regles_reglementaires FROM PUBLIC, anon, authenticated;
 
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.parametres_reglementaires,
+    public.regles_reglementaires TO service_role;
+GRANT SELECT,INSERT ON public.schema_migrations TO service_role;
+GRANT USAGE,SELECT ON SEQUENCE
+    public.parametres_reglementaires_parametre_id_seq,
+    public.regles_reglementaires_regle_id_seq TO service_role;
+
 -- Ne pas ajouter de GRANT ni de politiques permissives côté navigateur.
 -- L'application devra lire via son service serveur autorisé, après audit.
 -- Aucune valeur officielle n'est chargee par cette migration.
