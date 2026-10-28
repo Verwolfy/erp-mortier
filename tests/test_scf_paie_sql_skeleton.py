@@ -48,3 +48,12 @@ def test_clotures_non_reouvrables():
     assert "Periode de paie cloturee immuable" in PAIE
     assert "scf_exercices_cloture" in SCF
     assert "paie_v2_cloture_periodes" in PAIE
+
+
+def test_validation_ne_permet_pas_de_falsifier_les_montants():
+    for field in ("piece_id", "exercice_id", "date_ecriture", "reference", "document_source"):
+        assert f"NEW.{field} IS DISTINCT FROM OLD.{field}" in SCF
+    for field in ("salaire_brut", "assiette_irg", "irg", "net_a_payer", "preuve_calcul"):
+        assert f"NEW.{field} IS DISTINCT FROM OLD.{field}" in PAIE
+    assert "Validation SCF : modification simultanee interdite" in SCF
+    assert "Validation paie : modification simultanee interdite" in PAIE
