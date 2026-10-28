@@ -349,7 +349,7 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         st.error(str(exc))
         return
     st.info(f"Net HT : {totals['net_a_payer']:,.2f} DZD | TVA : {totals['total_tva']:,.2f} DZD | TTC : {totals['total_ttc']:,.2f} DZD")
-    st.caption("Les taux de TVA/timbre sont ceux du service actuel, à valider par la comptabilité.")
+    st.caption("Prévisualisation calculée avec les paramètres réglementaires confirmés à la date de facturation ; aucune valeur par défaut. La taxation standard ne couvre pas encore les exonérations et taux réduits.")
     if st.button("Enregistrer le brouillon", key="vente_draft_submit", type="primary", on_click=_mark_ventes_activity):
         _start_operation("draft", user_id, {
             "client_id": client_id, "date_echeance": str(echeance), "panier": deepcopy(cart),
