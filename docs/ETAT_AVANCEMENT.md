@@ -37,3 +37,16 @@ Ce fichier reprend les contrôles factuels. Ne pas annoncer la réconciliation t
 **ARRÊT POUR VALIDATION** avant toute migration supplémentaire en base, toute homogénéisation des droits, et toute activation des calculs réglementaires.
 
 La validation par un expert-comptable algérien est nécessaire avant toute production réglementaire.
+
+
+## Lot Finance / Quittances — branche de travail
+
+Nouveau moteur pur `core/quittances_rapprochement.py` : rapprochement des
+encaissements, lettrages et factures, y compris paiements partiels et un
+règlement affecté à plusieurs documents. L'interface Finance charge une
+synthèse non fiscale seulement à la demande, avec contrôle des droits.
+Tests de refus si le registre est incomplet ou incohérent.
+
+Aucun reçu fiscal officiel et aucune écriture SQL ne sont émis par ce
+module. Les 6 taux fiscaux fixes détectés par l'audit ne sont pas encore
+remplacés : maintien du circuit actuel pour éviter une rupture de facturation.
