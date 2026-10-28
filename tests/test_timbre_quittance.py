@@ -13,6 +13,7 @@ from core.timbre_quittance import TimbreNonDisponible, calculer_timbre_quittance
 def regle(**overrides):
     law = {
         "code": "TIMBRE_QUITTANCE_ESPECES_BAREME",
+        "type_regle": "calcul",
         "date_effet": "2025-01-01",
         "date_fin": None,
         "date_verification": "2026-10-28",
@@ -130,3 +131,15 @@ def test_configuration_mal_formee_refusee(field, value):
     data["donnees"][field] = value
     with pytest.raises(TimbreNonDisponible):
         simulate("20000", rules=[data])
+
+
+def test_type_progressif_refuse_sur_timbre():
+    with pytest.raises(TimbreNonDisponible):
+        simulate("20000", rules=[regle(type_regle="progressif")])
+
+
+def test_tarif_au_millieme_refuse():
+    r = regle()
+    r["donnees"]["tarifs"][0]["tarif_par_tranche"] = "1.001"
+    with pytest.raises(TimbreNonDisponible):
+        simulate("20000", rules=[r])
