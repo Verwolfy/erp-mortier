@@ -78,7 +78,13 @@ def calculer_bareme_progressif(
     quantum = _nombre(unite_arrondi, "unite_arrondi")
     if base < 0 or base >= Decimal("1e15") or quantum <= 0:
         raise BaremeIndisponible("Assiette ou arrondi invalide")
-    tranches = regle.get("tranches")
+    donnees = regle.get("donnees")
+    if donnees is not None:
+        if not isinstance(donnees, Mapping) or "tranches" in regle:
+            raise BaremeIndisponible("Données de barème ambiguës")
+        tranches = donnees.get("tranches")
+    else:
+        tranches = regle.get("tranches")
     if not isinstance(tranches, list) or not tranches:
         raise BaremeIndisponible("Liste de tranches absente")
     montant = Decimal(0)
