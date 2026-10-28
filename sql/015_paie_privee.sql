@@ -109,6 +109,25 @@ BEGIN
         RAISE EXCEPTION 'Bulletin valide immuable' USING ERRCODE='23514';
     END IF;
     IF NEW.statut='VALIDE' THEN
+        -- Validation uniquement du statut ; les assiettes et preuves doivent
+        -- avoir été préparées et contrôlées avant la transaction.
+        IF NEW.bulletin_id IS DISTINCT FROM OLD.bulletin_id
+           OR NEW.employe_id IS DISTINCT FROM OLD.employe_id
+           OR NEW.periode_id IS DISTINCT FROM OLD.periode_id
+           OR NEW.date_paie IS DISTINCT FROM OLD.date_paie
+           OR NEW.salaire_brut IS DISTINCT FROM OLD.salaire_brut
+           OR NEW.assiette_sociale IS DISTINCT FROM OLD.assiette_sociale
+           OR NEW.assiette_irg IS DISTINCT FROM OLD.assiette_irg
+           OR NEW.cotisation_salarie IS DISTINCT FROM OLD.cotisation_salarie
+           OR NEW.cotisation_employeur IS DISTINCT FROM OLD.cotisation_employeur
+           OR NEW.irg IS DISTINCT FROM OLD.irg
+           OR NEW.autres_retenues IS DISTINCT FROM OLD.autres_retenues
+           OR NEW.net_a_payer IS DISTINCT FROM OLD.net_a_payer
+           OR NEW.preuve_calcul IS DISTINCT FROM OLD.preuve_calcul
+           OR NEW.cree_le IS DISTINCT FROM OLD.cree_le THEN
+            RAISE EXCEPTION 'Validation paie : modification simultanee interdite'
+              USING ERRCODE='23514';
+        END IF;
         SELECT statut INTO v_periode FROM public.paie_periodes_v2
           WHERE periode_id=NEW.periode_id FOR SHARE;
         IF v_periode IS DISTINCT FROM 'OUVERTE'
