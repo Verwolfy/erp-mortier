@@ -1,28 +1,22 @@
-# Lot C — moteur réglementaire (socle isolé)
+# Lot C — socle réglementaire algérien, état de développement
 
-Statut : **développé et testé isolément, NON intégré à la production**.
+**Statut : PR #2 ouverte en brouillon, non fusionnée, non déployée ; aucun paramètre juridique activé.**
 
-## Périmètre livré
-- core/reglementation.py : sélection d'un paramètre réglementaire par code et date d'opération.
-- Blocage des règles non confirmées, des projets, des sources absentes et des règles contradictoires.
-- Calcul décimal générique traçable (assiette, taux, date, source, résultat).
-- tests/test_reglementation.py : tests avec valeurs fictives, sans taux juridique codé en dur.
+## Développement réalisé
+- `core/reglementation.py` : sélection des taux unitaires validés par code et date d'opération, montants Decimal et traçabilité.
+- `core/baremes.py` : moteur générique de tranches marginales avec sélection d'une seule version applicable ; refus des règles non vérifiées, des chevauchements, des valeurs invalides et des projets. Compatible avec le format JSONB `donnees.tranches`.
+- `sql/012_reglementation_registre.sql` : **proposition de migration, non exécutée** : registres réglementaires datés, suivi de migrations avec empreinte, RLS sur les nouvelles tables et refus d'accès direct anon/authenticated.
+- Tests locaux sur `tests/test_baremes.py` et `tests/test_reglementation_sql_012.py` : **40 réussis** ; la compilation du nouveau moteur réussit. Ce ne sont pas des tests PostgreSQL et la suite ERP complète n'a pas encore été exécutée.
 
-## Commande de tests
-Depuis la racine du dépôt :
-python -m pytest -q tests/test_reglementation.py
+## Format de données
+Une entrée `regles_reglementaires` de type `progressif` contient dans `donnees` une liste `tranches` avec `jusqua` (borne supérieure ou null pour la dernière tranche ouverte) et `taux` (fraction décimale). L'algorithme applique les taux marginalement et arrondit une fois en fin de calcul. Les valeurs de test sont fictives et ne doivent jamais être présentées comme un barème IRG officiel.
 
-## Hors périmètre et blocages
-- Pas de branchement aux factures, bulletins, déclarations ou interfaces Streamlit.
-- Pas de lecture/écriture Supabase ou Google Sheets.
-- Aucune règle algérienne n'a été certifiée à ce stade ; aucune valeur juridique n'est chargée.
-- Avant intégration : auditer les sources officielles, créer les migrations SQL numérotées et leur suivi, garantir la cohérence SQL/Python, relancer les tests complets et mettre à jour Guide & Aide.
-- Ne jamais recalculer une pièce fiscale ou sociale déjà validée en l'écrasant.
-- Toute règle à fort impact doit être confirmée avant activation, conformément à la phase R du cahier des charges.
+## Contrôles obligatoires avant la mise en service
+1. Audit des textes officiels et validation des paramètres fiscaux et sociaux ; aucun taux légal en dur.
+2. Revue et tests SQL de la migration 012 sur **TEST**, incluant privilèges RLS. Son exécution nécessite l'accord distinct sur les modifications des droits ; ne pas toucher à la base principale.
+3. Préparation d'un lanceur transactionnel des migrations avec empreinte SHA-256, contrôle du schéma et gestion d'erreur ; les tests statiques ne prouvent pas l'exécution SQL.
+4. Brancher les services Finance, Ventes, RH à la source unique des paramètres ; remplacer **en même temps** TVA/timbre côté Python et SQL, sans casser les documents validés.
+5. Préserver les changements locaux du Guide & Aide, README et de la sauvegarde Google Sheets avant toute réconciliation avec la branche.
+6. Exécuter la suite complète de tests ERP, contrôler les secrets et vérifier la branche Streamlit déployée avant fusion/production.
 
-## Suite recommandée
-1. Phase R : validation officielle et versionnement de la réglementation algérienne.
-2. Lot C : registre SQL, lecture contrôlée et remplacement des taux codés en dur en Python **et en SQL**.
-3. Lot D : plan comptable SCF et journaux.
-4. Lot E : fiscalité et déclarations.
-5. Lot F : paie, CNAS, CASNOS, IRG et bulletins.
+Ces développements ne sont pas encore visibles dans l'application Streamlit.
