@@ -42,3 +42,18 @@ et paginée, devra remplacer l'affichage.
 
 **Prérequis :** migration 014 après autorisation RLS/GRANT et tests sur TEST.
 Avant cela, l'onglet affiche une indisponibilité, jamais des chiffres fictifs.
+
+
+## Renforcement des contrôles (lot de sécurisation)
+
+Le lecteur SCF vérifie lui-même, **au moment de la requête**, la session
+authentifiée, l'identifiant du compte actif et sa permission `SCF/lecture`.
+L'interface ne peut plus lui transmettre une autorisation booléenne.
+
+Les migrations 014 et 015 empêchent le changement de dates et d'identifiants
+des périodes/exercices, y compris au moment de leur clôture. Un nouveau document
+SCF ou un bulletin de paie n'est pas accepté sur une période déjà clôturée.
+
+Ces protections SQL sont **encore des propositions non appliquées**. Leurs
+tests Python et contrôles statiques ne remplacent pas des essais transactionnels
+dans Supabase TEST. Aucun jeu de données réel n'a été modifié.
