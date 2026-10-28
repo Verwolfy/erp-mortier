@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 class BaremeIndisponible(ValueError):
@@ -126,3 +126,44 @@ def calculer_bareme_progressif(
         "date_verification": verification.isoformat(),
         "tranches": details,
     }
+
+
+def choisir_bareme_reglementaire(
+    lignes: Iterable[Mapping[str, Any]], code: str, date_operation: date | str,
+) -> Mapping[str, Any]:
+    """Choisir une seule version confirmée, ou refuser les versions ambiguës."""
+    if not isinstance(code, str) or not code.strip():
+        raise BaremeIndisponible("Code réglementaire obligatoire")
+    instant = _date(date_operation, "date_operation")
+    candidats = []
+    for regle in lignes:
+        if not isinstance(regle, Mapping):
+            raise BaremeIndisponible("Ligne réglementaire invalide")
+        if regle.get("code") != code:
+            continue
+        if regle.get("statut_juridique") != "en_vigueur" or regle.get("niveau_confiance") != "CONFIRMEE":
+            continue
+        debut = _date(regle.get("date_effet"), "date_effet")
+        fin = (_date(regle["date_fin"], "date_fin")
+               if regle.get("date_fin") is not None else None)
+        if fin is not None and fin < debut:
+            raise BaremeIndisponible("Intervalle de dates invalide")
+        if debut <= instant and (fin is None or instant <= fin):
+            candidats.append(regle)
+    if len(candidats) != 1:
+        raise BaremeIndisponible(f"{code}: {len(candidats)} version(s) applicable(s)")
+    if candidats[0].get("type_regle", "progressif") != "progressif":
+        raise BaremeIndisponible("Type de règle non progressif")
+    return candidats[0]
+
+
+def calculer_bareme_depuis_registre(
+    assiette: int | str | Decimal,
+    lignes: Iterable[Mapping[str, Any]],
+    date_operation: date | str,
+    *,
+    code: str,
+) -> dict[str, Any]:
+    """Sélection et calcul sans valeur implicite, à partir du registre versionné."""
+    regle = choisir_bareme_reglementaire(lignes, code, date_operation)
+    return calculer_bareme_progressif(assiette, regle, date_operation, code=code)
