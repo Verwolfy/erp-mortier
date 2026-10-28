@@ -47,3 +47,21 @@ Avant `git pull` local, sauvegarder ou isoler ces modifications ; ne jamais écr
 - Fusion GitHub `main` uniquement après le contrôle ci-dessus.
 - Vérifier la branche réellement déployée par Streamlit avant de déclarer l'application mise à jour.
 - Contrôles production post-fusion sur tables, droits et historique des migrations.
+
+
+## Optimisation 019 — index SCF/paie
+
+Le contrôle Supabase de performance a détecté 3 clés étrangères non indexées
+dans les nouvelles tables. Migration additive `sql/019_indexes_scf_paie.sql`
+appliquée sur TEST puis PRODUCTION sous le nom
+`erp_019_indexes_scf_paie_20261028`.
+
+Quatre index installés : journal des pièces SCF, numéro de compte des lignes
+SCF, période des bulletins, et recherche des pièces validées par date.
+Aucune écriture métier modifiée. Les autres recommandations de performance
+concernent les tables historiques et restent hors de ce déploiement.
+
+La validation transactionnelle SCF sur TEST a été effectuée dans un
+`BEGIN/ROLLBACK` : pièce équilibrée validée, mutation des lignes refusée,
+clôture d'exercice irréversible, nouvelle pièce refusée en période close.
+Après rollback, les compteurs de données de test sont nuls.
