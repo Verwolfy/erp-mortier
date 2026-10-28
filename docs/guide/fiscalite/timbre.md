@@ -63,3 +63,29 @@ Il ne faut ni supprimer ni réécrire les factures anciennes.
 5. Vérifier les scénarios SQL transactionnels, idempotence et non-régression.
 6. Activer ensuite simultanément l'interface et le calcul serveur ;
    ne jamais utiliser des taux de simulation comme valeurs de production.
+
+
+## Intégration Finance — état des règlements (lecture seule)
+
+La rubrique **Finance → Rapprochement quittances** vérifie les enregistrements
+`reglements`, `lettrage` et `factures` à la demande. Elle exige un compte
+Finance actif avec droit de lecture confirmé, une lecture complète et
+cohérente des trois registres, puis les contrôles suivants :
+
+- plusieurs paiements peuvent régler partiellement une même facture ;
+- un paiement peut être affecté à plusieurs factures, sans multiplier la base
+  potentielle du timbre ;
+- une somme non affectée reste visible, sans générer de facture fictive ;
+- référence d'encaissement, client et facture doivent correspondre ;
+- aucune allocation supérieure aux montants du règlement ou de la facture ;
+- rapprochement `montant_alloue` et `montant_paye` aux écritures de lettrage.
+
+Tout historique incomplet ou divergent bloque l'affichage global. Aucun
+numéro de quittance officiel n'est créé et aucun droit de timbre n'est
+liquidé automatiquement. Le moteur `core/quittances_rapprochement.py`
+permet des simulations séparées et non validées à partir d'une règle fournie,
+mais il n'est pas branché au processus transactionnel de facturation.
+
+La lecture est limitée à 1 000 lignes par table dans l'interface. Le
+franchissement de cette limite impose une future pagination exhaustive et
+un calcul transactionnel côté serveur.

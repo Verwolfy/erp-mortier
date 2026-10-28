@@ -560,3 +560,77 @@ def test_scf_balance_erreur_ne_diffuse_pas_de_total(ui, monkeypatch):
     ui.st.metric.assert_not_called()
     ui.st.dataframe.assert_not_called()
     ui.st.error.assert_called()
+
+
+def test_quittances_ne_lit_rien_avant_clic(ui):
+    ui.mod._quittances_rapprochement_tab("USR-1")
+    ui.db.get_supabase_client.assert_not_called()
+    ui.st.metric.assert_not_called()
+    ui.st.dataframe.assert_not_called()
+
+
+def test_quittances_refuse_autorisation_revoquee(ui):
+    ui.st.button.return_value = True
+    ui.roles.has_permission.return_value = False
+    ui.mod._quittances_rapprochement_tab("USR-1")
+    ui.db.get_supabase_client.assert_called()
+    ui.db.fetch_data_paginated.assert_not_called()
+    ui.st.metric.assert_not_called()
+
+
+def test_quittances_lecture_seule_sur_clic(ui, monkeypatch):
+    stub = types.ModuleType("core.quittances_rapprochement")
+    stub.RapprochementIndisponible = type("RapprochementIndisponible", (ValueError,), {})
+    stub.rapprocher_reglements_clients = MagicMock(return_value={
+        "nombre_reglements": 1, "montant_encaisse_total": "100.00",
+        "reglements": [{
+            "reglement_id": "REG-1", "client_id": "CLIENT-1",
+            "date_reglement": "2026-10-28", "mode_paiement": "ESPECES",
+            "montant_encaisse": "100.00", "montant_alloue": "50.00",
+            "reste_a_affecter": "50.00", "statut": "ETAT_INTERNE_NON_QUITTANCE",
+            "factures": [{"facture_id": "FAC-1", "montant_applique": "50.00"}],
+        }],
+    })
+    monkeypatch.setitem(sys.modules, "core.quittances_rapprochement", stub)
+    ui.mod._lecture_complete_quittances = MagicMock(side_effect=[[{"reglement_id": "REG-1"}], [], []])
+    ui.st.button.return_value = True
+    ui.mod._quittances_rapprochement_tab("USR-1")
+    assert ui.st.metric.call_count == 2
+    ui.st.dataframe.assert_called_once()
+    assert ui.mod._lecture_complete_quittances.call_count == 3
+    assert ui.st.session_state["_erp_finance_interacted"] is True
+    assert "factures_lettrées" in ui.st.dataframe.call_args.args[0].columns
+    ui.finance.enregistrer_reglement.assert_not_called()
+    ui.finance.enregistrer_lettrage.assert_not_called()
+
+
+def test_quittances_aucun_total_partiel_si_erreur(ui, monkeypatch):
+    stub = types.ModuleType("core.quittances_rapprochement")
+    stub.RapprochementIndisponible = type("RapprochementIndisponible", (ValueError,), {})
+    stub.rapprocher_reglements_clients = MagicMock()
+    monkeypatch.setitem(sys.modules, "core.quittances_rapprochement", stub)
+    ui.mod._lecture_complete_quittances = MagicMock(side_effect=ValueError("Incomplet"))
+    ui.st.button.return_value = True
+    ui.mod._quittances_rapprochement_tab("USR-1")
+    ui.st.metric.assert_not_called()
+    ui.st.dataframe.assert_not_called()
+    ui.st.error.assert_called_once()
+
+
+@pytest.mark.parametrize("count,rows", [
+    (2, [{"reglement_id": "REG-1"}]),
+    (None, []),
+    (1, [{"reglement_id": "REG-1"}, {"reglement_id": "REG-2"}]),
+])
+def test_quittances_refuse_pagination_incomplete(ui, count, rows):
+    client = ui.db.get_supabase_client.return_value
+    q = client.table.return_value.select.return_value.range.return_value
+    q.execute.return_value = types.SimpleNamespace(data=rows, count=count)
+    with pytest.raises(ValueError):
+        ui.mod._lecture_complete_quittances("reglements", "reglement_id")
+
+
+def test_quittances_refuse_table_hors_liste(ui):
+    with pytest.raises(ValueError):
+        ui.mod._lecture_complete_quittances("users", "user_id")
+    ui.db.get_supabase_client.assert_not_called()
