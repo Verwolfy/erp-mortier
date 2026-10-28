@@ -2,10 +2,22 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 import pytest
+import streamlit as st
+from config import roles
 
 from core.scf_service import LectureSCFIndisponible, lire_balance_scf
 
 PID = "00000000-0000-4000-8000-000000000001"
+
+
+@pytest.fixture(autouse=True)
+def authenticated_user(monkeypatch):
+    monkeypatch.setattr(st, "session_state", {
+        "authenticated": True, "user": {"user_id": "USR-1", "role": "FINANCIER"},
+    })
+    monkeypatch.setattr(roles, "has_permission", lambda role, module, perm: (
+        role == "FINANCIER" and module == "SCF" and perm == "lecture"
+    ))
 
 
 def piece(**kw):
@@ -33,6 +45,13 @@ def client(pieces=None, lignes=None, total_pieces=None, total_lignes=None):
               ligne(2, "701001", 0, 100)] if lignes is None else lignes
     p = MagicMock()
     l = MagicMock()
+    a = MagicMock()
+    a.select.return_value = a
+    a.eq.return_value = a
+    a.limit.return_value = a
+    a.execute.return_value = SimpleNamespace(data=[
+        {"user_id": "USR-1", "role": "FINANCIER", "actif": "OUI"}
+    ])
     for query in (p, l):
         query.select.return_value = query
         query.eq.return_value = query
@@ -47,14 +66,14 @@ def client(pieces=None, lignes=None, total_pieces=None, total_lignes=None):
     )
     db = MagicMock()
     db.table.side_effect = lambda name: {
-        "scf_pieces": p, "scf_lignes": l
+        "users": a, "scf_pieces": p, "scf_lignes": l
     }[name]
     return db, p, l
 
 
 def test_balance_validee_completement():
     db,p,l = client()
-    data=lire_balance_scf(autorisation_serveur=True,db_client=db)
+    data=lire_balance_scf(db_client=db)
     assert data["pieces"] == 1
     assert data["lignes"] == 2
     assert data["balance"]["411001"]["solde"] == "100"
@@ -66,16 +85,45 @@ def test_balance_validee_completement():
     assert p.insert.call_count == 0 and l.update.call_count == 0
 
 
-def test_accès_refusé_avant_toute_lecture():
+def test_accès_refusé_avant_toute_lecture(monkeypatch):
     db,_,_=client()
+    st.session_state["authenticated"] = False
     with pytest.raises(PermissionError):
-        lire_balance_scf(autorisation_serveur=False,db_client=db)
+        lire_balance_scf(db_client=db)
     db.table.assert_not_called()
+
+def test_acces_refuse_si_compte_revoque(monkeypatch):
+    db,_,_=client()
+    a = db.table("users")
+    a.execute.return_value = SimpleNamespace(data=[
+        {"user_id": "USR-1", "role": "FINANCIER", "actif": "NON"}
+    ])
+    with pytest.raises(PermissionError):
+        lire_balance_scf(db_client=db)
+    assert not any(call.args == ("scf_pieces",) for call in db.table.call_args_list)
+
+def test_acces_refuse_si_permission_revoquee(monkeypatch):
+    db,_,_=client()
+    monkeypatch.setattr(roles, "has_permission", lambda *_: False)
+    with pytest.raises(PermissionError):
+        lire_balance_scf(db_client=db)
+    assert not any(call.args == ("scf_pieces",) for call in db.table.call_args_list)
+
+def test_refuse_usurpation_identite_de_session():
+    db,_,_=client()
+    st.session_state["user"] = {"user_id": "INTRUS"}
+    with pytest.raises(PermissionError):
+        lire_balance_scf(db_client=db)
+
+def test_refuse_droit_boolean_ancien():
+    db,_,_=client()
+    with pytest.raises(TypeError):
+        lire_balance_scf(autorisation_serveur=True, db_client=db)
 
 
 def test_aucune_piece_validee():
     db,_,l=client(pieces=[])
-    assert lire_balance_scf(autorisation_serveur=True,db_client=db) == {
+    assert lire_balance_scf(db_client=db) == {
         "pieces": 0, "lignes": 0, "balance": {},
     }
     l.execute.assert_not_called()
@@ -93,12 +141,12 @@ def test_aucune_piece_validee():
 def test_donnees_incompletes_ou_incoherentes_refusees(changes):
     db,_,_=client(**changes)
     with pytest.raises(LectureSCFIndisponible):
-        lire_balance_scf(autorisation_serveur=True,db_client=db)
+        lire_balance_scf(db_client=db)
 
 
 def test_erreur_sql_sans_exposition():
     db,p,_=client()
     p.execute.side_effect=RuntimeError("TOKEN_DO_NOT_SHOW")
     with pytest.raises(LectureSCFIndisponible) as err:
-        lire_balance_scf(autorisation_serveur=True,db_client=db)
+        lire_balance_scf(db_client=db)
     assert "TOKEN_DO_NOT_SHOW" not in str(err.value)
