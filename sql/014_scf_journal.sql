@@ -138,12 +138,22 @@ $func$;
 
 -- Les fonctions de déclenchement ne peuvent pas être appelées comme RPC.
 -- Les triggers servent de défense supplémentaire à la couche métier.
-CREATE TRIGGER scf_lignes_immutabilite
-  BEFORE INSERT OR UPDATE OR DELETE ON public.scf_lignes
-  FOR EACH ROW EXECUTE FUNCTION public.scf_garder_lignes();
-CREATE TRIGGER scf_pieces_immutabilite
-  BEFORE INSERT OR UPDATE OR DELETE ON public.scf_pieces
-  FOR EACH ROW EXECUTE FUNCTION public.scf_garder_pieces();
+DO $triggers$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+      WHERE tgrelid='public.scf_lignes'::regclass AND tgname='scf_lignes_immutabilite' AND NOT tgisinternal) THEN
+    CREATE TRIGGER scf_lignes_immutabilite
+      BEFORE INSERT OR UPDATE OR DELETE ON public.scf_lignes
+      FOR EACH ROW EXECUTE FUNCTION public.scf_garder_lignes();
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger
+      WHERE tgrelid='public.scf_pieces'::regclass AND tgname='scf_pieces_immutabilite' AND NOT tgisinternal) THEN
+    CREATE TRIGGER scf_pieces_immutabilite
+      BEFORE INSERT OR UPDATE OR DELETE ON public.scf_pieces
+      FOR EACH ROW EXECUTE FUNCTION public.scf_garder_pieces();
+  END IF;
+END;
+$triggers$;
 
 ALTER TABLE public.scf_exercices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scf_plan_comptes ENABLE ROW LEVEL SECURITY;
