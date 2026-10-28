@@ -483,7 +483,8 @@ def show_finance_page() -> None:
     user_id, can_write = access
     st.title("🏦 Comptabilité & Trésorerie")
     tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
-                    "🔗 Lettrage", "📖 Journal des écritures"])
+                    "🔗 Lettrage", "📖 Journal des écritures",
+                    "📚 Balance SCF (lecture seule)"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -507,3 +508,57 @@ def show_finance_page() -> None:
         except Exception as exc:
             _LOG.warning("Journal Finance indisponible (%s)", type(exc).__name__)
             st.error("Journal non disponible.")
+
+    with tabs[5]:
+        _scf_balance_tab(user_id)
+
+
+def _scf_balance_tab(user_id: str) -> None:
+    """Vue non destructive : autorisation spécifique revérifiée côté serveur."""
+    st.subheader("Balance comptable SCF — consultation")
+    st.caption(
+        "Uniquement les pièces validées des nouvelles tables SCF. "
+        "Cette balance ne remplace pas les états comptables réglementaires."
+    )
+    # Ne jamais déduire le droit SCF de la seule permission Finance.
+    try:
+        current = (
+            get_supabase_client().table("users")
+            .select("user_id,role,actif")
+            .eq("user_id", user_id).limit(2).execute()
+        )
+        rows = current.data
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            raise PermissionError("Compte SCF non vérifiable")
+        account = rows[0]
+        active = account.get("actif")
+        if (account.get("user_id") != user_id
+                or (active is not True
+                    and str(active).strip().casefold() not in _ACTIVE)
+                or not isinstance(account.get("role"), str)
+                or has_permission(account["role"], "SCF", "lecture") is not True):
+            raise PermissionError("Droit SCF manquant")
+    except Exception as exc:
+        _LOG.warning("Habilitation SCF non vérifiable (%s)", type(exc).__name__)
+        st.info("Accès à la balance SCF non disponible pour ce profil.")
+        return
+
+    if not st.button("Charger la balance SCF", key="finance_scf_load"):
+        st.info("Lecture à la demande ; aucune pièce n'est modifiée.")
+        return
+    _mark_finance_activity()
+    from core.scf_service import LectureSCFIndisponible, lire_balance_scf
+    try:
+        resultat = lire_balance_scf(autorisation_serveur=True)
+    except LectureSCFIndisponible as exc:
+        _LOG.warning("Lecture SCF refusée (%s)", type(exc).__name__)
+        st.error("Balance SCF indisponible ou incomplète ; aucune somme partielle affichée.")
+        return
+    st.metric("Pièces validées", resultat["pieces"])
+    st.metric("Lignes contrôlées", resultat["lignes"])
+    if resultat["balance"]:
+        table = pd.DataFrame.from_dict(resultat["balance"], orient="index")
+        table.index.name = "Compte SCF"
+        st.dataframe(table, use_container_width=True)
+    else:
+        st.info("Aucune écriture SCF validée.")
