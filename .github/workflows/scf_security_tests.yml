@@ -1,0 +1,45 @@
+name: ERP - securite SCF et clotures
+
+on:
+  push:
+    branches:
+      - fix/scf-paie-verrous-acces-20261028
+  pull_request:
+    branches:
+      - feat/scf-lecture-et-verrous-20261028
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scf-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Installer dependances
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+      - name: Compilation
+        run: python -m compileall -q core modules tests
+      - name: Tests ciblés de sécurité SCF et clôtures
+        run: >-
+          python -m pytest -q
+          tests/test_scf_service.py
+          tests/test_finance_views_security.py
+          tests/test_scf_paie_sql_skeleton.py
+          tests/test_010A_02D_02_finance_activity.py
+      - name: Suite ERP complete
+        run: python -m pytest -q
