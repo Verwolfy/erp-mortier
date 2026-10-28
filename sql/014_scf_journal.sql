@@ -107,6 +107,12 @@ BEGIN
     END IF;
     RETURN OLD;
   END IF;
+  IF TG_OP='INSERT' THEN
+    IF NEW.statut <> 'BROUILLON' OR NEW.date_validation IS NOT NULL THEN
+      RAISE EXCEPTION 'Validation initiale directe interdite' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+  END IF;
   IF OLD.statut='VALIDEE' THEN
     RAISE EXCEPTION 'Piece validee immuable' USING ERRCODE='23514';
   END IF;
@@ -136,7 +142,7 @@ CREATE TRIGGER scf_lignes_immutabilite
   BEFORE INSERT OR UPDATE OR DELETE ON public.scf_lignes
   FOR EACH ROW EXECUTE FUNCTION public.scf_garder_lignes();
 CREATE TRIGGER scf_pieces_immutabilite
-  BEFORE UPDATE OR DELETE ON public.scf_pieces
+  BEFORE INSERT OR UPDATE OR DELETE ON public.scf_pieces
   FOR EACH ROW EXECUTE FUNCTION public.scf_garder_pieces();
 
 ALTER TABLE public.scf_exercices ENABLE ROW LEVEL SECURITY;
@@ -146,6 +152,9 @@ ALTER TABLE public.scf_pieces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.scf_lignes ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.scf_exercices,public.scf_plan_comptes,public.scf_journaux,
               public.scf_pieces,public.scf_lignes FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.scf_exercices,public.scf_plan_comptes,
+  public.scf_journaux,public.scf_pieces,public.scf_lignes TO service_role;
+GRANT USAGE,SELECT ON SEQUENCE public.scf_lignes_ligne_id_seq TO service_role;
 -- Aucune politique permissive : les accès passent par le service serveur
 -- après vérification explicite des rôles SCF.
 COMMIT;
