@@ -157,6 +157,18 @@ BEGIN
     RAISE EXCEPTION 'Piece validee immuable' USING ERRCODE='23514';
   END IF;
   IF NEW.statut='VALIDEE' THEN
+    -- Interdire de changer simultanément la pièce et son statut.
+    IF NEW.piece_id IS DISTINCT FROM OLD.piece_id
+       OR NEW.exercice_id IS DISTINCT FROM OLD.exercice_id
+       OR NEW.code_journal IS DISTINCT FROM OLD.code_journal
+       OR NEW.reference IS DISTINCT FROM OLD.reference
+       OR NEW.date_ecriture IS DISTINCT FROM OLD.date_ecriture
+       OR NEW.document_source IS DISTINCT FROM OLD.document_source
+       OR NEW.libelle IS DISTINCT FROM OLD.libelle
+       OR NEW.cree_le IS DISTINCT FROM OLD.cree_le THEN
+      RAISE EXCEPTION 'Validation SCF : modification simultanee interdite'
+        USING ERRCODE='23514';
+    END IF;
     SELECT * INTO v_periode FROM public.scf_exercices
       WHERE exercice_id=NEW.exercice_id FOR SHARE;
     IF NOT FOUND OR v_periode.statut<>'OUVERT'
