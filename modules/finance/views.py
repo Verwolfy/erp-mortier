@@ -549,7 +549,7 @@ def _scf_balance_tab(user_id: str) -> None:
     _mark_finance_activity()
     from core.scf_service import LectureSCFIndisponible, lire_balance_scf
     try:
-        resultat = lire_balance_scf(autorisation_serveur=True)
+        resultat = lire_balance_scf()
     except LectureSCFIndisponible as exc:
         _LOG.warning("Lecture SCF refusée (%s)", type(exc).__name__)
         st.error("Balance SCF indisponible ou incomplète ; aucune somme partielle affichée.")
