@@ -11,7 +11,6 @@ def test_paies_separees_des_conges():
     assert 'has_permission(user_role, "Paie", "lecture")' in TEXT
     assert 'if can_read_paie:' in TEXT
     assert "simuler_irg_depuis_supabase" in TEXT
-    assert "Aucun" not in TEXT or True
 
 
 def test_pas_de_bulletin_ou_ecriture_dans_onglet():
