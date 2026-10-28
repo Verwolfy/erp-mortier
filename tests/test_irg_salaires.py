@@ -94,7 +94,7 @@ def test_regle_non_valide(bad):
         run("50000",rules=[bar(**bad)])
 
 
-@pytest.mark.parametrize("input",["NaN","Infinity","-1",True,30000.01,None])
+@pytest.mark.parametrize("input",["NaN","Infinity","-1",True,1.5,None])
 def test_assiette_invalide(input):
     with pytest.raises(IRGNonDisponible):
         run(input)
