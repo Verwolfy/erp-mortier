@@ -57,3 +57,15 @@ def test_validation_ne_permet_pas_de_falsifier_les_montants():
         assert f"NEW.{field} IS DISTINCT FROM OLD.{field}" in PAIE
     assert "Validation SCF : modification simultanee interdite" in SCF
     assert "Validation paie : modification simultanee interdite" in PAIE
+
+
+def test_preflight_registres_ne_modifie_rien():
+    query = (ROOT/"sql"/"016_preflight_registres_readonly.sql").read_text(encoding="utf-8")
+    code = "\n".join(
+        line for line in query.splitlines() if not line.lstrip().startswith("--")
+    ).upper()
+    assert "WITH ATTENDUES" in code
+    assert "FROM ATTENDUES" in code
+    for mot in ("CREATE ", "ALTER ", "INSERT ", "UPDATE ", "DELETE ",
+                "DROP ", "TRUNCATE ", "GRANT ", "REVOKE ", "DO $$"):
+        assert mot not in code
