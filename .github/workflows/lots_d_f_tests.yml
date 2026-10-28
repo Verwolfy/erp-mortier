@@ -38,5 +38,7 @@ jobs:
           tests/test_scf_journal.py
           tests/test_paie_preparation.py
           tests/test_scf_paie_sql_skeleton.py
+          tests/test_declarations_fiscales.py
+          tests/test_export_scf.py
       - name: Tester toute la suite ERP
         run: python -m pytest -q
