@@ -609,3 +609,40 @@ def test_tva_ui_refuse_lecture_tronquee(ui):
     ui.st.metric.assert_not_called()
     ui.st.dataframe.assert_not_called()
     ui.st.error.assert_called()
+
+
+def test_tva_ui_export_registre_non_homologue_apres_lecture_autorisee(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [{
+        "sku_id": "SKU-001", "pf_id": "PF-001",
+        "format": "Sac 25kg", "unite_vente": "SAC", "actif": "OUI",
+    }]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+
+    ui.mod._controle_tva_sku_tab("USR-1")
+
+    ui.st.download_button.assert_called_once()
+    data = ui.st.download_button.call_args.kwargs["data"]
+    assert "SKU-001" in data
+    assert "À qualifier" in data
+    assert "Document de travail non homologué" in data
+    ui.sales.create_facture_brouillon.assert_not_called()
+
+
+def test_tva_ui_n_exporte_pas_si_sku_incomplet(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [{
+        "sku_id": "SKU-001", "pf_id": "PF-001", "actif": "OUI",
+    }]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+
+    ui.mod._controle_tva_sku_tab("USR-1")
+
+    ui.st.download_button.assert_not_called()
+    ui.st.info.assert_called()
