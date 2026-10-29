@@ -491,7 +491,7 @@ def show_finance_page() -> None:
     tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
                     "🔗 Lettrage", "📖 Journal des écritures",
                     "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
-                    "🧾 Accusés internes"])
+                    "🧾 Accusés internes", "📒 Pré-audit Finance → SCF"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -522,6 +522,8 @@ def show_finance_page() -> None:
         _quittances_rapprochement_tab(user_id)
     with tabs[7]:
         _accuses_internes_tab(user_id, can_write, reglements)
+    with tabs[8]:
+        _audit_finance_vers_scf_tab(user_id, accounts, reglements)
 
 
 def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
@@ -710,3 +712,67 @@ def _accuses_internes_tab(user_id: str, can_write: bool,
         on_click=_mark_finance_activity,
     ):
         _start_operation("receipt", user_id, {"reglement_id": reglement_id})
+
+
+def _audit_finance_vers_scf_tab(
+    user_id: str, comptes: pd.DataFrame, reglements: pd.DataFrame,
+) -> None:
+    """Diagnostic RPC Finance, pas une écriture comptable SCF."""
+    st.subheader("Pré-audit des règlements pour la comptabilité SCF")
+    st.caption(
+        "Vérifie les écritures en partie double générées par les opérations "
+        "Finance REGF-. Les numéros de comptes affichés ne sont pas validés "
+        "comme plan SCF et aucune écriture n'est transférée."
+    )
+    if not st.button("Contrôler les écritures de trésorerie",
+                     key="finance_scf_pre_audit"):
+        return
+    _mark_finance_activity()
+    access = _finance_access()
+    if access is None or access[0] != user_id:
+        st.error("Habilitation Finance non vérifiable : audit interdit.")
+        return
+    from core.rapprochement_finance_scf import (
+        AuditTresorerieIndisponible, auditer_reglements_vers_scf,
+    )
+    try:
+        ecritures = _load_table("ecritures_comptables")
+        result = auditer_reglements_vers_scf(
+            reglements.to_dict(orient="records"),
+            ecritures.to_dict(orient="records"),
+            comptes.to_dict(orient="records"),
+        )
+    except (AuditTresorerieIndisponible, ValueError) as exc:
+        _LOG.warning("Pré-audit Finance SCF incohérent (%s)", type(exc).__name__)
+        st.error("Journal Finance incomplet ou incohérent : aucun résultat partiel.")
+        return
+    except Exception as exc:
+        _LOG.warning("Pré-audit Finance SCF impossible (%s)", type(exc).__name__)
+        st.error("Journal indisponible : aucun résultat partiel.")
+        return
+    st.metric("Règlements RPC contrôlés", result["reglements_rpc_valides"])
+    st.metric("Encaissements vérifiés (DZD)", result["montant_encaisse"])
+    st.metric("Décaissements vérifiés (DZD)", result["montant_decaisse"])
+    if result["reglements_historiques_hors_controle"]:
+        st.warning(
+            f"{result['reglements_historiques_hors_controle']} règlement(s) "
+            "historiques exclus de cet audit faute de provenance RPC vérifiée."
+        )
+    if result["ecritures"]:
+        summary = [{
+            "reglement_id": r["reglement_id"],
+            "date": r["date_ecriture"],
+            "sens": r["sens"],
+            "montant": r["montant"],
+            "débit": r["total_debit"],
+            "crédit": r["total_credit"],
+            "statut": r["statut"],
+            "comptes_finance": ", ".join(
+                f"{l['compte_finance']} / {l['numero_compte_saisi']}"
+                for l in r["lignes"]
+            ),
+        } for r in result["ecritures"]]
+        st.dataframe(pd.DataFrame(summary), use_container_width=True, hide_index=True)
+    else:
+        st.info("Aucune écriture issue de la RPC Finance à rapprocher.")
+    st.caption("Ce contrôle n'est pas une balance SCF, ni une comptabilisation officielle.")
