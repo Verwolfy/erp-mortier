@@ -609,7 +609,7 @@ def _controle_tva_sku_tab(user_id: str) -> None:
                 or response.count != len(rows) or len(rows) > 1000):
             raise QualificationTVAIndisponible("Lecture TVA incomplète")
         result = verifier_couverture_tva(
-            skus, rows, date.today().isoformat()
+            skus, rows, date.today().isoformat(), uniquement_actifs=True
         )
     except Exception as exc:
         _LOG.warning("Couverture TVA non consultable (%s)", type(exc).__name__)
