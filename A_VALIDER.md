@@ -47,3 +47,20 @@ Avant la bascule réelle :
 - traiter les règlements partiels, modes de paiement et avoirs historiques ;
 - installer et tester une nouvelle fonction transactionnelle Ventes plutôt
   que rejouer aveuglément l'ancien fichier `sql/013`.
+
+
+## Référentiels 2026 officiels — état au 29 octobre 2026
+
+Le lot 021 a importé sur TEST et PRODUCTION :
+- TVA normale DGI : **19 %** ; TVA réduite DGI : **9 %**.
+- Règle G50 mensuelle du régime réel, `application_entreprise=NON_CLASSEE`.
+- 25 comptes de la nomenclature SCF officielle, **tous inactifs/non mouvementables**.
+
+Il reste à confirmer le régime d'imposition de l'entreprise, classifier
+chaque SKU avec preuve juridique et date d'effet, puis définir le plan
+comptable réellement mouvementable, les journaux et exercices.
+**La présence des taux de référence ne constitue pas une autorisation
+de facturer sans classification.**
+
+Références et date de vérification :
+`docs/REFERENTIELS_OFFICIELS_2026.md`.
