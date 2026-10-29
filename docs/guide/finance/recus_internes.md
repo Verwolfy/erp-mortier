@@ -51,3 +51,22 @@ du timbre, JO n°84 de 2024 / consolidation 2026) n'est PAS couverte.
   une transaction annulée par ROLLBACK sur TEST.
 - Surveillance des éventuels résultats d'API inconnus et reprise avec
   le même identifiant d'opération dans l'interface.
+
+
+## État de déploiement — 29 octobre 2026
+
+La migration `erp_020_recus_internes_20261029` a été exécutée sur
+**Supabase TEST puis PRODUCTION**, sans changement d'anciennes factures.
+
+Les deux environnements ont été vérifiés : table disponible, RLS active,
+aucun privilège de lecture pour `anon` ou `authenticated`, droits
+`SELECT, INSERT` et `EXECUTE` pour `service_role`.
+
+Un essai transactionnel sur TEST a vérifié la création, la répétition avec
+le même `operation_id`, le refus d'un autre accusé pour le même règlement,
+le blocage des mises à jour et des suppressions. L'essai a été terminé par
+`ROLLBACK` et le contrôle suivant a confirmé **0 document de test conservé**.
+Le registre de production contient **0 accusé** au moment de l'installation.
+
+L'émission d'un **accusé interne** ne valide en aucun cas la conformité des
+quittances fiscales, ni la régularité d'un timbre de règlement.
