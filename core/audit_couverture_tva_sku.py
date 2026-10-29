@@ -25,9 +25,9 @@ def auditer_couverture_tva(
         raise ValueError("Date d'audit fiscale invalide")
     if not isinstance(sku_actifs, (list, tuple)):
         raise ValueError("Liste de SKU actifs invalide")
-    if len(sku_actifs) != len(set(sku_actifs)) or any(
-        not isinstance(s, str) or not s.strip() for s in sku_actifs
-    ):
+    if any(not isinstance(s, str) or not s.strip() for s in sku_actifs):
+        raise ValueError("Liste SKU invalide ou doublonnée")
+    if len(set(sku_actifs)) != len(sku_actifs):
         raise ValueError("Liste SKU invalide ou doublonnée")
     resultats = []
     for sku in sku_actifs:
