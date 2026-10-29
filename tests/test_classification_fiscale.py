@@ -137,3 +137,47 @@ def test_classification_bdd_fin_avant_debut_refusee():
     }
     with pytest.raises(ClassificationIndisponible, match="Période fiscale"):
         selectionner_classification_bdd("SKU-TEST", date(2026, 2, 3), [item])
+
+
+def _classification_validee_bdd(sku, debut, fin=None, validation="2026-01-03"):
+    return {
+        "sku_id": sku, "date_effet": debut, "date_fin": fin,
+        "statut": "VALIDEE", "categorie_tva": "NORMAL",
+        "code_parametre": "TVA_TAUX_NORMAL", "source_juridique": "SOURCE-FICTIVE",
+        "justification": "TEST", "valide_par": "TEST",
+        "date_verification": "2026-01-02", "date_validation": validation,
+    }
+
+
+def test_bdd_une_version_future_ne_bloque_pas_l_historique():
+    from core.classification_fiscale import selectionner_classification_bdd
+    ancienne = _classification_validee_bdd("SKU-TEST", "2026-01-01", "2026-06-30")
+    future = _classification_validee_bdd("SKU-TEST", "2026-07-01", validation="2026-07-03")
+    assert selectionner_classification_bdd(
+        "SKU-TEST", date(2026, 3, 1), [future, ancienne]
+    ) is ancienne
+
+
+def test_bdd_ancienne_version_expiree_n_empeche_pas_la_version_valide():
+    from core.classification_fiscale import selectionner_classification_bdd
+    expiree = _classification_validee_bdd("SKU-TEST", "2026-01-01", "2026-06-30")
+    expiree["source_juridique"] = ""
+    courante = _classification_validee_bdd("SKU-TEST", "2026-07-01", validation="2026-07-03")
+    assert selectionner_classification_bdd(
+        "SKU-TEST", date(2026, 8, 1), [expiree, courante]
+    ) is courante
+
+
+def test_bdd_versions_chevauchantes_refusees():
+    from core.classification_fiscale import selectionner_classification_bdd
+    a = _classification_validee_bdd("SKU-TEST", "2026-01-01", "2026-09-30")
+    b = _classification_validee_bdd("SKU-TEST", "2026-06-01", validation="2026-06-03")
+    with pytest.raises(ClassificationIndisponible, match="ambiguë"):
+        selectionner_classification_bdd("SKU-TEST", date(2026, 8, 1), [a, b])
+
+
+def test_bdd_version_future_seule_refusee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    future = _classification_validee_bdd("SKU-TEST", "2026-07-01", validation="2026-07-03")
+    with pytest.raises(ClassificationIndisponible, match="absente"):
+        selectionner_classification_bdd("SKU-TEST", date(2026, 3, 1), [future])
