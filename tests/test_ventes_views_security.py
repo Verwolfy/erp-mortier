@@ -702,3 +702,19 @@ def test_tva_ui_utilise_date_locale_erp_et_non_horloge_serveur(ui):
         assert spy.call_args.args[2] == "2026-10-29"
         assert spy.call_args.kwargs["uniquement_actifs"] is True
         ui.utils.get_local_now.assert_called_once()
+
+
+def test_reperage_version_interface_apres_autorisation(ui):
+    for nom in ("_draft_tab", "_order_tab", "_ship_tab", "_workflow_tab",
+                "_controle_tva_sku_tab"):
+        setattr(ui.mod, nom, MagicMock())
+    ui.mod.show_ventes_page()
+    ui.st.caption.assert_any_call(
+        "Version interface Ventes : SOF-ERP-20261029-TVA-ASOF-01"
+    )
+
+
+def test_reperage_version_non_affiche_sans_permission(ui):
+    ui.roles.has_permission.return_value = False
+    ui.mod.show_ventes_page()
+    ui.st.caption.assert_not_called()
