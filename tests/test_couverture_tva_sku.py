@@ -105,3 +105,43 @@ def test_resultat_vide_explicite():
 def test_liste_de_sku_invalide_refusee(source):
     with pytest.raises(QualificationTVAIndisponible):
         verifier_couverture_tva(source, [], "2026-10-29")
+
+
+def test_affichage_actifs_seulement_mais_dossiers_inactifs_conserves():
+    actifs = sku("SKU-A")
+    inactif = {**sku("SKU-B"), "actif": "NON"}
+    historique = fiche(sku_id="SKU-B")
+    r = verifier_couverture_tva(
+        [actifs, inactif], [historique], "2026-10-29", uniquement_actifs=True
+    )
+    assert r["nombre_skus"] == 1
+    assert r["par_statut"] == {
+        "NON_CLASSE": 1, "A_VALIDER": 0, "VALIDE": 0
+    }
+    assert [x["sku_id"] for x in r["lignes"]] == ["SKU-A"]
+    assert r["facturation_automatique_autorisee"] is False
+
+
+def test_sku_inactif_qualifie_absent_du_catalogue_actif():
+    actif = sku("SKU-A")
+    inactif = {**sku("SKU-B"), "actif": "NON"}
+    r = verifier_couverture_tva(
+        [actif, inactif], [fiche(sku_id="SKU-B")], "2026-10-29",
+        uniquement_actifs=False
+    )
+    assert r["nombre_skus"] == 2
+    assert r["par_statut"]["VALIDE"] == 1
+
+
+def test_filtre_actifs_ne_cache_pas_dossier_inactif_incoherent():
+    actifs = [sku("SKU-A"), {**sku("SKU-B"), "actif": "NON"}]
+    with pytest.raises(QualificationTVAIndisponible, match="incohérente"):
+        verifier_couverture_tva(
+            actifs, [fiche(sku_id="SKU-B", code_parametre="TVA_TAUX_REDUIT")],
+            "2026-10-29", uniquement_actifs=True,
+        )
+
+
+def test_filtre_actifs_requires_bool():
+    with pytest.raises(QualificationTVAIndisponible, match="Filtre"):
+        verifier_couverture_tva([sku()], [], "2026-10-29", uniquement_actifs="oui")
