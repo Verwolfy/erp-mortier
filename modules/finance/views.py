@@ -145,7 +145,9 @@ def _start_operation(kind: str, user_id: str, payload: dict) -> None:
         st.error("Une opération existe déjà ; utilisez sa reprise ou confirmez-la.")
         return
     st.session_state[key] = {
-        "status": "uncertain", "operation_id": f"FIN-UI-{uuid4().hex}",
+        "status": "uncertain", "operation_id": (
+            f"RECUI-{uuid4().hex}" if kind == "receipt" else f"FIN-UI-{uuid4().hex}"
+        ),
         "payload": deepcopy(payload),
     }
     _execute_operation(kind, user_id)
@@ -159,7 +161,9 @@ def _operation_panel(kind: str, user_id: str) -> bool:
     if (not isinstance(record, dict)
             or record.get("status") not in {"uncertain", "confirmed"}
             or not isinstance(record.get("operation_id"), str)
-            or not record["operation_id"].startswith("FIN-UI-")
+            or not record["operation_id"].startswith(
+                "RECUI-" if kind == "receipt" else "FIN-UI-"
+            )
             or not isinstance(record.get("payload"), dict)
             or not _ACTIONS[kind][2].issubset(record["payload"])
             or (record["status"] == "confirmed" and
