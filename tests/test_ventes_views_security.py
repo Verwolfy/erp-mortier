@@ -652,5 +652,5 @@ def test_draft_view_affiche_avertissement_fiscal_historique(ui):
     ui.mod._draft_tab("USR-1", False, pd.DataFrame())
     messages = [call.args[0] for call in ui.st.warning.call_args_list]
     assert any("TVA uniforme" in message for message in messages)
-    assert any("n'est pas" not in message or "homologuée" in message for message in messages)
+    assert any("facturation réglementaire homologuée" in message for message in messages)
     ui.sales.create_facture_brouillon.assert_not_called()
