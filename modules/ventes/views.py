@@ -289,6 +289,20 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         return
     client_labels = {r["client_id"]: f"{r['client_id']} - {r['nom']}" for _, r in clients.iterrows()}
     client_id = st.selectbox("Client", list(client_labels), format_func=lambda x: client_labels[x], key="vente_client", on_change=_mark_ventes_activity)
+    # La RPC historique facture encore une TVA uniforme et n'a pas
+    # de support d'attestations client. Refuser l'enregistrement quand
+    # l'opérateur identifie un client exonéré : jamais de TVA 19% imposée
+    # par erreur à un dossier d'exonération signalé.
+    if st.checkbox(
+        "Client avec attestation d'exonération TVA (facturation dédiée non activée)",
+        key=f"vente_exoneration_signalee_{client_id}",
+    ):
+        st.warning(
+            "Facture client exonéré bloquée : l'attestation et sa portée "
+            "doivent être vérifiées, puis la transaction SQL adaptée avant "
+            "toute émission à 0 %."
+        )
+        return
     echeance = st.date_input("Date d'échéance", key="vente_echeance")
     type_doc = st.selectbox("Type de document", ["FactureClient", "FactureAvoir"], key="vente_type", on_change=_mark_ventes_activity)
     is_avoir = type_doc == "FactureAvoir"
