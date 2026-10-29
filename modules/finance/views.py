@@ -655,3 +655,58 @@ def _scf_balance_tab(user_id: str) -> None:
         st.dataframe(table, use_container_width=True)
     else:
         st.info("Aucune écriture SCF validée.")
+
+
+def _accuses_internes_tab(user_id: str, can_write: bool,
+                          paiements: pd.DataFrame) -> None:
+    """Accusé de caisse interne, jamais une quittance fiscale officielle."""
+    st.subheader("Accusés internes d'encaissement")
+    st.warning(
+        "Document interne NON fiscal. Aucun timbre, numéro de quittance légale "
+        "ou paiement nouveau n'est créé."
+    )
+    try:
+        recus = _load_table("erp_recus_internes")
+        if not recus.empty:
+            colonnes = ["recu_id", "reglement_id", "date_reglement",
+                        "montant_encaisse", "statut"]
+            if not set(colonnes).issubset(recus.columns):
+                raise ValueError("Historique des accusés incomplet")
+            st.dataframe(recus[colonnes], use_container_width=True, hide_index=True)
+    except Exception as exc:
+        _LOG.warning("Accusés internes indisponibles (%s)", type(exc).__name__)
+        st.error("Journal des accusés inaccessible : émission désactivée.")
+        return
+    if not can_write:
+        st.info("Lecture seule : émission réservée à Finance / écriture.")
+        return
+    if _operation_panel("receipt", user_id):
+        return
+    if paiements.empty:
+        st.info("Aucun encaissement à traiter.")
+        return
+    colonnes = {"reglement_id", "type_flux", "statut", "montant_total"}
+    if not colonnes.issubset(paiements.columns):
+        st.error("Registre des règlements incomplet.")
+        return
+    existants = set(recus["reglement_id"]) if not recus.empty else set()
+    choix = {
+        row["reglement_id"]: f"{row['reglement_id']} : {row['montant_total']} DZD"
+        for _, row in paiements.iterrows()
+        if row["type_flux"] == "ENCAISSEMENT"
+        and row["statut"] == "VALIDE"
+        and isinstance(row["reglement_id"], str)
+        and row["reglement_id"] not in existants
+    }
+    if not choix:
+        st.info("Aucun règlement validé sans accusé existant.")
+        return
+    reglement_id = st.selectbox(
+        "Règlement encaissé", list(choix), format_func=choix.get,
+        key="finance_accuse_reglement", on_change=_mark_finance_activity,
+    )
+    if st.button(
+        "Émettre un accusé interne", key="finance_accuse_emettre",
+        on_click=_mark_finance_activity,
+    ):
+        _start_operation("receipt", user_id, {"reglement_id": reglement_id})
