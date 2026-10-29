@@ -7,14 +7,16 @@ Aucune donnée n'est écrite, aucune facturation n'est autorisée.
 """
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any, Mapping
 
-from core.fiscalite_facturation import FiscaliteNonDisponible, _decimal
+from core.exoneration_tva_client import qualifier_exoneration_client
+from core.fiscalite_facturation import FiscaliteNonDisponible, _decimal, _date
 
 _CENT = Decimal("0.01")
 _LIMITE = Decimal("1e15")
-_CODES = {"NORMAL": "TVA_TAUX_NORMAL", "REDUIT": "TVA_TAUX_REDUIT"}
+_CODES = {"NORMAL": "TVA_TAUX_NORMAL"}
 
 
 def _monnaie_exacte(value: Any, champ: str) -> Decimal:
@@ -43,6 +45,7 @@ def comparer_arrondis_tva(simulation: Mapping[str, Any]) -> dict[str, Any]:
     if _monnaie_exacte(simulation.get("montant_timbre"), "Timbre") != 0:
         raise FiscaliteNonDisponible("Timbre non pris en charge sur facture")
 
+    date_facture = _date(simulation.get("date_facture"))
     groupes: dict[tuple[str, str, Decimal], dict[str, Any]] = {}
     total_ht = Decimal("0.00")
     tva_lignes = Decimal("0.00")
@@ -58,24 +61,37 @@ def comparer_arrondis_tva(simulation: Mapping[str, Any]) -> dict[str, Any]:
         taux = _decimal(ligne.get("taux_tva"), "Taux TVA ligne")
         categorie = ligne.get("categorie_tva")
         justificatif = ligne.get("justificatif_taux")
+        mode = ligne.get("mode_tva")
+        preuve_client = ligne.get("justificatif_exoneration_client")
         if (
-            not isinstance(categorie, str)
-            or categorie not in _CODES
+            categorie != "NORMAL"
             or not isinstance(justificatif, Mapping)
-            or justificatif.get("code") != _CODES[categorie]
+            or justificatif.get("code") != _CODES["NORMAL"]
+            or mode not in ("NORMAL", "EXONERATION_CLIENT")
             or not Decimal("0") <= taux <= Decimal("1")
         ):
             raise FiscaliteNonDisponible("Groupe fiscal de ligne incohérent")
+        if mode == "EXONERATION_CLIENT":
+            if taux != 0 or not isinstance(preuve_client, Mapping):
+                raise FiscaliteNonDisponible("Exonération client sans justificatif")
+            preuve_controlee = qualifier_exoneration_client(
+                simulation.get("client_id"), date_facture, preuve_client
+            )
+            if sku not in preuve_controlee["sku_ids_couverts"]:
+                raise FiscaliteNonDisponible("SKU exclu de l'exonération client")
+        elif taux <= 0 or preuve_client is not None:
+            raise FiscaliteNonDisponible("Taux normal ou justificatif client incohérent")
         try:
             attendu = (ht * taux).quantize(_CENT, rounding=ROUND_HALF_UP)
         except InvalidOperation as exc:
             raise FiscaliteNonDisponible("Calcul TVA ligne hors précision") from exc
         if tva != attendu or ttc != ht + tva:
             raise FiscaliteNonDisponible("TVA ligne incohérente")
-        cle = (categorie, justificatif["code"], taux)
+        cle = (mode, justificatif["code"], taux)
         if cle not in groupes:
             groupes[cle] = {
                 "categorie_tva": categorie,
+                "mode_tva": mode,
                 "code_parametre": justificatif["code"],
                 "taux_tva": taux,
                 "nombre_lignes": 0,
