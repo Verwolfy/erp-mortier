@@ -33,10 +33,15 @@ def test_simulation_facture_sans_especes():
     assert len(r["justificatifs"]) == 1
 
 
-def test_especes_plafond_et_trace():
-    r = calculer_taxes_facture("1000000", True, "2026-10-28", params())
-    assert r["montant_timbre"] == Decimal("2500.00")
-    assert len(r["justificatifs"]) == 3
+def test_especes_timbre_ancienne_formule_refusee():
+    with pytest.raises(FiscaliteNonDisponible, match="timbre sur facture interdit"):
+        calculer_taxes_facture("1000000", True, "2026-10-28", params())
+
+
+def test_absence_de_timbre_fiscal_si_paiement_non_especes():
+    r = calculer_taxes_facture("100", False, "2026-10-28", params())
+    assert r["montant_timbre"] == Decimal("0.00")
+    assert len(r["justificatifs"]) == 1
 
 
 @pytest.mark.parametrize("modification", [
