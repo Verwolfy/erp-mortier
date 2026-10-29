@@ -43,8 +43,12 @@ def verifier_couverture_tva(
     skus: Sequence[Mapping[str, Any]],
     qualifications: Sequence[Mapping[str, Any]],
     date_operation: str,
+    *,
+    uniquement_actifs: bool = False,
 ) -> dict[str, Any]:
-    """Vérifie la couverture des SKU sans inférer de catégorie fiscale."""
+    """Vérifie tout le référentiel, avec affichage optionnel des SKU actifs."""
+    if not isinstance(uniquement_actifs, bool):
+        raise QualificationTVAIndisponible("Filtre SKU actifs invalide")
     target = _date(date_operation, "date_operation")
     if (not isinstance(skus, (list, tuple)) or not isinstance(qualifications, (list, tuple))
             or len(skus) > 10000 or len(qualifications) > 10000):
@@ -101,6 +105,10 @@ def verifier_couverture_tva(
     result = []
     tally = {"NON_CLASSE": 0, "A_VALIDER": 0, "VALIDE": 0}
     for sid in sorted(products):
+        # Vérifier la cohérence de TOUS les dossiers en amont, y compris
+        # ceux des SKU inactifs. Filtrer seulement les lignes du résultat.
+        if uniquement_actifs and products[sid].get("actif") != "OUI":
+            continue
         applicable = [
             row for row in by_sku.get(sid, [])
             if _date(row["date_effet"], "date_effet") <= target
