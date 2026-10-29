@@ -29,6 +29,9 @@ from modules.ventes.service import (
 )
 
 _LOG = logging.getLogger(__name__)
+# Repère public de la livraison de l'écran, sans revendication d'un SHA
+# déployé. Permet une vérification visuelle de Streamlit après mise à jour.
+_UI_REVISION = "SOF-ERP-20261029-TVA-ASOF-01"
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
@@ -553,6 +556,7 @@ def show_ventes_page() -> None:
         st.error("Accès Ventes refusé : session ou droit de lecture non confirmé.")
         return
     user_id, can_write = access
+    st.caption(f"Version interface Ventes : {_UI_REVISION}")
     # Ces lectures doivent intervenir APRES validation fraîche de l'identité.
     try:
         invoices = get_factures()
