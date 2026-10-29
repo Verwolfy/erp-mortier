@@ -89,3 +89,42 @@ def test_parametre_tva_provisoire_expire_ne_bloque_pas_periode_courante():
         [{"sku_id": "SKU-X"}], date(2026, 2, 1),
         [classification()], [ancien, valide],
     )[0]["taux_tva"] == Decimal("0.17")
+
+
+def test_preuve_classification_complete_et_independante():
+    from copy import deepcopy
+    cls = classification()
+    resultat = taux_par_ligne(
+        [{"sku_id": "SKU-X"}], date(2026, 2, 1), [cls], [param()]
+    )
+    trace = deepcopy(resultat[0]["justificatif_classification"])
+    assert trace == {
+        "sku_id": "SKU-X",
+        "categorie_tva": "NORMAL",
+        "code_parametre": "TVA_TAUX_NORMAL",
+        "date_effet": "2026-01-01",
+        "date_fin": None,
+        "source_juridique": "SOURCE-TEST",
+        "justification": "TEST",
+        "date_verification": "2026-01-02",
+        "valide_par": "TEST",
+        "date_validation": "2026-01-03",
+    }
+    cls["source_juridique"] = "MODIFIE"
+    cls["justification"] = "MODIFIE"
+    assert resultat[0]["justificatif_classification"] == trace
+
+
+def test_preuve_dates_bdd_normalisees_iso():
+    cls = classification()
+    cls["date_effet"] = date(2026, 1, 1)
+    cls["date_verification"] = date(2026, 1, 2)
+    cls["date_validation"] = date(2026, 1, 3)
+    cls["date_fin"] = date(2026, 12, 31)
+    resultat = taux_par_ligne(
+        [{"sku_id": "SKU-X"}], date(2026, 2, 1), [cls], [param()]
+    )
+    preuve = resultat[0]["justificatif_classification"]
+    assert preuve["date_effet"] == "2026-01-01"
+    assert preuve["date_fin"] == "2026-12-31"
+    assert preuve["date_validation"] == "2026-01-03"
