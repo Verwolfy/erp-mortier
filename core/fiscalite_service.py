@@ -24,12 +24,15 @@ def fiscalite_facture_reglementee(
     """Lit toutes les versions applicables : refuse une réponse paginée tronquée."""
     if not isinstance(paiement_especes, bool):
         raise FiscaliteNonDisponible("Indicateur espèces invalide")
+    if paiement_especes:
+        raise FiscaliteNonDisponible(
+            "Timbre de quittance non disponible sur une facture : "
+            "aucun ancien taux de timbre n'est chargé"
+        )
     if db_client is None:
         from core.db_service import get_supabase_client
         db_client = get_supabase_client()
     codes = ["TVA_VENTE_TAUX"]
-    if paiement_especes:
-        codes.extend(["TIMBRE_ESPECES_TAUX", "TIMBRE_ESPECES_PLAFOND"])
     try:
         response = (
             db_client.table("parametres_reglementaires")
