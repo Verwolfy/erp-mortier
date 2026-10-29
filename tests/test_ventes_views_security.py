@@ -718,3 +718,31 @@ def test_reperage_version_non_affiche_sans_permission(ui):
     ui.roles.has_permission.return_value = False
     ui.mod.show_ventes_page()
     ui.st.caption.assert_not_called()
+
+
+def test_exoneration_client_signalee_bloque_brouillon_historique(ui):
+    ui.mod._operation_panel = MagicMock(return_value=False)
+    ui.mod._start_operation = MagicMock()
+    donnees = {
+        "clients": pd.DataFrame([{"client_id": "CLI-1", "nom": "TEST", "actif": "OUI"}]),
+        "sku_conditionnement": pd.DataFrame([
+            {"sku_id": "SKU-A", "pf_id": "PF-A", "format": "Sac 25kg", "actif": "OUI"}
+        ]),
+        "produits": pd.DataFrame([{"pf_id": "PF-A", "nom": "TEST", "actif": "OUI"}]),
+    }
+    ui.mod._read_required = MagicMock(side_effect=lambda table: donnees[table])
+    ui.st.checkbox.return_value = True
+
+    ui.mod._draft_tab("USR-1", True, pd.DataFrame())
+
+    ui.st.checkbox.assert_any_call(
+        "Client avec attestation d'exonération TVA (facturation dédiée non activée)",
+        key="vente_exoneration_signalee_CLI-1",
+    )
+    assert any(
+        "Facture client exonéré bloquée" in call.args[0]
+        for call in ui.st.warning.call_args_list
+    )
+    ui.mod._start_operation.assert_not_called()
+    ui.sales.create_facture_brouillon.assert_not_called()
+    ui.st.number_input.assert_not_called()
