@@ -654,3 +654,27 @@ def test_draft_view_affiche_avertissement_fiscal_historique(ui):
     assert any("TVA uniforme" in message for message in messages)
     assert any("facturation réglementaire homologuée" in message for message in messages)
     ui.sales.create_facture_brouillon.assert_not_called()
+
+
+def test_tva_ui_compte_et_exporte_uniquement_sku_actifs(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [
+        {"sku_id": "SKU-A", "pf_id": "PF-A", "format": "Sac 25kg",
+         "unite_vente": "SAC", "actif": "OUI"},
+        {"sku_id": "SKU-I", "pf_id": "PF-I", "format": "Fut 200L",
+         "unite_vente": "FUT", "actif": "NON"},
+    ]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+
+    ui.mod._controle_tva_sku_tab("USR-1")
+
+    ui.st.metric.assert_any_call("SKU contrôlés", 1)
+    ui.st.metric.assert_any_call("SKU non classés", 1)
+    ui.st.download_button.assert_called_once()
+    exported = ui.st.download_button.call_args.kwargs["data"]
+    assert "SKU-A" in exported
+    assert "SKU-I" not in exported
+    ui.sales.create_facture_brouillon.assert_not_called()
