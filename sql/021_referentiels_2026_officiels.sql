@@ -17,7 +17,7 @@ INSERT INTO public.parametres_reglementaires (
  code,domaine,valeur,unite,date_effet,date_fin,statut_juridique,
  niveau_confiance,source,texte_source,date_verification
 )
-SELECT * FROM officiels
+SELECT * FROM officiels WHERE true
 ON CONFLICT (code,date_effet) DO NOTHING;
 
 -- Source DGI : régimes réel et simplifié, article G50 pour le régime réel.
@@ -39,7 +39,7 @@ INSERT INTO public.regles_reglementaires(
  code,domaine,type_regle,donnees,date_effet,date_fin,
  statut_juridique,niveau_confiance,source,texte_source,date_verification
 )
-SELECT * FROM regle
+SELECT * FROM regle WHERE true
 ON CONFLICT (code,date_effet) DO NOTHING;
 
 WITH comptes(numero_compte,libelle,actif,mouvementable) AS (VALUES
@@ -70,7 +70,7 @@ WITH comptes(numero_compte,libelle,actif,mouvementable) AS (VALUES
     ('701', 'Ventes de produits finis', false, false)
 )
 INSERT INTO public.scf_plan_comptes(numero_compte,libelle,actif,mouvementable)
-SELECT * FROM comptes
+SELECT * FROM comptes WHERE true
 ON CONFLICT (numero_compte) DO NOTHING;
 
 -- Vérifications transactionnelles des collisions : ne pas écraser un référentiel existant
