@@ -79,3 +79,30 @@ def test_source_absente_refusee():
 def test_taux_hors_plage_refuse():
     with pytest.raises(FiscaliteNonDisponible, match="Taux TVA invalide"):
         calculer_taxes_facture("100", False, "2026-02-01", [_param("1.5", "2026-01-01")])
+
+
+def test_parametre_unite_incompatible_bloque_calcul():
+    ligne = _param("0.17", "2026-01-01")
+    ligne["unite"] = "DZD"
+    with pytest.raises(FiscaliteNonDisponible, match="unité incompatible"):
+        calculer_taxes_facture("100", False, "2026-02-01", [ligne])
+
+
+def test_date_facture_invalide_refusee():
+    with pytest.raises(FiscaliteNonDisponible, match="Date fiscale"):
+        calculer_taxes_facture("100", False, "2026-02-30", [_param("0.17", "2026-01-01")])
+
+
+def test_faux_montant_booleen_refuse():
+    with pytest.raises(FiscaliteNonDisponible, match="décimal exact"):
+        calculer_taxes_facture(True, False, "2026-02-01", [_param("0.17", "2026-01-01")])
+
+
+def test_taux_change_sans_modifier_code():
+    ancien = [_param("0.11", "2026-01-01")]
+    nouveau = [_param("0.18", "2026-01-01")]
+    a = calculer_taxes_facture("100", False, "2026-02-01", ancien)
+    b = calculer_taxes_facture("100", False, "2026-02-01", nouveau)
+    assert a["montant_tva"] == Decimal("11.00")
+    assert b["montant_tva"] == Decimal("18.00")
+    assert a["montant_ttc"] != b["montant_ttc"]
