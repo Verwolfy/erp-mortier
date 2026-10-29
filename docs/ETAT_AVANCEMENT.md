@@ -221,3 +221,11 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Workflow déclenché sur `main` : https://github.com/Verwolfy/erp-mortier/actions/runs/40903575162. Statut observé durant cette étape : `in_progress`, conclusion non connue au moment de cette note.
 - Le lot C précédent `a2f82368ab2a1a5d911182d3fe8cd8f1c7da9159` dispose d'un workflow `success` : https://github.com/Verwolfy/erp-mortier/actions/runs/40903121197.
 - Aucune activation fiscale ni migration de la base principale ; l'ancien calcul de ventes reste présent en production et doit être remplacé seulement avec concordance SQL/Python et classification fiscale juridiquement validée.
+
+
+## Validation CI confirmée — 29 octobre 2026
+- Les exécutions du commit `46e80a89e9a00bd067ab96437228cd7f47713ed8` ont été **annulées** par la concurrence des workflows, et non déclarées réussies.
+- Sur le commit suivant `baeeb3073868e435ded4381c3372fd0cbf15b9cc`, les workflows GitHub Actions `40903656833` et `40903656894` sont `completed / success`.
+- Le job `tests` de l'exécution `40903656833` confirme deux étapes vertes : « Tests du socle fiscal » et « Tous les tests ERP (sans secrets et sans acces production) ».
+- Preuve : https://github.com/Verwolfy/erp-mortier/actions/runs/40903656833 ; https://github.com/Verwolfy/erp-mortier/actions/runs/40903656894.
+- Ce résultat valide la CI du code, pas la conformité juridique ni les fonctions SQL réellement déployées sur Supabase. Aucune migration appliquée à cette occasion.
