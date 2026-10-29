@@ -118,3 +118,17 @@ def test_classification_provisoire_chevauchante_bloque_toute_facture():
         simuler_tva_facture_lignes(
             panier(), date(2026, 2, 1), classes, parametres
         )
+
+
+def test_simulation_capture_preuve_par_ligne_sans_ecriture():
+    resultat = calcul()
+    assert len(resultat["lignes"]) == 2
+    a, b = resultat["lignes"]
+    assert a["justificatif_classification"]["sku_id"] == "SKU-A"
+    assert b["justificatif_classification"]["sku_id"] == "SKU-B"
+    assert a["justificatif_classification"]["code_parametre"] == "TVA_TAUX_NORMAL"
+    assert b["justificatif_classification"]["code_parametre"] == "TVA_TAUX_REDUIT"
+    assert a["justificatif_classification"]["date_validation"] == "2026-01-03"
+    assert a["justificatif_taux"]["date_verification"] == "2026-01-02"
+    assert resultat["simulation_sans_ecriture"] is True
+    assert resultat["autorise_activation_facturation"] is False
