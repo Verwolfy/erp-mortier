@@ -129,3 +129,41 @@ Dossier des sources, limites et preuves :
 La classification des SKU, le régime fiscal effectif de l'entreprise,
 les règles de timbre, les barèmes IRG/CNAS et les imputations SCF
 demeurent à qualifier : **aucune valeur métier fictive** n'est utilisée.
+
+
+---
+
+## Actualisation vérifiée — 29 octobre 2026 (reprise autonome)
+
+### Résultat de l'action précédente
+- Dossier de reprise publié sur `main` : `docs/SOFIANE_ERP_DOSSIER_PROJET_2026-10-29.md`, commit `e07eeb501ea9894a97c64464c442e6f4d9a39b2f` ; contenu relu après publication.
+- Dernier correctif RH constaté avant cette publication : `0ffe8c078d879222b6b12860adb675c204eace54`, dont le message revendique **1 720 tests**. Aucune exécution de pytest indépendante pendant cette reprise.
+- Aucune PR ouverte au moment de l'interrogation GitHub.
+
+### Contrôles SQL exécutés en lecture seule
+Pour PRODUCTION `wenydirqtmkywbxbxfal` **et** TEST `ffuhbmcfyexsbjwhryvj`, requête `SELECT COUNT(*)` sur les cinq tables ci-dessous :
+
+| Table | PRODUCTION | TEST |
+|---|---:|---:|
+| `public.parametres_reglementaires` | 5 | 5 |
+| `public.regles_reglementaires` | 1 | 1 |
+| `public.scf_plan_comptes` | 25 | 25 |
+| `public.erp_sku_fiscalite` | 0 | 0 |
+| `public.schema_migrations` | 0 | 0 |
+
+Les historiques internes Supabase listent les migrations **016 à 024 sur les deux bases** ; la production liste aussi 012 à 015. La présence des tables et les comptages **ne démontrent pas** la validité juridique, les droits précis ni l'égalité exhaustive des schémas.
+
+### Décisions de contrôle
+- Aucune migration supplémentaire appliquée dans cette reprise.
+- Aucune écriture réglementaire, RLS/GRANT, suppression ni sauvegarde PostgreSQL.
+- Ne pas activer automatiquement la facturation fiscale, les écritures SCF ou la paie réglementaire sur les seuls nombres observés.
+- Les anciennes affirmations d'absence de toutes les références fiscales ou SCF sont **historiques** et remplacées par les comptages ci-dessus ; les modules demeurent non certifiés.
+
+### Prochaines étapes
+1. Inventaire exhaustif des branches/commits et des migrations du dépôt, comparaison avec les historiques et schémas des deux bases.
+2. Lire les 5 paramètres et la règle (code, statut, dates et provenance), sans en déduire un taux applicable par défaut.
+3. Contrôler les ACL et politiques RLS sans les modifier.
+4. Vérifier les tests CI ou exécuter pytest dans un environnement autorisé, puis contrôler le déploiement Streamlit effectivement servi.
+5. Compléter les tests de bout en bout, l'administration des paramètres et les règles SCF/fiscales avec sources officielles et validation requise.
+
+**État global : EN COURS.** Réconciliation et conformité réglementaire non démontrées.
