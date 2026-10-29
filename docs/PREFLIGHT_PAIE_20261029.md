@@ -9,3 +9,11 @@ L'outil ne lit aucune fiche salarié, aucun salaire et aucune donnée personnell
 Le rôle courant est revérifié dans Supabase avant consultation. Les données de test sont synthétiques et ne constituent pas une norme algérienne.
 
 Restent nécessaires pour une utilisation légale : barèmes IRG/CNAS officiels complets à date, qualification des assiettes et profils individuels, règles des primes, congés, plafonds et retenues, validation comptable et tests de paie bout en bout.
+
+## Contrôle des unités et montants — correctif
+
+**Pourquoi :** l'unité `pourcentage` (ex. 9) ne doit jamais être interprétée comme une fraction (ex. 0,09). Les références de taux CNAS ne sont exploitables que si leur unité est exactement `fraction`, avec une valeur comprise entre 0 et 1.
+
+**Comment :** le moteur de sélection réglementaire accepte désormais l'exigence explicite `unite_attendue="fraction"`. Le préflight IRG/CNAS et la préparation non officielle de paie utilisent ce contrôle ; tout paramètre incompatible, incomplet ou ambigu bloque le calcul. La somme salaire de base + primes est également contrôlée contre le dépassement de limite décimale.
+
+**Portée :** aucun taux réel n'a été ajouté et aucune fiche de paie n'a été modifiée. Les fixtures de tests utilisent uniquement des valeurs synthétiques, isolées de Supabase.
