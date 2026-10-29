@@ -83,3 +83,22 @@ pas automatiquement validés dans le plan SCF et ne génèrent aucune écriture.
 actif homologué, un journal et un exercice ouverts, la détermination des
 imputations et la non-duplication des écritures. Les états réglementaires
 restent soumis à validation comptable.
+
+## Correspondances Finance → SCF (29 octobre 2026)
+
+**Pourquoi :** un numéro de compte bancaire ou de tiers saisi dans Finance
+ne suffit pas à certifier son imputation selon le SCF.
+
+**Comment :** dans l'onglet **Finance → Correspondances Finance / SCF**,
+le contrôle à la demande compare les numéros *exactement*. Il signale
+les comptes sans numéro, les numéros non référencés, les références
+SCF inactives et les candidats à valider. Un numéro proche ou plus
+long n'est jamais rapproché automatiquement.
+
+La lecture du plan SCF est exhaustive (compteur exact) et réservée
+aux utilisateurs habilités Finance. Le résultat est un diagnostic,
+pas une migration, et n'autorise aucune écriture comptable.
+
+Les comptes SCF intégrés lors de la migration 021 restent inactifs.
+Pour les activer, il faudra disposer d'un plan approuvé et des règles
+d'imputation correspondant au fonctionnement de l'entreprise.
