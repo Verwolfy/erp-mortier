@@ -59,18 +59,31 @@ def test_concordance_possible_ne_vaut_pas_approbation():
     assert audit["autorise_activation_facturation"] is False
 
 
-def test_taux_multiples_ne_sont_pas_comparables_globalement():
+def test_taux_multiples_comparables_seulement_par_groupe_fiscal():
     s = simuler_tva_facture_lignes(
         [
-            {"sku_id": "SKU-X", "quantite": "1", "prix_unitaire": "10"},
-            {"sku_id": "SKU-Y", "quantite": "1", "prix_unitaire": "10"},
+            {"sku_id": "SKU-X", "quantite": "1", "prix_unitaire": "0.03"},
+            {"sku_id": "SKU-X", "quantite": "1", "prix_unitaire": "0.03"},
+            {"sku_id": "SKU-Y", "quantite": "1", "prix_unitaire": "0.03"},
+            {"sku_id": "SKU-Y", "quantite": "1", "prix_unitaire": "0.03"},
         ],
         date(2026, 2, 1),
         [classification(), classification("SKU-Y", "REDUIT")],
         [parametre(), parametre("REDUIT", "0.09")],
     )
-    with pytest.raises(FiscaliteNonDisponible, match="Taux multiples"):
-        comparer_arrondis_tva(s)
+    result = comparer_arrondis_tva(s)
+    assert result["nombre_groupes"] == 2
+    assert result["taux_comparatif"] is None
+    assert result["montant_ht"] == Decimal("0.12")
+    assert result["tva_arrondie_par_ligne"] == Decimal("0.02")
+    assert result["tva_arrondie_globalement"] == Decimal("0.02")
+    assert result["ecart"] == Decimal("0.00")
+    assert [(g["code_parametre"], g["ecart"]) for g in result["groupes_tva"]] == [
+        ("TVA_TAUX_NORMAL", Decimal("0.01")),
+        ("TVA_TAUX_REDUIT", Decimal("-0.01")),
+    ]
+    assert result["conventions_non_homologuees"] is True
+    assert result["autorise_activation_facturation"] is False
 
 
 @pytest.mark.parametrize("update", [
@@ -99,3 +112,46 @@ def test_diagnostic_ne_modifie_pas_simulation():
     avant = deepcopy(donnees)
     comparer_arrondis_tva(donnees)
     assert donnees == avant
+
+
+def test_comparaison_mono_groupe_conserve_contrat_historique():
+    r = comparer_arrondis_tva(simulation())
+    assert r["nombre_groupes"] == 1
+    assert r["taux_comparatif"] == Decimal("0.17")
+    assert r["groupes_tva"][0]["ecart"] == Decimal("0.01")
+
+
+@pytest.mark.parametrize("field,value", [
+    ("categorie_tva", "EXONERE"),
+    ("categorie_tva", "INCONNUE"),
+    ("categorie_tva", None),
+    ("justificatif_taux", None),
+    ("justificatif_taux", {"code": "TVA_TAUX_REDUIT"}),
+    ("montant_ttc", Decimal("0.05")),
+    ("sku_id", ""),
+])
+def test_ligne_qualifiante_incoherente_refusee(field, value):
+    s = deepcopy(simulation())
+    s["lignes"][0][field] = value
+    with pytest.raises(FiscaliteNonDisponible):
+        comparer_arrondis_tva(s)
+
+
+def test_timbre_sur_facture_refuse():
+    s = deepcopy(simulation())
+    s["montant_timbre"] = Decimal("0.01")
+    with pytest.raises(FiscaliteNonDisponible, match="Timbre"):
+        comparer_arrondis_tva(s)
+
+
+def test_comparaison_ne_modifie_pas_entree_multitaux():
+    s = simuler_tva_facture_lignes(
+        [{"sku_id": "SKU-X", "quantite": "1", "prix_unitaire": "5"},
+         {"sku_id": "SKU-Y", "quantite": "1", "prix_unitaire": "5"}],
+        date(2026, 2, 1),
+        [classification(), classification("SKU-Y", "REDUIT")],
+        [parametre(), parametre("REDUIT", "0.09")],
+    )
+    before = deepcopy(s)
+    comparer_arrondis_tva(s)
+    assert s == before
