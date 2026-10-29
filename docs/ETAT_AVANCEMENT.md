@@ -205,3 +205,12 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Sortie observée : `15 passed in 0.07s` ; **15 tests ciblés réussis**.
 - Limite : ce contrôle ne certifie pas la suite complète ERP, le comportement de la RPC en production ni le déploiement Streamlit. Aucun changement de base effectué.
 - Prochaine étape : sécuriser la transition du service historique de ventes (taux/timbre) en conservant la concordance RPC et la qualification juridique des SKU avant activation.
+
+
+## CI fiscalité automatique sur main — 29 octobre 2026
+- Workflow `.github/workflows/lot_c_tests.yml` étendu aux pushes sur `main` et au fichier `tests/test_fiscalite_facturation_dates_2026.py`.
+- Commit de configuration : `9899d2fa4931c608df253020f7eed48a86999469`.
+- GitHub Actions run https://github.com/Verwolfy/erp-mortier/actions/runs/40902978928 : **status completed, conclusion success** (consultation de l'API GitHub).
+- Ce workflow inclut la suite complète `python -m pytest -q` dans son script. La conclusion `success` témoigne du succès du workflow, mais les nombres précis de tests ne sont pas extraits dans cette reprise.
+- La publication du présent suivi peut déclencher une nouvelle exécution CI ; distinguer chaque run et son SHA.
+- Aucune écriture Supabase ni activation fiscale dans cette étape.
