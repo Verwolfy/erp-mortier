@@ -196,3 +196,12 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Aucun statut GitHub CI disponible lors du contrôle précédent pour le commit des tests `bdf12a5` ; aucune validation pytest annoncée.
 - La modification des taux opérationnels ou le remplacement de la RPC fiscale reste conditionné à la qualification des SKU et à des tests de bout en bout.
 - Dossier Markdown local de reprise actualisé avec cette limite. Aucune modification de la base principale.
+
+
+## Vérification Python ciblée — 29 octobre 2026
+- Deux fichiers récupérés par GitHub connecté : `core/fiscalite_facturation.py` (blob `001c45209ac34c3e898d1397ed0719a78389adeb`) et `tests/test_fiscalite_facturation_dates_2026.py` (blob `3afdefcb31cf2cd4e9929327edd10db123d55629`).
+- Copies textuelles de ces fichiers exécutées dans un répertoire temporaire isolé, sans connexion SQL.
+- Commande : `python -m pytest -q tests/test_fiscalite_facturation_dates_2026.py`.
+- Sortie observée : `15 passed in 0.07s` ; **15 tests ciblés réussis**.
+- Limite : ce contrôle ne certifie pas la suite complète ERP, le comportement de la RPC en production ni le déploiement Streamlit. Aucun changement de base effectué.
+- Prochaine étape : sécuriser la transition du service historique de ventes (taux/timbre) en conservant la concordance RPC et la qualification juridique des SKU avant activation.
