@@ -67,10 +67,10 @@ def test_date_fin_passee_declenche_non_classe():
 
 def test_periodes_disjointes_admises():
     a = fiche(date_fin="2026-06-30")
-    b = fiche(date_effet="2026-07-01", categorie_tva="REDUIT",
-              code_parametre="TVA_TAUX_REDUIT")
+    b = fiche(date_effet="2026-07-01", categorie_tva="NORMAL",
+              code_parametre="TVA_TAUX_NORMAL")
     result = check(fiches=[a, b])
-    assert result["lignes"][0]["categorie_tva"] == "REDUIT"
+    assert result["lignes"][0]["categorie_tva"] == "NORMAL"
 
 
 @pytest.mark.parametrize("fiches", [
@@ -183,3 +183,17 @@ def test_dossier_non_valide_ne_montre_pas_categorie_proposee():
     assert result["par_statut"]["A_VALIDER"] == 1
     assert result["lignes"][0]["categorie_tva"] is None
     assert result["lignes"][0]["code_parametre"] is None
+
+
+def test_taux_reduit_est_incompatible_avec_politique_ventes():
+    with pytest.raises(QualificationTVAIndisponible, match="incohérente"):
+        check(fiches=[
+            fiche(categorie_tva="REDUIT", code_parametre="TVA_TAUX_REDUIT")
+        ])
+
+
+def test_exoneration_n_est_pas_une_categorie_sku_autorisee():
+    with pytest.raises(QualificationTVAIndisponible, match="incohérente"):
+        check(fiches=[
+            fiche(categorie_tva="EXONERE", code_parametre=None)
+        ])
