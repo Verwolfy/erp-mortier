@@ -54,12 +54,16 @@ def ui(monkeypatch):
 
     core_package = types.ModuleType("core")
     core_package.__path__ = [str(Path(__file__).resolve().parents[1] / "core")]
+    utils = types.ModuleType("core.utils")
+    from datetime import datetime
+    utils.get_local_now = MagicMock(return_value=datetime(2026, 10, 29, 23, 30))
     for key, val in {
         "streamlit": st,
         "config": types.ModuleType("config"),
         "config.roles": roles,
         "core": core_package,
         "core.db_service": db,
+        "core.utils": utils,
         "modules": types.ModuleType("modules"),
         "modules.ventes": types.ModuleType("modules.ventes"),
         "modules.ventes.service": sales,
@@ -68,7 +72,7 @@ def ui(monkeypatch):
     spec = importlib.util.spec_from_file_location("sales_views_tested", VIEW)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return types.SimpleNamespace(mod=mod, st=st, sales=sales, roles=roles, db=db, query=query)
+    return types.SimpleNamespace(mod=mod, st=st, sales=sales, roles=roles, db=db, query=query, utils=utils)
 
 
 def _draft():
@@ -678,3 +682,23 @@ def test_tva_ui_compte_et_exporte_uniquement_sku_actifs(ui):
     assert "SKU-A" in exported
     assert "SKU-I" not in exported
     ui.sales.create_facture_brouillon.assert_not_called()
+
+
+def test_tva_ui_utilise_date_locale_erp_et_non_horloge_serveur(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [{
+        "sku_id": "SKU-001", "pf_id": "PF-001",
+        "format": "Sac 25kg", "unite_vente": "SAC", "actif": "OUI",
+    }]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+    from core import couverture_tva_sku
+    from unittest.mock import patch
+    with patch.object(couverture_tva_sku, "verifier_couverture_tva",
+                      wraps=couverture_tva_sku.verifier_couverture_tva) as spy:
+        ui.mod._controle_tva_sku_tab("USR-1")
+        assert spy.call_args.args[2] == "2026-10-29"
+        assert spy.call_args.kwargs["uniquement_actifs"] is True
+        ui.utils.get_local_now.assert_called_once()
