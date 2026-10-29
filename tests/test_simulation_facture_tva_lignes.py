@@ -105,3 +105,16 @@ def test_precision_arrondi_centime():
     result = calcul([{"sku_id": "SKU-A", "quantite": "1",
                       "prix_unitaire": "0.005", "remise": "0"}])
     assert result["montant_ht"] == Decimal("0.01")
+
+
+def test_classification_provisoire_chevauchante_bloque_toute_facture():
+    classes, parametres = catalogue()
+    classes.append({
+        "sku_id": "SKU-B", "date_effet": "2026-01-15",
+        "date_fin": None, "statut": "A_VALIDER",
+        "categorie_tva": None, "code_parametre": None,
+    })
+    with pytest.raises(ClassificationIndisponible, match="attente de validation"):
+        simuler_tva_facture_lignes(
+            panier(), date(2026, 2, 1), classes, parametres
+        )
