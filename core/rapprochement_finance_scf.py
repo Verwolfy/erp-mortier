@@ -104,15 +104,18 @@ def auditer_reglements_vers_scf(
     entries: dict[str, list[dict[str, Any]]] = defaultdict(list)
     seen_entries: set[str] = set()
     for row in ecritures:
+        # Le journal peut contenir des écritures de stocks, régularisations ou
+        # importations historiques non issues de la RPC Finance 006.
+        source = row.get("document_source_id")
+        if not isinstance(source, str) or not source.startswith("REGF-"):
+            continue
         eid = _ident(row.get("ecriture_id"), "Référence écriture")
         if eid in seen_entries:
             raise AuditTresorerieIndisponible("Écriture de trésorerie dupliquée")
         seen_entries.add(eid)
-        source = _ident(row.get("document_source_id"), "Source comptable")
-        if source.startswith("REGF-"):
-            if source not in payments:
-                raise AuditTresorerieIndisponible("Écriture orpheline d'un règlement RPC")
-            entries[source].append(dict(row))
+        if source not in payments:
+            raise AuditTresorerieIndisponible("Écriture orpheline d'un règlement RPC")
+        entries[source].append(dict(row))
 
     results = []
     total_in = Decimal("0")
