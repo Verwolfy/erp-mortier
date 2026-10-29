@@ -51,6 +51,7 @@ jobs:
           tests/test_reglementation_sql_012.py
           tests/test_fiscalite_facturation.py
           tests/test_fiscalite_facturation_dates_2026.py
+          tests/test_classification_fiscale.py
           tests/test_fiscalite_service.py
           tests/test_facturation_sql_013.py
           tests/test_facturation_ecart_historique.py
