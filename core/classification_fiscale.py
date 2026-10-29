@@ -61,6 +61,15 @@ def selectionner_classification_bdd(
                 raise ClassificationIndisponible(f"Classification : {champ} absent")
         if not ligne.get("date_verification") or not ligne.get("date_validation"):
             raise ClassificationIndisponible("Dates de vérification et validation obligatoires")
+        try:
+            verification = ligne["date_verification"]
+            validation = ligne["date_validation"]
+            verification = verification if isinstance(verification, date) and not hasattr(verification, "hour") else date.fromisoformat(verification)
+            validation = validation if isinstance(validation, date) and not hasattr(validation, "hour") else date.fromisoformat(validation)
+        except (TypeError, ValueError) as exc:
+            raise ClassificationIndisponible("Date de validation invalide") from exc
+        if validation < verification:
+            raise ClassificationIndisponible("Validation antérieure à la vérification")
         categorie = ligne.get("categorie_tva")
         code = ligne.get("code_parametre")
         attendus = {"NORMAL": "TVA_TAUX_NORMAL", "REDUIT": "TVA_TAUX_REDUIT",
