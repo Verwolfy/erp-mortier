@@ -46,24 +46,32 @@ def _parametre(lignes: list[Mapping[str, Any]], code: str, instant: date, unite:
             raise FiscaliteNonDisponible("Ligne réglementaire non structurée")
         if ligne.get("code") != code:
             continue
-        if ligne.get("statut_juridique") != "en_vigueur" or ligne.get("niveau_confiance") != "CONFIRMEE":
+        # Une entrée contradictoire non homologuée qui s'applique à la
+        # date recherchée ne doit jamais être ignorée silencieusement.
+        # Les versions historiques expirées et les versions futures sont
+        # ignorées, même si leur validation reste incomplète.
+        debut = _date(ligne.get("date_effet"))
+        fin = _date(ligne["date_fin"]) if ligne.get("date_fin") is not None else None
+        if fin is not None and fin < debut:
+            raise FiscaliteNonDisponible(f"{code}: intervalle invalide")
+        if not (debut <= instant and (fin is None or instant <= fin)):
             continue
+        if (ligne.get("statut_juridique") != "en_vigueur"
+                or ligne.get("niveau_confiance") != "CONFIRMEE"):
+            raise FiscaliteNonDisponible(
+                f"{code}: paramètre applicable non confirmé"
+            )
         if ligne.get("unite") != unite:
             raise FiscaliteNonDisponible(f"{code}: unité incompatible")
         source = ligne.get("source")
         if not isinstance(source, str) or not source.strip():
             raise FiscaliteNonDisponible(f"{code}: source manquante")
-        debut = _date(ligne.get("date_effet"))
-        fin = _date(ligne["date_fin"]) if ligne.get("date_fin") is not None else None
         verifie = _date(ligne.get("date_verification"))
-        if fin is not None and fin < debut:
-            raise FiscaliteNonDisponible(f"{code}: intervalle invalide")
-        if debut <= instant and (fin is None or instant <= fin):
-            candidats.append((
-                _decimal(ligne.get("valeur"), code),
-                {"code": code, "date_effet": debut.isoformat(),
-                 "date_verification": verifie.isoformat(), "source": source.strip()},
-            ))
+        candidats.append((
+            _decimal(ligne.get("valeur"), code),
+            {"code": code, "date_effet": debut.isoformat(),
+             "date_verification": verifie.isoformat(), "source": source.strip()},
+        ))
     if len(candidats) != 1:
         raise FiscaliteNonDisponible(f"{code}: {len(candidats)} valeur(s) confirmée(s) applicable(s)")
     return candidats[0]
