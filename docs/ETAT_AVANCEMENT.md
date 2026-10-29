@@ -236,3 +236,11 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Aucune fonction `public.erp_facture_parametre` ni `public.get_param` trouvée sous ces noms dans le schéma `public` par cette requête.
 - Conséquence : **le moteur fiscal SQL paramétrable n'est pas encore démontré installé**. Le fichier `sql/013_facturation_parametree.sql` reste un brouillon non appliqué. Ne pas remplacer le calcul Python isolément, car la RPC doit contrôler les mêmes règles et dates.
 - Ce contrôle ne modifie ni données ni permissions.
+
+
+## Contrôles fiscaux historiques — CI validée le 29 octobre 2026
+- Commit `50d5560eec7eaea39d6adf80527d61f8b0339be2` : nouveau fichier `tests/test_facturation_ecart_historique.py` recensant explicitement les conventions fiscales historiques et vérifiant le projet SQL 013.
+- Commit `883fb5b88b29b259610b9289aed3fd0c75677ee0` : test inclus dans le workflow lot C exécuté automatiquement sur `main`.
+- Deux exécutions GitHub Actions sur ce SHA : `40906074056` et `40906074014` = `completed / success`.
+- Les runs du commit précédent ont été annulés par concurrence, ils ne doivent pas être comptabilisés comme des échecs.
+- Ce résultat CI **n'approuve pas juridiquement les taux historiques** et n'autorise pas l'activation de SQL 013 sans classification fiscale, tests SQL et concordance Python/SQL.
