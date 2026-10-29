@@ -674,3 +674,69 @@ def test_accuses_nouveau_reglement_emet_une_seule_fois(ui):
     ui.mod._accuses_internes_tab("USR-1", True, _payments())
     ui.finance.creer_accuse_encaissement.assert_called_once()
     assert ui.finance.creer_accuse_encaissement.call_args.kwargs["reglement_id"] == "REG-1"
+
+
+def test_audit_finance_scf_charge_uniquement_sur_clic(ui):
+    ui.mod._audit_finance_vers_scf_tab("USR-1", _accounts(), _payments())
+    ui.db.fetch_data_paginated.assert_not_called()
+    ui.st.metric.assert_not_called()
+
+
+def test_audit_finance_scf_refuse_permission_revoquee(ui):
+    ui.st.button.return_value = True
+    ui.roles.has_permission.return_value = False
+    ui.mod._audit_finance_vers_scf_tab("USR-1", _accounts(), _payments())
+    ui.db.fetch_data_paginated.assert_not_called()
+    ui.st.metric.assert_not_called()
+
+
+def test_audit_finance_scf_ne_poste_aucune_ecriture(ui, monkeypatch):
+    stub = types.ModuleType("core.rapprochement_finance_scf")
+    stub.AuditTresorerieIndisponible = type(
+        "AuditTresorerieIndisponible", (ValueError,), {}
+    )
+    stub.auditer_reglements_vers_scf = MagicMock(return_value={
+        "reglements_rpc_valides": 1,
+        "reglements_historiques_hors_controle": 0,
+        "montant_encaisse": "150.00",
+        "montant_decaisse": "0.00",
+        "ecritures": [{
+            "reglement_id": "REGF-1", "date_ecriture": "2026-10-29",
+            "sens": "ENCAISSEMENT", "montant": "150.00",
+            "total_debit": "150.00", "total_credit": "150.00",
+            "statut": "VERIFIE_FINANCE_NON_COMPTABILISE_SCF",
+            "lignes": [
+                {"compte_finance": "CPT-1", "numero_compte_saisi": "512"},
+                {"compte_finance": "CPT-2", "numero_compte_saisi": "411"},
+            ],
+        }],
+    })
+    monkeypatch.setitem(sys.modules, "core.rapprochement_finance_scf", stub)
+    ui.st.button.return_value = True
+    ui.mod._load_table = MagicMock(return_value=pd.DataFrame([
+        {"ecriture_id": "E1", "document_source_id": "REGF-1"}
+    ]))
+    ui.mod._audit_finance_vers_scf_tab("USR-1", _accounts(), _payments())
+    stub.auditer_reglements_vers_scf.assert_called_once()
+    assert ui.st.metric.call_count == 3
+    ui.st.dataframe.assert_called_once()
+    ui.finance.enregistrer_reglement.assert_not_called()
+    ui.finance.enregistrer_lettrage.assert_not_called()
+    ui.finance.creer_accuse_encaissement.assert_not_called()
+
+
+def test_audit_finance_scf_refuse_donnees_incompletes(ui, monkeypatch):
+    stub = types.ModuleType("core.rapprochement_finance_scf")
+    stub.AuditTresorerieIndisponible = type(
+        "AuditTresorerieIndisponible", (ValueError,), {}
+    )
+    stub.auditer_reglements_vers_scf = MagicMock(
+        side_effect=stub.AuditTresorerieIndisponible("Incomplet")
+    )
+    monkeypatch.setitem(sys.modules, "core.rapprochement_finance_scf", stub)
+    ui.st.button.return_value = True
+    ui.mod._load_table = MagicMock(return_value=pd.DataFrame())
+    ui.mod._audit_finance_vers_scf_tab("USR-1", _accounts(), _payments())
+    ui.st.metric.assert_not_called()
+    ui.st.dataframe.assert_not_called()
+    ui.st.error.assert_called_once()
