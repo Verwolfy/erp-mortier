@@ -55,6 +55,7 @@ def _decimal(value: Any, name: str) -> Decimal:
 
 def chercher_parametre(
     lignes: Iterable[Mapping[str, Any]], code: str, date_operation: date | str,
+    *, unite_attendue: str | None = None,
 ) -> ParametreApplicable:
     """Recherche la valeur confirmée en vigueur à la date réelle de l'opération.
 
@@ -62,6 +63,8 @@ def chercher_parametre(
     niveau_confiance, source, date_verification.
     Les règles projet, a_confirmer, abrogée ou sans source sont bloquées.
     L'existence de plusieurs règles actives déclenche un arrêt sans arbitrage tacite.
+    Lorsqu'une unité est demandée, la règle active doit déclarer exactement
+    cette unité ; pas de conversion implicite entre pourcentage et fraction.
     """
     if not isinstance(code, str) or not code.strip():
         raise RegleIndisponible("Code réglementaire absent")
@@ -83,6 +86,10 @@ def chercher_parametre(
         if end is not None and end < start:
             raise RegleIndisponible(f"{code}: intervalle de validité invalide")
         if start <= instant and (end is None or instant <= end):
+            if unite_attendue is not None and row.get("unite") != unite_attendue:
+                raise RegleIndisponible(
+                    f"{code}: unité invalide (attendu : {unite_attendue})"
+                )
             candidates.append(ParametreApplicable(
                 code, _decimal(row.get("valeur"), "valeur"), start, end,
                 source.strip(), verified,

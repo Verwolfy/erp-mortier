@@ -29,6 +29,23 @@ def test_valeur_a_date_effet_et_tracabilite():
                           date_verification="2026-01-03")
 
 
+def test_recherche_verifie_unite_si_demandee():
+    p = row(unite="fraction")
+    selected = chercher_parametre(
+        [p], "EXEMPLE_TAUX", "2026-03-01", unite_attendue="fraction"
+    )
+    assert selected.valeur == Decimal("0.125")
+
+
+@pytest.mark.parametrize("unite", [None, "%", "pourcentage", "DZD", ""])
+def test_unite_parametre_contraire_bloquee(unite):
+    with pytest.raises(RegleIndisponible, match="unité invalide"):
+        chercher_parametre(
+            [row(unite=unite)], "EXEMPLE_TAUX", "2026-03-01",
+            unite_attendue="fraction"
+        )
+
+
 def test_versions_non_chevauchantes():
     values = [row(date_fin="2026-06-30"),
               row(valeur="0.20", date_effet="2026-07-01")]

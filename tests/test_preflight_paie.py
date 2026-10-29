@@ -63,6 +63,9 @@ def test_regle_expiree_n_est_pas_utilisee():
 
 @pytest.mark.parametrize("params", [
     [param("CNAS_SALARIE_TAUX", "1.1")],
+    [param("CNAS_SALARIE_TAUX", "0.09") | {"unite": "pourcentage"}],
+    [param("CNAS_SALARIE_TAUX", "0.09") | {"unite": None}],
+    [param("CNAS_SALARIE_TAUX", "0.09") | {"unite": "%"}],
     [param("CNAS_SALARIE_TAUX", "-0.1")],
     [param("CNAS_SALARIE_TAUX", "NaN")],
     [param("CNAS_SALARIE_TAUX", "0.1"), param("CNAS_SALARIE_TAUX", "0.2")],

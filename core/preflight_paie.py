@@ -54,7 +54,9 @@ def verifier_referentiels_paie(
             availability[code] = False
             continue
         try:
-            entry = chercher_parametre(matching, code, instant)
+            entry = chercher_parametre(
+                matching, code, instant, unite_attendue="fraction"
+            )
         except RegleIndisponible as exc:
             # Un dossier présent mais non utilisable est un manque, sauf si
             # plusieurs règles confirmées concurrentes existent.

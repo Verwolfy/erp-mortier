@@ -7,7 +7,7 @@ from core.paie_preparation import PaieNonDisponible, preparer_bulletin_paie
 
 
 def param(code, valeur, **mod):
-    p=dict(code=code,valeur=valeur,date_effet="2026-01-01",date_fin=None,
+    p=dict(code=code,valeur=valeur,unite="fraction",date_effet="2026-01-01",date_fin=None,
            statut_juridique="en_vigueur",niveau_confiance="CONFIRMEE",
            source="SOURCE_FICTIVE_TEST",date_verification="2026-01-03")
     p.update(mod)
@@ -47,6 +47,15 @@ def test_net_brut_cotisations():
     {"montant_irg":"95000"}, {"date_paie":"2026-13-01"},
     {"employe_id":""}, {"autres_retenues":"100000"},
     {"salaire_base":"0.001"},
+    {"salaire_base":"900000000000000", "primes":"900000000000000"},
+    {"parametres":[param("CNAS_SALARIE_TAUX","9",unite="pourcentage"),
+                   param("CNAS_EMPLOYEUR_TAUX","0.26")]},
+    {"parametres":[param("CNAS_SALARIE_TAUX","0.09"),
+                   param("CNAS_EMPLOYEUR_TAUX","26",unite="pourcentage")]},
+    {"parametres":[param("CNAS_SALARIE_TAUX","0.09",unite=None),
+                   param("CNAS_EMPLOYEUR_TAUX","0.26")]},
+    {"parametres":[param("CNAS_SALARIE_TAUX","0.09"),
+                   param("CNAS_EMPLOYEUR_TAUX","0.26",unite="pct")]},
     {"preuve_irg":{}},
     {"preuve_irg":{"statut":"NON_VERIFIEE","source":"TEST","code":"I","date_paie":"2026-10-28"}},
     {"preuve_irg":{"statut":"CONFIRMEE","source":"","code":"I","date_paie":"2026-10-28"}},
