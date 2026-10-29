@@ -492,7 +492,7 @@ def show_finance_page() -> None:
                     "🔗 Lettrage", "📖 Journal des écritures",
                     "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
                     "🧾 Accusés internes", "📒 Pré-audit Finance → SCF",
-                    "🔎 Préparation TVA / SCF"])
+                    "🔎 Préparation TVA / SCF", "🔗 Correspondances Finance / SCF"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -527,6 +527,8 @@ def show_finance_page() -> None:
         _audit_finance_vers_scf_tab(user_id, accounts, reglements)
     with tabs[9]:
         _preflight_reglementaire_tab(user_id)
+    with tabs[10]:
+        _correspondances_finance_scf_tab(user_id, accounts)
 
 
 def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
@@ -812,4 +814,54 @@ def _preflight_reglementaire_tab(user_id: str) -> None:
         "Classification TVA des produits et régime fiscal de l'entreprise "
         "non vérifiés. Facturation réglementaire et comptabilisation SCF "
         "non autorisées par ce diagnostic."
+    )
+
+
+def _correspondances_finance_scf_tab(user_id: str, comptes: pd.DataFrame) -> None:
+    """Vérifie les seuls numéros SCF exacts : aucun rapprochement officiel."""
+    st.subheader("Correspondances comptes Finance → SCF")
+    st.caption(
+        "Comparaison exacte, sans inférence ni écriture automatique. "
+        "Un numéro identique n'homologue pas une imputation comptable."
+    )
+    if not st.button("Comparer les comptes", key="finance_scf_correspondances"):
+        return
+    _mark_finance_activity()
+    access = _finance_access()
+    if access is None or access[0] != user_id:
+        st.error("Autorisation Finance absente ou non vérifiable.")
+        return
+    from core.correspondances_finance_scf import (
+        CorrespondanceSCFIndisponible, lire_correspondances_finance_scf,
+    )
+    try:
+        if not isinstance(comptes, pd.DataFrame):
+            raise CorrespondanceSCFIndisponible("Source Finance invalide")
+        resultat = lire_correspondances_finance_scf(
+            comptes.to_dict(orient="records"), db_client=get_supabase_client()
+        )
+    except CorrespondanceSCFIndisponible as exc:
+        _LOG.warning("Correspondances Finance SCF refusées (%s)", type(exc).__name__)
+        st.error("Comptes incomplets ou incohérents : aucune correspondance affichée.")
+        return
+    except Exception as exc:
+        _LOG.warning("Lecture des correspondances impossible (%s)", type(exc).__name__)
+        st.error("Comparaison indisponible, aucun résultat partiel.")
+        return
+    st.metric("Comptes Finance", resultat["nombre_comptes_finance"])
+    st.metric("Références SCF", resultat["nombre_comptes_scf"])
+    st.metric("Références SCF inactives", resultat["repartition"]["REFERENCE_INACTIVE"])
+    st.metric("Comptes Finance sans référence", (
+        resultat["repartition"]["SANS_NUMERO"] +
+        resultat["repartition"]["NON_REFERENCE"]
+    ))
+    if resultat["lignes"]:
+        st.dataframe(pd.DataFrame(resultat["lignes"]), use_container_width=True,
+                     hide_index=True)
+    else:
+        st.info("Aucun compte Finance à comparer.")
+    st.warning(
+        "Aucune correspondance n'est homologuée. La validation des comptes "
+        "SCF, des journaux et des exercices reste nécessaire avant de "
+        "comptabiliser automatiquement."
     )
