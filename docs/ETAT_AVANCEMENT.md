@@ -265,3 +265,15 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - **Blocage maintenu :** les catégories TVA par SKU et le régime fiscal de l'entreprise doivent être validés sur preuves juridiques datées. Les règles de timbre et la concordance transactionnelle Python/SQL restent incomplètes ; ne pas activer la migration 013 ni inventer de taux.
 - Aucun changement de schéma, de privilèges ou de données métier Supabase durant cette livraison.
 
+
+
+
+## Migration 025 : attestations d'exonération TVA clients (29 octobre 2026)
+
+- **Règle métier** : TVA normale **19 %** pour les ventes ; **0 %** uniquement en présence d'une attestation client applicable et documentée. Aucun taux réduit 9 % n'est proposé aux ventes. La règle métier est consignée dans `docs/REGLE_METIER_TVA_VENTES_19_OU_EXO_CLIENT.md`.
+- Migration `sql/025_attestations_exoneration_client.sql` appliquée **sur TEST et sur PRODUCTION** via Supabase sous le nom `erp_025_attestations_exoneration_client`. Les deux historiques de migrations la confirment (TEST `20261029200111`, PROD `20261029200156`).
+- Deux nouvelles tables vides en production : `public.erp_exonerations_tva_clients` et `public.erp_exonerations_tva_skus`. FKs vers `clients` et `sku_conditionnement`, contraintes de dates, de preuve et d'unicité ; aucune attribution d'attestation ou d'exonération.
+- RLS activée pour les deux tables. Contrôle réel PROD : `anon` et `authenticated` sans droit SELECT ; `service_role` avec **SELECT uniquement**, sans INSERT/UPDATE/DELETE. Aucun accès de gestion UI ni aucune politique RLS permissive ne sont créés. L'avis Supabase `rls_enabled_no_policy` est intentionnel : les tables restent inaccessibles aux clients API ordinaires. Documentation : https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+- Composant purement mémoire `core/lecture_exonerations_tva_clients.py` : reconstitue une attestation unique et sa portée SKU à partir de lignes lues par un futur service autorisé, refuse les doublons, certificats concurrents et statuts non validés. `core/exoneration_tva_client.py` conserve désormais les références du dossier et de la pièce interne dans les justificatifs de simulation.
+- Tests ajoutés : `tests/test_exoneration_sql_025.py`, `tests/test_lecture_exonerations_tva_clients.py` ; intégrés au workflow `.github/workflows/lot_c_tests.yml`. Exécution SQL réelle et vérification ACL effectuées sur les deux projets, distinctes des tests CI.
+- **Limites** : registres vides, 7 SKU actifs mais aucun dossier de classification TVA SKU ; aucune attestation client réelle validée ; pas d'interface administrative d'enregistrement ou validation ; pas de modification de `public.erp_sale_transaction` ; migration 013 toujours bloquée. Les pièces justificatives ne sont pas stockées : seule une référence interne est prévue. Ne pas activer la facturation à 0 % depuis la RPC historique.
