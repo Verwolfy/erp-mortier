@@ -108,7 +108,7 @@ def test_classification_bdd_date_validation_invalide_refusee():
         "valide_par": "TEST", "date_verification": "date-invalide",
         "date_validation": "2026-01-03",
     }
-    with pytest.raises(ClassificationIndisponible, match="Date de validation invalide"):
+    with pytest.raises(ClassificationIndisponible, match="Date de vérification invalide"):
         selectionner_classification_bdd("SKU-TEST", date(2026, 2, 1), [bdd])
 
 
