@@ -20,7 +20,7 @@ def classification(category="NORMAL", status="VALIDEE"):
     }
 
 
-def param(code="TVA_TAUX_NORMAL", rate="0.17", status="en_vigueur"):
+def param(code="TVA_TAUX_NORMAL", rate="0.19", status="en_vigueur"):
     return {
         "code": code, "valeur": rate, "unite": "fraction",
         "statut_juridique": status, "niveau_confiance": "CONFIRMEE",
@@ -32,7 +32,7 @@ def param(code="TVA_TAUX_NORMAL", rate="0.17", status="en_vigueur"):
 def test_taux_par_sku_qualifie():
     result = taux_par_ligne([{"sku_id": "SKU-X"}], date(2026, 2, 1),
                             [classification()], [param()])
-    assert result[0]["taux_tva"] == Decimal("0.17")
+    assert result[0]["taux_tva"] == Decimal("0.19")
     assert result[0]["justificatif_taux"]["source"] == "SOURCE-TEST"
 
 
@@ -49,7 +49,7 @@ def test_classification_non_validee_refusee():
 
 
 def test_exoneration_non_traitee_refusee():
-    with pytest.raises(ClassificationIndisponible, match="Exonération"):
+    with pytest.raises(ClassificationIndisponible, match="exonération"):
         taux_par_ligne([{"sku_id": "SKU-X"}], date(2026, 2, 1),
                        [classification(category="EXONERE")], [param()])
 
@@ -57,7 +57,7 @@ def test_exoneration_non_traitee_refusee():
 def test_parametre_inexistant_refuse():
     with pytest.raises(FiscaliteNonDisponible):
         taux_par_ligne([{"sku_id": "SKU-X"}], date(2026, 2, 1),
-                       [classification(category="REDUIT")], [param()])
+                       [classification()], [])
 
 
 def test_parametre_tva_non_confirme_concurrent_bloque_tout():
@@ -77,7 +77,7 @@ def test_parametre_tva_provisoire_futur_ne_bloque_pas_historique():
     assert taux_par_ligne(
         [{"sku_id": "SKU-X"}], date(2026, 2, 1),
         [classification()], [futur, valide],
-    )[0]["taux_tva"] == Decimal("0.17")
+    )[0]["taux_tva"] == Decimal("0.19")
 
 
 def test_parametre_tva_provisoire_expire_ne_bloque_pas_periode_courante():
@@ -88,7 +88,7 @@ def test_parametre_tva_provisoire_expire_ne_bloque_pas_periode_courante():
     assert taux_par_ligne(
         [{"sku_id": "SKU-X"}], date(2026, 2, 1),
         [classification()], [ancien, valide],
-    )[0]["taux_tva"] == Decimal("0.17")
+    )[0]["taux_tva"] == Decimal("0.19")
 
 
 def test_preuve_classification_complete_et_independante():
@@ -128,3 +128,42 @@ def test_preuve_dates_bdd_normalisees_iso():
     assert preuve["date_effet"] == "2026-01-01"
     assert preuve["date_fin"] == "2026-12-31"
     assert preuve["date_validation"] == "2026-01-03"
+
+
+def test_taux_reduit_exclu_des_ventes_meme_si_referentiel_existe():
+    with pytest.raises(ClassificationIndisponible, match="seul le taux normal"):
+        taux_par_ligne(
+            [{"sku_id": "SKU-X"}], date(2026, 2, 1),
+            [classification(category="REDUIT")],
+            [param(), param(code="TVA_TAUX_REDUIT", rate="0.09")],
+        )
+
+
+def test_exoneration_client_reduit_uniquement_la_tva_d_un_sku_couvert():
+    classe = classification()
+    exon = {
+        "client_id": "CLI-TEST", "statut": "VALIDEE",
+        "date_effet": "2026-01-01", "date_fin": "2026-12-31",
+        "date_verification": "2026-01-02", "date_validation": "2026-01-03",
+        "reference_attestation": "CERTIFICAT-TEST", "autorite_emettrice": "AUTORITE-TEST",
+        "valide_par": "SIGNATAIRE-TEST", "justification": "PORTÉE-TEST",
+        "sku_ids_couverts": ["SKU-X"],
+    }
+    result = taux_par_ligne(
+        [{"sku_id": "SKU-X"}], date(2026, 2, 1), [classe], [param()],
+        client_id="CLI-TEST", attestation_exoneration=exon,
+    )
+    assert result[0]["taux_tva"] == Decimal("0")
+    assert result[0]["mode_tva"] == "EXONERATION_CLIENT"
+    assert result[0]["justificatif_exoneration_client"]["reference_attestation"] == "CERTIFICAT-TEST"
+    assert result[0]["justificatif_taux"]["code"] == "TVA_TAUX_NORMAL"
+
+
+def test_sans_attestation_le_client_reste_au_taux_normal():
+    result = taux_par_ligne(
+        [{"sku_id": "SKU-X"}], date(2026, 2, 1),
+        [classification()], [param()], client_id="CLI-TEST"
+    )
+    assert result[0]["taux_tva"] == Decimal("0.19")
+    assert result[0]["mode_tva"] == "NORMAL"
+    assert result[0]["justificatif_exoneration_client"] is None
