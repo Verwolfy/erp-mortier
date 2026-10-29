@@ -621,6 +621,32 @@ def _controle_tva_sku_tab(user_id: str) -> None:
             pd.DataFrame(result["lignes"]), use_container_width=True,
             hide_index=True,
         )
+    # Export strictement local et après revalidation des droits de lecture.
+    # Ce fichier ne valide aucun SKU et ne crée aucun enregistrement fiscal.
+    actifs = [
+        ligne for ligne in skus
+        if isinstance(ligne, dict) and ligne.get("actif") == "OUI"
+    ]
+    champs_export = ("sku_id", "pf_id", "format", "unite_vente")
+    if actifs and all(
+        isinstance(ligne.get(champ), str) and ligne[champ].strip()
+        for ligne in actifs for champ in champs_export
+    ):
+        from core.registre_qualification_sku import registre_qualification_sku
+        try:
+            registre = registre_qualification_sku(actifs)
+        except ValueError:
+            st.warning("Export de revue indisponible : référentiel SKU incohérent.")
+        else:
+            st.download_button(
+                "Télécharger le registre des SKU à qualifier (Markdown)",
+                data=registre,
+                file_name="revue_tva_sku_actifs.md",
+                mime="text/markdown",
+                key="ventes_export_revue_tva",
+            )
+    elif actifs:
+        st.info("Export non disponible : détails SKU incomplets.")
     st.warning(
         "Audit uniquement : aucun taux TVA n'a été affecté ni appliqué "
         "aux factures. Une validation juridique par produit et du régime "
