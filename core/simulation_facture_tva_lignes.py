@@ -35,6 +35,8 @@ def simuler_tva_facture_lignes(
     *,
     remise_globale: str | int | Decimal = "0",
     paiement_especes: bool = False,
+    client_id: str | None = None,
+    attestation_exoneration: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Évalue une vente standard par ligne après contrôle strict des SKU."""
     if not isinstance(paiement_especes, bool) or paiement_especes:
@@ -59,7 +61,10 @@ def simuler_tva_facture_lignes(
         ht = (brut - remise).quantize(_CENT, rounding=ROUND_HALF_UP)
         montants.append(ht)
 
-    taux_lignes = taux_par_ligne(lignes, date_facture, classifications, parametres)
+    taux_lignes = taux_par_ligne(
+        lignes, date_facture, classifications, parametres,
+        client_id=client_id, attestation_exoneration=attestation_exoneration,
+    )
     details: list[dict[str, Any]] = []
     total_ht = Decimal("0.00")
     total_tva = Decimal("0.00")
@@ -77,6 +82,8 @@ def simuler_tva_facture_lignes(
             "montant_tva": taxe,
             "montant_ttc": ht + taxe,
             "categorie_tva": qualification["categorie_tva"],
+            "mode_tva": qualification["mode_tva"],
+            "justificatif_exoneration_client": qualification["justificatif_exoneration_client"],
             "justificatif_taux": qualification["justificatif_taux"],
             "source_classification": qualification["source_classification"],
             "justificatif_classification": qualification["justificatif_classification"],
