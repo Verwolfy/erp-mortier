@@ -43,3 +43,41 @@ def test_source_absente_interdite():
     item["source"] = ""
     with pytest.raises(ClassificationIndisponible, match="Source"):
         selectionner_classification("SKU-TEST", date(2026, 2, 1), [item])
+
+
+def test_classification_bdd_reelle_validee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    bdd = {
+        "sku_id": "SKU-TEST", "date_effet": date(2026, 1, 1),
+        "date_fin": None, "statut": "VALIDEE", "categorie_tva": "NORMAL",
+        "code_parametre": "TVA_TAUX_NORMAL",
+        "source_juridique": "SOURCE-FICTIVE", "justification": "TEST",
+        "valide_par": "TEST", "date_verification": date(2026, 1, 2),
+        "date_validation": date(2026, 1, 3),
+    }
+    assert selectionner_classification_bdd("SKU-TEST", date(2026, 2, 1), [bdd]) is bdd
+
+
+def test_classification_bdd_non_validee_refusee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    bdd = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-01-01",
+        "date_fin": None, "statut": "A_VALIDER", "categorie_tva": "NORMAL",
+        "code_parametre": "TVA_TAUX_NORMAL",
+    }
+    with pytest.raises(ClassificationIndisponible):
+        selectionner_classification_bdd("SKU-TEST", date(2026, 2, 1), [bdd])
+
+
+def test_classification_bdd_incoherente_refusee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    bdd = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-01-01",
+        "date_fin": None, "statut": "VALIDEE", "categorie_tva": "REDUIT",
+        "code_parametre": "TVA_TAUX_NORMAL",
+        "source_juridique": "SOURCE-FICTIVE", "justification": "TEST",
+        "valide_par": "TEST", "date_verification": "2026-01-02",
+        "date_validation": "2026-01-03",
+    }
+    with pytest.raises(ClassificationIndisponible, match="incohérents"):
+        selectionner_classification_bdd("SKU-TEST", date(2026, 2, 1), [bdd])
