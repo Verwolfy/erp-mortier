@@ -13,12 +13,11 @@ class QualificationTVAIndisponible(ValueError):
     """Référentiel incomplet, contradictoire ou illisible."""
 
 
-_CODES = {
-    "NORMAL": "TVA_TAUX_NORMAL",
-    "REDUIT": "TVA_TAUX_REDUIT",
-    "EXONERE": None,
-    "HORS_CHAMP": None,
-}
+# Périmètre métier Ventes : tous les SKU sont soumis au taux normal.
+# L'exonération éventuelle est un droit DOCUMENTÉ DU CLIENT, pas une
+# catégorie fiscale de SKU. Les anciennes valeurs restent en schéma,
+# mais sont rejetées par le précontrôle métier.
+_CODES = {"NORMAL": "TVA_TAUX_NORMAL"}
 
 
 def _date(value: Any, field: str) -> date:
