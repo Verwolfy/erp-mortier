@@ -90,6 +90,8 @@ def simuler_tva_facture_lignes(
         })
     return {
         "lignes": details,
+        "date_facture": date_facture.isoformat(),
+        "client_id": client_id,
         "montant_ht": total_ht,
         "montant_tva": total_tva,
         "montant_ttc": total_ht + total_tva,
