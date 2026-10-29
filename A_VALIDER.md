@@ -18,3 +18,32 @@ _Mise à jour au 28 octobre 2026. Aucun paramètre réel n'est inséré automati
 Le code fiscal ne constitue pas une conformité réglementaire attestée.
 La production conserve actuellement le circuit Ventes existant jusqu'à une
 bascule coordonnée et validée. Aucune facture ancienne n'est modifiée.
+
+
+## Sécurisation du simulateur fiscal historique — 29 octobre 2026
+
+La DGI confirme sur son portail actualisé le 23 février 2026 que la TVA
+normale est de **19 %**, la TVA réduite de **9 %** et que le fait générateur
+diffère selon vente, prestation et travaux :
+https://www.mfdgi.gov.dz/fr/professionnels/services-pro/regime-reel/la-taxe-sur-la-valeur-ajoutee
+
+Le droit de timbre de quittance relève de l'article 100 du Code du timbre,
+modifié par la loi de finances 2025, articles 46 et 47, JO n°84 du
+26 décembre 2024 : https://www.mf.gov.dz/images/pdf/loidefinance/Loi_de_finance_2025_FR.pdf
+La DGI a publié un **Code du timbre consolidé 2026** :
+https://www.mfdgi.gov.dz/fr/a-propos/actu-fr/codes-fiscaux-fr
+
+En conséquence, le moteur dormant `core/fiscalite_facturation.py` **refuse
+dorénavant tout calcul de facture espèces** au lieu de produire 1 % plafonné
+à 2 500 DA. Son service de lecture n'interroge plus les anciens paramètres
+de timbre. Ce correctif **ne modifie pas** la RPC Ventes actuellement
+utilisée, qui conserve temporairement l'ancienne formule : ce point demeure
+bloquant pour certifier la facturation comme conforme.
+
+Avant la bascule réelle :
+- classifier les articles et le régime fiscal (exonération, 9 %, 19 %) ;
+- séparer facture/avoir, encaissement et éventuelle quittance ;
+- confirmer le Code du timbre 2026 et les exemptions applicables ;
+- traiter les règlements partiels, modes de paiement et avoirs historiques ;
+- installer et tester une nouvelle fonction transactionnelle Ventes plutôt
+  que rejouer aveuglément l'ancien fichier `sql/013`.
