@@ -261,6 +261,12 @@ def _remaining_for_order(order_id: str, order_lines: pd.DataFrame,
 
 def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
     st.subheader("Créer une facture ou un avoir (brouillon)")
+    st.warning(
+        "Attention : le calcul historique des brouillons utilise encore une TVA "
+        "uniforme et un éventuel timbre sur facture. La classification fiscale "
+        "par SKU ne pilote pas encore la transaction SQL. Cette fonction ne "
+        "constitue pas une facturation réglementaire homologuée."
+    )
     if not can_write:
         st.info("Mode lecture seule")
         return
