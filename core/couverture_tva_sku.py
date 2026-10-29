@@ -89,8 +89,12 @@ def verifier_couverture_tva(
                 raise QualificationTVAIndisponible("Catégorie validée absente")
             for field in ("source_juridique", "justification", "valide_par"):
                 _text(row.get(field), field)
-            _date(row.get("date_verification"), "date_verification")
-            _date(row.get("date_validation"), "date_validation")
+            verification = _date(row.get("date_verification"), "date_verification")
+            validation = _date(row.get("date_validation"), "date_validation")
+            if validation < verification:
+                raise QualificationTVAIndisponible(
+                    "Validation fiscale antérieure à la vérification"
+                )
         by_sku.setdefault(sid, []).append(row)
     # Un intervalle à cheval sur un autre ne peut pas être arbitré.
     for sid, rows in by_sku.items():
@@ -117,8 +121,15 @@ def verifier_couverture_tva(
         if len(applicable) > 1:
             raise QualificationTVAIndisponible("Périodes fiscales ambiguës")
         row = applicable[0] if applicable else None
+        # Un dossier validé après la date auditée n'était pas encore
+        # homologué à cette date, même s'il est marqué VALIDEE aujourd'hui.
+        valide_a_date = (
+            row is not None
+            and row["statut"] == "VALIDEE"
+            and _date(row["date_validation"], "date_validation") <= target
+        )
         status = ("NON_CLASSE" if row is None
-                  else "VALIDE" if row["statut"] == "VALIDEE"
+                  else "VALIDE" if valide_a_date
                   else "A_VALIDER")
         tally[status] += 1
         result.append({
@@ -126,8 +137,9 @@ def verifier_couverture_tva(
             "produit": products[sid].get("pf_id") or "",
             "actif_sku": products[sid].get("actif") or "",
             "statut": status,
-            "categorie_tva": row.get("categorie_tva") if row else None,
-            "code_parametre": row.get("code_parametre") if row else None,
+            "categorie_tva": row.get("categorie_tva") if valide_a_date else None,
+            "code_parametre": row.get("code_parametre") if valide_a_date else None,
+            "date_validation": row.get("date_validation") if row else None,
             "source_juridique": row.get("source_juridique") if row else None,
             "date_effet": row.get("date_effet") if row else None,
         })
