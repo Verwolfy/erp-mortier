@@ -79,11 +79,19 @@ def calculer_taxes_facture(
 
     Les exemptions, taux réduits et ventilations par ligne nécessitent un moteur
     dédié : il est interdit de l'utiliser pour ces cas sans classification fiscale.
-    Les paramètres attendus sont TVA_VENTE_TAUX et, en cas de paiement espèces,
-    TIMBRE_ESPECES_TAUX et TIMBRE_ESPECES_PLAFOND.
+    Paramètre attendu : TVA_VENTE_TAUX uniquement, pour la simulation non
+    fiscale d'une vente standard explicitement classée en amont.
+    Pour une vente payée en espèces, l'ancien timbre de facture est
+    incompatible avec le calcul légal sur quittance : appel refusé.
     """
     if not isinstance(paiement_especes, bool):
         raise FiscaliteNonDisponible("Indicateur espèces invalide")
+    if paiement_especes:
+        raise FiscaliteNonDisponible(
+            "Ancien calcul de timbre sur facture interdit : "
+            "le droit doit être déterminé sur une quittance de règlement "
+            "avec son régime, son moyen de paiement et sa règle vérifiée"
+        )
     instant = _date(date_facture)
     ht = _decimal(montant_ht, "Montant HT")
     if ht < 0 or ht >= Decimal("1e15"):
@@ -95,16 +103,10 @@ def calculer_taxes_facture(
     arrondi = Decimal("0.01")
     tva = (ht * tva_taux).quantize(arrondi, rounding=ROUND_HALF_UP)
     net_avant_timbre = ht + tva
-    timbre = Decimal(0)
+    # Le timbre ne peut être simulé sur une facture ; seul le règlement
+    # constaté et juridiquement classifié pourra produire une quittance.
+    timbre = Decimal("0.00")
     traces = [trace_tva]
-    if paiement_especes:
-        taux, trace_timbre = _parametre(lignes, "TIMBRE_ESPECES_TAUX", instant, "fraction")
-        plafond, trace_plafond = _parametre(lignes, "TIMBRE_ESPECES_PLAFOND", instant, "DZD")
-        if not Decimal(0) <= taux <= Decimal(1) or plafond < 0:
-            raise FiscaliteNonDisponible("Paramètre timbre invalide")
-        timbre = min((net_avant_timbre * taux).quantize(arrondi, rounding=ROUND_HALF_UP), plafond)
-        timbre = timbre.quantize(arrondi, rounding=ROUND_HALF_UP)
-        traces.extend([trace_timbre, trace_plafond])
     return {
         "montant_tva": tva,
         "montant_timbre": timbre,
