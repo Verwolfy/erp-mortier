@@ -3,7 +3,7 @@
 -- et ne prétend pas être la date d'origine historique des taux.
 -- Aucune affectation TVA à un SKU, ni choix du régime de l'entreprise.
 -- Pas de compte SCF actif ou mouvementable ; pas de journal ou exercice.
--- Pas d'ancienne règle TVA_VENTE_TAUX ou TIMBRE_ESPECES_TAUX.
+-- Aucun code de taxe universel pour une facture ni ancienne taxe de timbre.
 BEGIN;
 
 WITH officiels(
