@@ -54,3 +54,18 @@ def test_trop_de_lignes_refuse():
         verifier_panier_fiscal(
             [{"sku_id": "SKU-A"}] * 501, date(2026, 2, 1), [classement("SKU-A")]
         )
+
+
+def test_referentiel_invalide_refuse():
+    with pytest.raises(ClassificationIndisponible, match="Référentiel"):
+        verifier_panier_fiscal([{"sku_id": "SKU-A"}], date(2026, 2, 1), None)
+
+
+def test_panier_reutilise_referentiel_sans_altération():
+    a, b = classement("SKU-A"), classement("SKU-B")
+    referentiel = [a, b]
+    verifier_panier_fiscal(
+        [{"sku_id": "SKU-A"}, {"sku_id": "SKU-B"}],
+        date(2026, 2, 1), referentiel,
+    )
+    assert referentiel == [a, b]
