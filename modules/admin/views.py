@@ -15,6 +15,7 @@ from modules.admin.service import (
     add_produit, add_sku, add_client, sauvegarder_modifications,
     add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
+from modules.admin.exonerations_service import lister_attestations_pour_manager
 
 # --- FALLBACKS SÉCURISÉS (Directement alignés avec import_data.py) ---
 PAYS_FALLBACK = ["DZ", "CN", "TR", "IT", "FR", "ES", "DE", "AE", "SA", "IN", "EG", "TN", "MA", "PT", "BE", "KR", "Autre"]
@@ -196,6 +197,34 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
                     st.error("Modification non confirmée dans Supabase.")
 
 
+def _revue_exonerations_tva_clients() -> None:
+    """Consultation privée sans création, validation ni révocation depuis l'ERP."""
+    st.subheader("Attestations d'exonération TVA clients — revue sécurisée")
+    if not is_security_manager():
+        st.info("Consultation réservée au SECURITY_MANAGER.")
+        return
+    try:
+        dossiers = lister_attestations_pour_manager()
+    except (PermissionError, ValueError, RuntimeError):
+        st.error("Dossiers fiscaux non disponibles ou autorisation insuffisante.")
+        return
+    except Exception:
+        st.error("Lecture des dossiers fiscaux impossible.")
+        return
+    if not dossiers:
+        st.info("Aucune attestation enregistrée. Aucune exonération présumée.")
+        return
+    st.dataframe(
+        pd.DataFrame(dossiers),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.warning(
+        "Consultation uniquement : preuve documentaire, portée SKU et contrôle "
+        "juridique requis avant validation. Aucune activation à 0 % par cette vue."
+    )
+
+
 def show_admin_page():
     st.title("⚙️ Administration & Référentiels")
 
@@ -214,9 +243,10 @@ def show_admin_page():
     cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
     hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
 
-    tab1, tab2, tab3, tab4, tab5, tab_listes = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations = st.tabs([
         "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
-        "🛍️ Produits", "📦 SKU", "📝 Listes de choix"
+        "🛍️ Produits", "📦 SKU", "📝 Listes de choix",
+        "📑 Exonérations TVA (lecture)"
     ])
 
     # --- CLIENTS ---
@@ -462,6 +492,11 @@ def show_admin_page():
             gerer_listes_reference()
         else:
             st.info("🔒 Mode lecture seule : vous ne pouvez pas modifier les listes.")
+
+
+    # --- DOSSIERS EXONERATIONS ---
+    with tab_exonerations:
+        _revue_exonerations_tva_clients()
 
 
 # ==========================================
