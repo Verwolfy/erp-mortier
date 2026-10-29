@@ -52,3 +52,85 @@ def lister_attestations_pour_manager() -> list[dict[str, Any]]:
         {**row, "nombre_sku_couverts": compte[row["attestation_id"]]}
         for row in headers
     ]
+
+
+def creer_brouillon_attestation(
+    payload: dict[str, Any], *, operation_id: str,
+) -> str:
+    """Crée atomiquement un dossier A_VALIDER ; aucune exonération accordée.
+
+    operation_id DOIT être conservé lors d'une reprise après échec réseau.
+    Toute décision de validation reste réservée au second circuit fiscal SQL.
+    """
+    from datetime import date
+    from uuid import UUID
+
+    if not isinstance(payload, dict):
+        raise ValueError("Dossier d'attestation invalide")
+    obligatoires = {
+        "client_id", "reference_attestation", "autorite_emettrice",
+        "reference_piece_interne", "justification", "date_effet",
+        "date_fin", "sku_ids",
+    }
+    if set(payload) != obligatoires:
+        raise ValueError("Champs du dossier d'attestation incohérents")
+    limites = {
+        "client_id": 200, "reference_attestation": 200,
+        "autorite_emettrice": 200, "reference_piece_interne": 250,
+        "justification": 2000,
+    }
+    for champ, maximum in limites.items():
+        val = payload[champ]
+        if not isinstance(val, str) or not 1 <= len(val.strip()) <= maximum:
+            raise ValueError(f"{champ} obligatoire ou trop long")
+        if any(ord(ch) < 32 for ch in val):
+            raise ValueError(f"{champ} : caractères de contrôle interdits")
+    for champ in ("date_effet", "date_fin"):
+        val = payload[champ]
+        if not isinstance(val, str):
+            raise ValueError(f"{champ} invalide")
+        try:
+            parsed = date.fromisoformat(val)
+        except ValueError as exc:
+            raise ValueError(f"{champ} invalide") from exc
+        if parsed.isoformat() != val:
+            raise ValueError(f"{champ} invalide")
+    if payload["date_fin"] < payload["date_effet"]:
+        raise ValueError("Période de l'attestation invalide")
+    skus = payload["sku_ids"]
+    if (not isinstance(skus, list) or not 1 <= len(skus) <= 200
+        or any(not isinstance(x, str) or not x.strip() for x in skus)
+        or len(set(skus)) != len(skus)):
+        raise ValueError("Portée SKU invalide")
+    if not isinstance(operation_id, str):
+        raise ValueError("Identifiant d'opération requis")
+    try:
+        op = UUID(operation_id)
+    except (ValueError, AttributeError) as exc:
+        raise ValueError("Identifiant d'opération invalide") from exc
+    if str(op) != operation_id:
+        raise ValueError("Identifiant d'opération non canonique")
+
+    acteur = require_security_manager()  # autorisation fraîche avant RPC
+    response = get_supabase_client().rpc("erp_exoneration_tva_action", {
+        "p_actor_id": acteur,
+        "p_action": "CREER_BROUILLON",
+        "p_operation_id": operation_id,
+        "p_payload": payload,
+    }).execute()
+    resultat = response.data
+    if not isinstance(resultat, dict):
+        raise RuntimeError("Réponse de création d'attestation non confirmée")
+    if (resultat.get("operation_id") != operation_id
+        or resultat.get("action") != "CREER_BROUILLON"
+        or resultat.get("statut") != "A_VALIDER"):
+        raise RuntimeError("Transaction d'attestation non vérifiable")
+    attestation_id = resultat.get("attestation_id")
+    if not isinstance(attestation_id, str):
+        raise RuntimeError("Référence d'attestation non confirmée")
+    try:
+        if str(UUID(attestation_id)) != attestation_id:
+            raise ValueError
+    except (ValueError, AttributeError) as exc:
+        raise RuntimeError("Référence d'attestation invalide") from exc
+    return attestation_id
