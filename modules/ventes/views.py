@@ -583,9 +583,10 @@ def _controle_tva_sku_tab(user_id: str) -> None:
     """Photographie des dossiers TVA SKU ; aucun taux injecté en facture."""
     st.subheader("État de qualification fiscale TVA par SKU")
     st.caption(
-        "Les taux généraux officiels existent dans le registre, mais aucune "
-        "catégorie n'est présumée pour un produit. Cette vue n'autorise pas "
-        "une facturation automatique à un taux particulier."
+        "Règle métier ventes : TVA normale de 19 % (paramètre réglementaire), "
+        "ou exonération client à 0 % uniquement sur attestation validée et "
+        "couvrant les articles facturés. Aucun taux réduit à 9 % pour ce business. "
+        "Cette vue n'active pas le calcul transactionnel."
     )
     if not st.button("Contrôler la couverture fiscale", key="ventes_tva_coverage"):
         return
