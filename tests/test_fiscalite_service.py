@@ -63,10 +63,9 @@ def test_aucun_taux_par_defaut():
         fiscalite_facture_reglementee("10", False, "2026-10-28", db_client=db)
 
 
-def test_trois_codes_si_especes():
+def test_especes_refusees_avant_lecture_base():
     db, q = backend()
-    with pytest.raises(FiscaliteNonDisponible):
+    with pytest.raises(FiscaliteNonDisponible, match="Timbre de quittance"):
         fiscalite_facture_reglementee("10", True, "2026-10-28", db_client=db)
-    assert q.in_.call_args.args[1] == [
-        "TVA_VENTE_TAUX", "TIMBRE_ESPECES_TAUX", "TIMBRE_ESPECES_PLAFOND",
-    ]
+    db.table.assert_not_called()
+    q.execute.assert_not_called()
