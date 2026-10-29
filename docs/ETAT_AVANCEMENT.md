@@ -188,3 +188,11 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Couverture : changement de date d'effet, rétroactivité, arrondis Decimal, statuts non confirmés, chevauchement, absence, montants invalides, source absente et refus du timbre sur facture.
 - Tests publiés, **non exécutés dans cette session**. Vérification de lecture du fichier GitHub réalisée. Les outils GitHub interrogés n'ont fourni aucun statut CI ou workflow PR pour ce commit. Ne pas conclure « tests verts ».
 - Aucune migration SQL ni écriture de donnée métier effectuée. La facturation historique sur `main` n'est pas encore remplacée.
+
+
+## Reprise technique — 29 octobre 2026
+- Vérification de lecture du moteur fiscal et des nouveaux tests datés sur `main` : fichiers présents.
+- Essai de récupération du dépôt depuis l'environnement Python : échec DNS `Could not resolve host: github.com`. Les tests du dépôt exact ne sont donc pas exécutés dans cet environnement.
+- Aucun statut GitHub CI disponible lors du contrôle précédent pour le commit des tests `bdf12a5` ; aucune validation pytest annoncée.
+- La modification des taux opérationnels ou le remplacement de la RPC fiscale reste conditionné à la qualification des SKU et à des tests de bout en bout.
+- Dossier Markdown local de reprise actualisé avec cette limite. Aucune modification de la base principale.
