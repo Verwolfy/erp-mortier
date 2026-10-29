@@ -571,3 +571,45 @@ def test_admin_can_read_audit_but_standard_role_cannot(env):
         module.fetch_data("audit_trail")
     db.tables["users"][0]["role"] = "ADMIN"
     assert module.fetch_data("audit_trail") == []
+
+
+def test_accuses_internes_lecture_finance_autorisee_et_limitee(env):
+    module, db, _, trace = env
+    db.tables["users"][0]["role"] = "Comptable"
+    module.has_permission = lambda role, section, operation: (
+        role, section, operation) == ("Comptable", "Finance", "lecture")
+    db.tables["erp_recus_internes"] = [{
+        "recu_id": "RINT-1", "reglement_id": "REG-1", "client_id": "CLIENT-1",
+        "date_reglement": "2026-10-29", "montant_encaisse": 200,
+        "statut": "INTERNE_NON_FISCAL", "mode_paiement": "ESPECES",
+        "reference_reglement": "REF-1", "timbre_statut": "NON_CALCULE",
+        "cree_le": "2026-10-29", "operation_id": "RECUI-PRIVEE"
+    }]
+    rows = module.fetch_data_paginated("erp_recus_internes")
+    assert len(rows) == 1
+    assert rows[0]["recu_id"] == "RINT-1"
+    assert "operation_id" not in rows[0]
+    assert any(table == "erp_recus_internes" and action == "select"
+               for table, action, _ in db.calls)
+
+
+def test_accuses_internes_lecture_refusee_sans_droit_finance(env):
+    module, db, _, _ = env
+    db.tables["users"][0]["role"] = "Magasinier"
+    with pytest.raises(PermissionError):
+        module.fetch_data_paginated("erp_recus_internes")
+    assert not any(table == "erp_recus_internes" for table, _, _ in db.calls)
+
+
+def test_accuses_internes_aucune_mutation_generique_et_sans_sheets(env):
+    module, db, _, _ = env
+    assert "erp_recus_internes" in module._NO_SHEETS_SYNC
+    assert module.SCHEMA_CONFIG["erp_recus_internes"]["sheet"] is None
+    assert "erp_recus_internes" not in module._HYBRID_INSERT_TABLES
+    assert "erp_recus_internes" not in module._HYBRID_UPDATE_FIELDS
+    with pytest.raises(PermissionError):
+        module.insert_hybrid("erp_recus_internes", {"recu_id": "RINT-TEST"})
+    with pytest.raises(PermissionError):
+        module.update_hybrid("erp_recus_internes", "recu_id", "RINT-TEST",
+                             {"statut": "MODIFIE"})
+    assert not any(table == "erp_recus_internes" for table, _, _ in db.calls)
