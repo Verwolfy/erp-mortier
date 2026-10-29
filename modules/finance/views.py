@@ -491,7 +491,8 @@ def show_finance_page() -> None:
     tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
                     "🔗 Lettrage", "📖 Journal des écritures",
                     "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
-                    "🧾 Accusés internes", "📒 Pré-audit Finance → SCF"])
+                    "🧾 Accusés internes", "📒 Pré-audit Finance → SCF",
+                    "🔎 Préparation TVA / SCF"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -524,6 +525,8 @@ def show_finance_page() -> None:
         _accuses_internes_tab(user_id, can_write, reglements)
     with tabs[8]:
         _audit_finance_vers_scf_tab(user_id, accounts, reglements)
+    with tabs[9]:
+        _preflight_reglementaire_tab(user_id)
 
 
 def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
@@ -776,3 +779,37 @@ def _audit_finance_vers_scf_tab(
     else:
         st.info("Aucune écriture issue de la RPC Finance à rapprocher.")
     st.caption("Ce contrôle n'est pas une balance SCF, ni une comptabilisation officielle.")
+
+
+def _preflight_reglementaire_tab(user_id: str) -> None:
+    """Diagnostic non fiscal uniquement, aucune règle appliquée ni écriture."""
+    st.subheader("Préparation des référentiels fiscaux et SCF")
+    st.caption("Contrôle de disponibilité, sans calcul de facture ni écriture comptable.")
+    if not st.button("Contrôler les référentiels", key="finance_preflight_reglementaire"):
+        return
+    _mark_finance_activity()
+    access = _finance_access()
+    if access is None or access[0] != user_id:
+        st.error("Droit Finance non vérifiable : consultation refusée.")
+        return
+    from core.preflight_reglementaire import PreflightIndisponible, lire_preflight
+    try:
+        result = lire_preflight(db_client=get_supabase_client())
+    except PreflightIndisponible as exc:
+        _LOG.warning("Préflight non disponible (%s)", type(exc).__name__)
+        st.error("Référentiels indisponibles ou incohérents : aucun résultat partiel.")
+        return
+    except Exception as exc:
+        _LOG.warning("Préflight interrompu (%s)", type(exc).__name__)
+        st.error("Diagnostic indisponible, aucun résultat partiel.")
+        return
+    st.metric("Taux TVA de référence", result["taux_reference_disponibles"])
+    st.metric("Comptes SCF de référence", result["comptes_scf_reference"])
+    st.metric("Comptes SCF mouvementables", result["comptes_scf_mouvementables"])
+    st.metric("Journaux SCF", result["journaux_scf"])
+    st.metric("Exercices SCF ouverts", result["exercices_scf_ouverts"])
+    st.warning(
+        "Classification TVA des produits et régime fiscal de l'entreprise "
+        "non vérifiés. Facturation réglementaire et comptabilisation SCF "
+        "non autorisées par ce diagnostic."
+    )
