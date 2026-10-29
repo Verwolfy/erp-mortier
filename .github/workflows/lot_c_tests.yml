@@ -56,6 +56,7 @@ jobs:
           tests/test_liaison_tva_sku.py
           tests/test_audit_couverture_tva_sku.py
           tests/test_registre_qualification_sku.py
+          tests/test_simulation_facture_tva_lignes.py
           tests/test_fiscalite_service.py
           tests/test_facturation_sql_013.py
           tests/test_facturation_ecart_historique.py
