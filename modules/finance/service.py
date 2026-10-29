@@ -165,3 +165,11 @@ def enregistrer_lettrage(reglement_id: str, document_id: str,
         "montant_applique": format(_amount(montant_applique, "Montant appliqué"), "f"),
     }
     return _rpc("ALLOCATE", payload, operation_id=operation_id)["lettrage_id"]
+
+
+def creer_accuse_encaissement(reglement_id: str, *,
+                             operation_id: str | None = None) -> str:
+    """Enregistre un accusé interne (non fiscal), sans toucher aux factures."""
+    from modules.finance.quittances_service import emettre_recu_interne
+    data = emettre_recu_interne(reglement_id, operation_id=operation_id)
+    return data["recu_id"]
