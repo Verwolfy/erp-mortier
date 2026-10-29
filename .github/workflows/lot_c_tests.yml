@@ -57,6 +57,7 @@ jobs:
           tests/test_exoneration_tva_client.py
           tests/test_lecture_exonerations_tva_clients.py
           tests/test_exoneration_sql_025.py
+          tests/test_exoneration_sql_026.py
           tests/test_audit_couverture_tva_sku.py
           tests/test_registre_qualification_sku.py
           tests/test_simulation_facture_tva_lignes.py
