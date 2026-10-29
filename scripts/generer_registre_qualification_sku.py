@@ -1,7 +1,7 @@
 """Génère hors ligne un registre de qualification des SKU actifs.
 
 Usage:
-    python scripts/generer_registre_qualification_sku.py \
+    python -m scripts.generer_registre_qualification_sku \
         --entree sku_actifs.json --sortie revue_tva_sku.md
 
 Le JSON d'entrée est une liste de {sku_id, pf_id, format, unite_vente},
