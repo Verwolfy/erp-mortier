@@ -70,9 +70,10 @@ def consolider_assiettes_paie(
 ) -> dict[str, Any]:
     """Somme des gains selon deux classements explicites, jamais déduits.
 
-    Tous les mouvements doivent être des gains positifs. Les déductions
-    sociales/fiscales et remboursements sont traités ailleurs et ne doivent
-    pas être réinterprétés comme rémunération positive.
+    Tous les mouvements doivent être des gains positifs. Les résultats
+    sont des SOMMES DE COMPOSANTES, avant plafonds, cotisations déductibles,
+    ajustements fiscaux, exemptions spécifiques et autres déductions.
+    Ils ne sont PAS des assiettes légales finales.
     """
     instant = _date(date_paie, "date_paie")
     if (not isinstance(elements, (list, tuple)) or not elements
@@ -119,8 +120,8 @@ def consolider_assiettes_paie(
     return {
         "date_paie": instant.isoformat(),
         "brut_reconstitue": format(total, ".2f"),
-        "assiette_cnas": format(cnas, ".2f"),
-        "assiette_irg": format(irg, ".2f"),
+        "composantes_cnas_avant_regles": format(cnas, ".2f"),
+        "composantes_irg_avant_deductions": format(irg, ".2f"),
         "elements_qualifies": traces,
         "statut": "BASES_SIMULATION_DOCUMENTEES_NON_HOMOLOGUEES",
         "bulletin_officiel_autorise": False,
