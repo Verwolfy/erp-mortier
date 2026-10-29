@@ -10,7 +10,7 @@ ALTER TABLE public.erp_exonerations_tva_evenements
    ON UPDATE RESTRICT ON DELETE RESTRICT;
 CREATE INDEX erp_exo_evenements_operation_idx
  ON public.erp_exonerations_tva_evenements(operation_id);
-CREATE FUNCTION erp_private.erp_exo_journaliser_entete()
+CREATE OR REPLACE FUNCTION erp_private.erp_exo_journaliser_entete()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY INVOKER
