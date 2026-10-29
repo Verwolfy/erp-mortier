@@ -178,7 +178,13 @@ _SHARED_READ_MODULES = {
 }
 
 # Les lectures generiques ne doivent jamais exposer les empreintes des mots de passe.
-_READ_PROJECTIONS = {"users": "user_id,nom,login,role,actif"}
+_READ_PROJECTIONS = {
+    "users": "user_id,nom,login,role,actif",
+    "erp_recus_internes": (
+        "recu_id,reglement_id,client_id,date_reglement,montant_encaisse,"
+        "mode_paiement,reference_reglement,statut,timbre_statut,cree_le"
+    ),
+}
 
 
 def _known_columns(table_name: str) -> set[str]:
