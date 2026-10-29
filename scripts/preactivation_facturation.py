@@ -1,8 +1,6 @@
 """Verrou de préactivation de la migration 013 (échec fermé).
 
-Ce script n'exécute aucun SQL. Il exige un manifeste d'homologation réel,
-et refuse systématiquement le brouillon SQL 013 connu comme non conforme
-au processus par SKU / quittances. Il ne valide pas l'application fiscale.
+Ce script n'exécute aucun SQL et n'accepte actuellement aucune migration.\nIl refuse le brouillon SQL 013 et toute autre migration tant qu'une\nprocédure d'homologation vérifiable n'est pas implémentée.\nIl ne valide pas l'application fiscale.
 """
 from __future__ import annotations
 
