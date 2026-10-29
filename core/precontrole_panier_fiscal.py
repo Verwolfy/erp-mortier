@@ -27,6 +27,9 @@ def verifier_panier_fiscal(
         raise ClassificationIndisponible("Date d'opération invalide")
     if not isinstance(classifications, (list, tuple)):
         raise ClassificationIndisponible("Référentiel fiscal invalide")
+    for classement in classifications:
+        if not isinstance(classement, Mapping):
+            raise ClassificationIndisponible("Ligne de référentiel fiscal non structurée")
     resultats = []
     for ligne in lignes:
         if not isinstance(ligne, Mapping):
