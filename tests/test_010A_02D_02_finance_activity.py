@@ -10,7 +10,7 @@ def _tree():
     return ast.parse(path.read_text(encoding="utf-8-sig"))
 
 
-def test_finance_eight_callbacks():
+def test_finance_ten_callbacks():
     counts = Counter()
 
     for node in ast.walk(_tree()):
@@ -32,8 +32,8 @@ def test_finance_eight_callbacks():
                 counts[node.func.attr] += 1
 
     assert counts == Counter({
-        "button": 2,
-        "selectbox": 1,
+        "button": 3,
+        "selectbox": 2,
         "radio": 2,
         "form_submit_button": 3,
     })

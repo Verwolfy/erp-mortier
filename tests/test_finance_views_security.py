@@ -44,11 +44,13 @@ def ui(monkeypatch):
 
     finance = types.ModuleType("modules.finance.service")
     for name in ("creer_compte", "enregistrer_reglement", "enregistrer_lettrage",
+                 "creer_accuse_encaissement",
                  "get_comptes", "get_reglements", "get_lettrages", "get_ecritures_comptables"):
         setattr(finance, name, MagicMock())
     finance.creer_compte.return_value = "CPT-1"
     finance.enregistrer_reglement.return_value = "REG-1"
     finance.enregistrer_lettrage.return_value = "LET-1"
+    finance.creer_accuse_encaissement.return_value = "RINT-1"
     finance.get_comptes.return_value = pd.DataFrame()
     finance.get_reglements.return_value = pd.DataFrame()
     finance.get_lettrages.return_value = pd.DataFrame()
@@ -634,3 +636,41 @@ def test_quittances_refuse_table_hors_liste(ui):
     with pytest.raises(ValueError):
         ui.mod._lecture_complete_quittances("users", "user_id")
     ui.db.get_supabase_client.assert_not_called()
+
+
+def test_accuse_interne_reprise_sans_doublon(ui):
+    ui.mod._start_operation("receipt", "USR-1", {"reglement_id":"REG-1"})
+    key=ui.mod._op_key("receipt","USR-1")
+    record=ui.st.session_state[key]
+    assert record["status"]=="confirmed"
+    assert record["document_id"]=="RINT-1"
+    assert record["operation_id"].startswith("RECUI-")
+    call=ui.finance.creer_accuse_encaissement.call_args
+    assert call.kwargs["operation_id"]==record["operation_id"]
+
+
+def test_accuse_interne_timeout_garde_operation(ui):
+    fn=ui.finance.creer_accuse_encaissement
+    fn.side_effect=RuntimeError("Timeout ambigu")
+    ui.mod._start_operation("receipt","USR-1", {"reglement_id":"REG-1"})
+    record=ui.st.session_state[ui.mod._op_key("receipt","USR-1")]
+    assert record["status"]=="uncertain"
+    ident=record["operation_id"]
+    fn.side_effect=None
+    fn.return_value="RINT-1"
+    ui.mod._execute_operation("receipt","USR-1")
+    assert record["status"]=="confirmed"
+    assert all(c.kwargs["operation_id"]==ident for c in fn.call_args_list)
+
+
+def test_accuses_refuse_ecriture_en_lecture_seule(ui):
+    ui.mod._accuses_internes_tab("USR-1", False, _payments())
+    ui.finance.creer_accuse_encaissement.assert_not_called()
+
+
+def test_accuses_nouveau_reglement_emet_une_seule_fois(ui):
+    ui.db.fetch_data_paginated.return_value=[]
+    ui.st.button.return_value=True
+    ui.mod._accuses_internes_tab("USR-1", True, _payments())
+    ui.finance.creer_accuse_encaissement.assert_called_once()
+    assert ui.finance.creer_accuse_encaissement.call_args.kwargs["reglement_id"] == "REG-1"

@@ -21,6 +21,7 @@ from modules.finance.service import (
     creer_compte,
     enregistrer_lettrage,
     enregistrer_reglement,
+    creer_accuse_encaissement,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ _ACTIONS = {
         "mode_paiement", "reference_trace", "montant_total", "contrepartie_compte_id"})),
     "allocate": ("enregistrer_lettrage", "lettrage_id", frozenset({
         "reglement_id", "document_id", "type_document", "montant_applique"})),
+    "receipt": ("creer_accuse_encaissement", "recu_id", frozenset({"reglement_id"})),
 }
 _TREASURY_TYPES = frozenset({"banque", "caisse"})
 _COUNTER_TYPES = {
@@ -114,7 +116,7 @@ def _execute_operation(kind: str, user_id: str) -> None:
     if record["status"] == "confirmed":
         return
     methods = {"account": creer_compte, "payment": enregistrer_reglement,
-               "allocate": enregistrer_lettrage}
+               "allocate": enregistrer_lettrage, "receipt": creer_accuse_encaissement}
     try:
         document_id = methods[kind](**deepcopy(record["payload"]),
                                     operation_id=record["operation_id"])
@@ -143,7 +145,9 @@ def _start_operation(kind: str, user_id: str, payload: dict) -> None:
         st.error("Une opération existe déjà ; utilisez sa reprise ou confirmez-la.")
         return
     st.session_state[key] = {
-        "status": "uncertain", "operation_id": f"FIN-UI-{uuid4().hex}",
+        "status": "uncertain", "operation_id": (
+            f"RECUI-{uuid4().hex}" if kind == "receipt" else f"FIN-UI-{uuid4().hex}"
+        ),
         "payload": deepcopy(payload),
     }
     _execute_operation(kind, user_id)
@@ -157,7 +161,9 @@ def _operation_panel(kind: str, user_id: str) -> bool:
     if (not isinstance(record, dict)
             or record.get("status") not in {"uncertain", "confirmed"}
             or not isinstance(record.get("operation_id"), str)
-            or not record["operation_id"].startswith("FIN-UI-")
+            or not record["operation_id"].startswith(
+                "RECUI-" if kind == "receipt" else "FIN-UI-"
+            )
             or not isinstance(record.get("payload"), dict)
             or not _ACTIONS[kind][2].issubset(record["payload"])
             or (record["status"] == "confirmed" and
@@ -484,7 +490,8 @@ def show_finance_page() -> None:
     st.title("🏦 Comptabilité & Trésorerie")
     tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
                     "🔗 Lettrage", "📖 Journal des écritures",
-                    "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances"])
+                    "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
+                    "🧾 Accusés internes"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -513,6 +520,8 @@ def show_finance_page() -> None:
         _scf_balance_tab(user_id)
     with tabs[6]:
         _quittances_rapprochement_tab(user_id)
+    with tabs[7]:
+        _accuses_internes_tab(user_id, can_write, reglements)
 
 
 def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
@@ -646,3 +655,58 @@ def _scf_balance_tab(user_id: str) -> None:
         st.dataframe(table, use_container_width=True)
     else:
         st.info("Aucune écriture SCF validée.")
+
+
+def _accuses_internes_tab(user_id: str, can_write: bool,
+                          paiements: pd.DataFrame) -> None:
+    """Accusé de caisse interne, jamais une quittance fiscale officielle."""
+    st.subheader("Accusés internes d'encaissement")
+    st.warning(
+        "Document interne NON fiscal. Aucun timbre, numéro de quittance légale "
+        "ou paiement nouveau n'est créé."
+    )
+    try:
+        recus = _load_table("erp_recus_internes")
+        if not recus.empty:
+            colonnes = ["recu_id", "reglement_id", "date_reglement",
+                        "montant_encaisse", "statut"]
+            if not set(colonnes).issubset(recus.columns):
+                raise ValueError("Historique des accusés incomplet")
+            st.dataframe(recus[colonnes], use_container_width=True, hide_index=True)
+    except Exception as exc:
+        _LOG.warning("Accusés internes indisponibles (%s)", type(exc).__name__)
+        st.error("Journal des accusés inaccessible : émission désactivée.")
+        return
+    if not can_write:
+        st.info("Lecture seule : émission réservée à Finance / écriture.")
+        return
+    if _operation_panel("receipt", user_id):
+        return
+    if paiements.empty:
+        st.info("Aucun encaissement à traiter.")
+        return
+    colonnes = {"reglement_id", "type_flux", "statut", "montant_total"}
+    if not colonnes.issubset(paiements.columns):
+        st.error("Registre des règlements incomplet.")
+        return
+    existants = set(recus["reglement_id"]) if not recus.empty else set()
+    choix = {
+        row["reglement_id"]: f"{row['reglement_id']} : {row['montant_total']} DZD"
+        for _, row in paiements.iterrows()
+        if row["type_flux"] == "ENCAISSEMENT"
+        and row["statut"] == "VALIDE"
+        and isinstance(row["reglement_id"], str)
+        and row["reglement_id"] not in existants
+    }
+    if not choix:
+        st.info("Aucun règlement validé sans accusé existant.")
+        return
+    reglement_id = st.selectbox(
+        "Règlement encaissé", list(choix), format_func=choix.get,
+        key="finance_accuse_reglement", on_change=_mark_finance_activity,
+    )
+    if st.button(
+        "Émettre un accusé interne", key="finance_accuse_emettre",
+        on_click=_mark_finance_activity,
+    ):
+        _start_operation("receipt", user_id, {"reglement_id": reglement_id})

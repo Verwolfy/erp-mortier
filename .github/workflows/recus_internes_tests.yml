@@ -1,0 +1,44 @@
+name: ERP - accusés internes
+
+on:
+  push:
+    branches: [feat/quittances-internes-transaction-20261029]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recu-interne-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Installer dependances
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest 'pglast>=7,<8'
+      - name: Compilation
+        run: python -m compileall -q core modules tests
+      - name: Tests accusés et sécurisation Finance
+        run: >-
+          python -m pytest -q
+          tests/test_quittances_service.py
+          tests/test_recus_internes_sql.py
+          tests/test_finance_views_security.py
+          tests/test_010A_02D_02_finance_activity.py
+          tests/test_quittances_rapprochement.py
+      - name: Suite ERP complète
+        run: python -m pytest -q
