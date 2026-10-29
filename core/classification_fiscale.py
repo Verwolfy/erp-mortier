@@ -35,3 +35,48 @@ def selectionner_classification(
     if len(candidates) != 1:
         raise ClassificationIndisponible("Classification absente ou ambiguë")
     return candidates[0]
+
+
+def selectionner_classification_bdd(
+    sku_id: str, date_operation: date,
+    lignes_bdd: list[Mapping[str, Any]],
+) -> Mapping[str, Any]:
+    """Sélectionne une ligne de public.erp_sku_fiscalite selon son schéma réel.
+
+    Ne décide jamais du taux légal : retourne uniquement une classification
+    validée par un responsable avec justification et preuve documentaire.
+    """
+    normalisees = []
+    originaux = []
+    for ligne in lignes_bdd:
+        if not isinstance(ligne, Mapping):
+            raise ClassificationIndisponible("Ligne SKU non structurée")
+        if ligne.get("sku_id") != sku_id:
+            continue
+        if ligne.get("statut") != "VALIDEE":
+            continue
+        for champ in ("source_juridique", "justification", "valide_par"):
+            val = ligne.get(champ)
+            if not isinstance(val, str) or not val.strip():
+                raise ClassificationIndisponible(f"Classification : {champ} absent")
+        if not ligne.get("date_verification") or not ligne.get("date_validation"):
+            raise ClassificationIndisponible("Dates de vérification et validation obligatoires")
+        categorie = ligne.get("categorie_tva")
+        code = ligne.get("code_parametre")
+        attendus = {"NORMAL": "TVA_TAUX_NORMAL", "REDUIT": "TVA_TAUX_REDUIT",
+                    "EXONERE": None, "HORS_CHAMP": None}
+        if categorie not in attendus or code != attendus[categorie]:
+            raise ClassificationIndisponible("Catégorie TVA et paramètre incohérents")
+        debut, fin = ligne.get("date_effet"), ligne.get("date_fin")
+        if isinstance(debut, date) and not hasattr(debut, "hour"):
+            debut = debut.isoformat()
+        if isinstance(fin, date) and not hasattr(fin, "hour"):
+            fin = fin.isoformat()
+        normalisees.append({
+            "sku_id": sku_id, "date_effet": debut, "date_fin": fin,
+            "statut_juridique": "en_vigueur", "niveau_confiance": "CONFIRMEE",
+            "source": ligne["source_juridique"],
+        })
+        originaux.append(ligne)
+    choisie = selectionner_classification(sku_id, date_operation, normalisees)
+    return originaux[next(i for i, ligne in enumerate(normalisees) if ligne is choisie)]
