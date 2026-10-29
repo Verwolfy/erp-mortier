@@ -113,3 +113,19 @@ Sources :
 interfaces de configuration et l'audit des taux/écritures en lecture seule.
 Les paramètres métier et les homologations ne peuvent pas être inventés
 pour accélérer la mise en production.
+
+
+## Référentiels officiels 2026 — migration 021 installée
+
+En date du 29 octobre 2026, le lot 021 est présent sur TEST et
+PRODUCTION : deux taux de référence TVA DGI (19 % normal, 9 % réduit),
+une règle G50 du régime réel et 25 comptes issus de la nomenclature SCF.
+**0 compte actif ou mouvementable**, 0 exercice et 0 journal : aucun
+mouvement SCF n'est initié automatiquement. Le code TVA universelle
+`TVA_VENTE_TAUX` reste inexistant ; la facturation active n'est pas modifiée.
+
+Dossier des sources, limites et preuves :
+`docs/REFERENTIELS_OFFICIELS_2026.md`.
+La classification des SKU, le régime fiscal effectif de l'entreprise,
+les règles de timbre, les barèmes IRG/CNAS et les imputations SCF
+demeurent à qualifier : **aucune valeur métier fictive** n'est utilisée.
