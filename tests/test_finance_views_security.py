@@ -740,3 +740,46 @@ def test_audit_finance_scf_refuse_donnees_incompletes(ui, monkeypatch):
     ui.st.metric.assert_not_called()
     ui.st.dataframe.assert_not_called()
     ui.st.error.assert_called_once()
+
+
+def test_preflight_finance_ne_lit_rien_avant_clic(ui):
+    ui.mod._preflight_reglementaire_tab("USR-1")
+    ui.db.get_supabase_client.assert_not_called()
+    ui.st.metric.assert_not_called()
+
+
+def test_preflight_finance_refuse_role_revoque(ui):
+    ui.st.button.return_value = True
+    ui.roles.has_permission.return_value = False
+    ui.mod._preflight_reglementaire_tab("USR-1")
+    ui.st.metric.assert_not_called()
+
+
+def test_preflight_finance_consultation_neutre(ui, monkeypatch):
+    stub = types.ModuleType("core.preflight_reglementaire")
+    stub.PreflightIndisponible = type("PreflightIndisponible", (ValueError,), {})
+    stub.lire_preflight = MagicMock(return_value={
+        "taux_reference_disponibles": 2,
+        "comptes_scf_reference": 25,
+        "comptes_scf_mouvementables": 0,
+        "journaux_scf": 0,
+        "exercices_scf_ouverts": 0,
+    })
+    monkeypatch.setitem(sys.modules, "core.preflight_reglementaire", stub)
+    ui.st.button.return_value = True
+    ui.mod._preflight_reglementaire_tab("USR-1")
+    stub.lire_preflight.assert_called_once()
+    assert ui.st.metric.call_count == 5
+    ui.finance.enregistrer_reglement.assert_not_called()
+    ui.finance.creer_accuse_encaissement.assert_not_called()
+
+
+def test_preflight_finance_ne_presente_pas_donnees_incoherentes(ui, monkeypatch):
+    stub = types.ModuleType("core.preflight_reglementaire")
+    stub.PreflightIndisponible = type("PreflightIndisponible", (ValueError,), {})
+    stub.lire_preflight = MagicMock(side_effect=stub.PreflightIndisponible("comptage"))
+    monkeypatch.setitem(sys.modules, "core.preflight_reglementaire", stub)
+    ui.st.button.return_value = True
+    ui.mod._preflight_reglementaire_tab("USR-1")
+    ui.st.metric.assert_not_called()
+    ui.st.error.assert_called_once()
