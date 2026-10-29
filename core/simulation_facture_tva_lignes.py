@@ -79,6 +79,7 @@ def simuler_tva_facture_lignes(
             "categorie_tva": qualification["categorie_tva"],
             "justificatif_taux": qualification["justificatif_taux"],
             "source_classification": qualification["source_classification"],
+            "justificatif_classification": qualification["justificatif_classification"],
         })
     return {
         "lignes": details,
