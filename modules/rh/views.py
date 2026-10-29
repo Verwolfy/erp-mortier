@@ -55,6 +55,7 @@ def show_rh_page():
     noms_onglets = ["👨‍💼 Registre des Employés", "🌴 Gestion des Congés"]
     if can_read_paie:
         noms_onglets.append("🧮 Simulation IRG (non validée)")
+        noms_onglets.append("🔎 Préparation Paie IRG / CNAS")
     onglets = st.tabs(noms_onglets)
     tab1, tab2 = onglets[:2]
 
@@ -168,3 +169,45 @@ def show_rh_page():
                         f"Date effet : {irg['date_effet']} | "
                         "Statut : simulation non validée"
                     )
+
+
+    if can_read_paie:
+        with onglets[3]:
+            _preflight_paie_tab(user_role)
+
+
+def _preflight_paie_tab(user_role: str) -> None:
+    """Diagnostic des règles IRG/CNAS ; n'émet aucune fiche de paie."""
+    st.subheader("Préparation des références IRG et CNAS")
+    st.caption("Statut réglementaire uniquement, sans données nominatives de salarié.")
+    from core.utils import get_local_now
+    date_paie = st.date_input(
+        "Date réglementaire à vérifier", value=get_local_now().date(),
+        key="rh_paie_preflight_date",
+    )
+    if not st.button("Vérifier les référentiels", key="rh_paie_preflight",
+                     on_click=_mark_rh_activity):
+        return
+    fresh = _rh_access()
+    if fresh is None or fresh[0] != user_role or fresh[2] is not True:
+        st.error("Droit Paie absent, révoqué ou non vérifiable.")
+        return
+    from core.preflight_paie import PreparationPaieIndisponible, lire_preparation_paie
+    from core.db_service import get_supabase_client
+    try:
+        result = lire_preparation_paie(
+            db_client=get_supabase_client(), date_paie=date_paie.isoformat()
+        )
+    except PreparationPaieIndisponible:
+        st.error("Référentiels incomplets ou contradictoires : aucun diagnostic partiel.")
+        return
+    except Exception:
+        st.error("Référentiels de paie indisponibles : aucun diagnostic partiel.")
+        return
+    st.metric("CNAS salariale documentée", "Oui" if result["reference_cnas_salarie"] else "Non")
+    st.metric("CNAS employeur documentée", "Oui" if result["reference_cnas_employeur"] else "Non")
+    st.metric("Barème IRG mensuel documenté", "Oui" if result["reference_irg_mensuel"] else "Non")
+    st.warning(
+        "Assiettes individuelles, profils, particularités et déclarations "
+        "non validés : aucun bulletin de paie officiel ne peut être produit."
+    )
