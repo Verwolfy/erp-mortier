@@ -21,10 +21,10 @@ def simuler_irg_depuis_supabase(
     db_client: Any = None,
 ) -> dict[str, str]:
     """Refuse les réponses paginées ou tables absentes, sans repli tacite."""
-    if db_client is None:
-        from core.db_service import get_supabase_client
-        db_client = get_supabase_client()
     try:
+        if db_client is None:
+            from core.db_service import get_supabase_client
+            db_client = get_supabase_client()
         query = (
             db_client.table("regles_reglementaires")
             .select(_CHAMPS, count="exact")
@@ -35,11 +35,15 @@ def simuler_irg_depuis_supabase(
         )
     except Exception as exc:
         raise IRGNonDisponible("Référentiel IRG inaccessible") from exc
-    if (not isinstance(query.data, list)
-            or query.count is None
-            or query.count != len(query.data)
-            or len(query.data) > 1000):
+    rows = getattr(query, "data", None)
+    count = getattr(query, "count", None)
+    if (not isinstance(rows, list)
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count != len(rows)
+            or len(rows) > 1000
+            or not all(isinstance(row, dict) for row in rows)):
         raise IRGNonDisponible("Lecture du barème IRG incomplète")
     return simuler_irg_mensuel(
-        assiette, date_paie, categorie, query.data,
+        assiette, date_paie, categorie, rows,
     )
