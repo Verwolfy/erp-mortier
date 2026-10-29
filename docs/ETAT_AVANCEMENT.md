@@ -50,3 +50,66 @@ Tests de refus si le registre est incomplet ou incohérent.
 Aucun reçu fiscal officiel et aucune écriture SQL ne sont émis par ce
 module. Les 6 taux fiscaux fixes détectés par l'audit ne sont pas encore
 remplacés : maintien du circuit actuel pour éviter une rupture de facturation.
+
+---
+
+## Point d'exécution du 29 octobre 2026 — PR 15, 16 et 17
+
+**Branche principale GitHub fusionnée : `d3a083d688d79fde15740b093f564f78cf739f46`.**
+Tous les workflows de la PR 17 sont verts, **1 547 tests ERP réussis**.
+Aucune migration ou écriture Supabase effectuée pendant ces trois PR.
+
+### Réalisé
+
+1. **PR #15 — correctif Finance** : enregistrement de
+   `erp_recus_internes` dans `core.db_service.SCHEMA_CONFIG` ; lecture
+   autorisée aux profils Finance habilités, sans `operation_id` exposé
+   dans la projection et sans insertion/mise à jour hybride.
+2. **PR #16 — pré-audit Finance → SCF** : contrôle en lecture seule des
+   écritures associées aux règlements `REGF-` : présence de deux lignes,
+   débits/crédits équilibrés, types de comptes, dates, sommes exactes,
+   écritures orphelines ou anciennes. Les règlements historiques non RPC
+   sont exclus de la certification et dénombrés.
+3. **PR #17 — calcul fiscal dormant** : interdiction d'appliquer l'ancien
+   timbre de facture à 1 % plafonné à 2 500 DA dans le simulateur
+   `core/fiscalite_facturation.py`. Rejet avant lecture réglementaire.
+   **Le circuit de facturation effectif reste inchangé** et conserve
+   encore les calculs historiques.
+
+### État réel des registres Supabase, constaté le 29 octobre
+
+Sur TEST et PRODUCTION : **zéro** plan de comptes SCF, exercice SCF,
+journal SCF, règle réglementaire, paramètre réglementaire, règlement et
+accusé d'encaissement. Les nouvelles tables sont installées, mais ne
+contiennent aucune configuration métier permettant un usage réglementaire.
+
+### Priorités restantes — selon la décision technique recommandée
+
+| Priorité | Chantier | Condition pour terminer |
+|---|---|---|
+| P1 | Remplacement de la facturation et du timbre historique | Classifier chaque SKU (normal, réduit, exonéré), régime fiscal de l'entreprise, faits générateurs, avoirs, règlement réel et règles datées ; tester RPC de vente en transaction sur TEST |
+| P1 | Comptabilité SCF réelle | Valider et charger un plan de comptes adapté, journaux, exercice, schémas d'écritures, idempotence de chaque source ; importer uniquement après contrôles |
+| P1 | Paie et déclarations IRG/CNAS | Barèmes et assiettes officiels, cas salariés, preuves datées, tests de retenues et déclarations ; revue réglementaire |
+| P2 | Test bout en bout transversal | Ventes → facture → règlement → accusé → écriture → SCF, achats → stock, paie → SCF, rapprochements des avoirs et annulations |
+| P2 | Permissions TEST vs PRODUCTION | 66 écarts ACL sur tables historiques ; garder la restriction de TEST tant qu'un besoin concret ne démontre pas une permission manquante |
+| P2 | Déploiement Streamlit | Branche réellement déployée et commit exécuté inconnus : la fusion GitHub ne garantit pas la mise à jour de l'application |
+| P3 | Guide & Aide | Compléter la documentation des traitements officiels réellement activés et des procédures d'incident |
+
+**Décision de sécurité conservée :** la sauvegarde PostgreSQL est facultative
+à la demande du propriétaire ; aucun `pg_dump` automatique.
+
+**Limite majeure :** ne pas interpréter les 1 547 tests comme une conformité
+fiscale algérienne complète. La DGI publie des taux généraux de TVA de 19 %
+et 9 %, mais l'application de ces taux dépend du régime fiscal et de la
+classification des opérations. Le Code du timbre consolidé 2026 est publié,
+mais le parcours fiscal réel d'encaissement et de quittance n'est pas activé.
+
+Sources :
+- https://www.mfdgi.gov.dz/fr/professionnels/services-pro/regime-reel/la-taxe-sur-la-valeur-ajoutee
+- https://www.mfdgi.gov.dz/fr/a-propos/actu-fr/codes-fiscaux-fr
+- https://www.mf.gov.dz/images/pdf/loidefinance/Loi_de_finance_2025_FR.pdf
+
+**Prochaine étape réalisable sans hypothèse fiscale :** poursuivre les
+interfaces de configuration et l'audit des taux/écritures en lecture seule.
+Les paramètres métier et les homologations ne peuvent pas être inventés
+pour accélérer la mise en production.
