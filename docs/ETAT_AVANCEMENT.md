@@ -244,3 +244,13 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Deux exécutions GitHub Actions sur ce SHA : `40906074056` et `40906074014` = `completed / success`.
 - Les runs du commit précédent ont été annulés par concurrence, ils ne doivent pas être comptabilisés comme des échecs.
 - Ce résultat CI **n'approuve pas juridiquement les taux historiques** et n'autorise pas l'activation de SQL 013 sans classification fiscale, tests SQL et concordance Python/SQL.
+
+
+## Couverture TVA du catalogue — constat vérifié du 29 octobre 2026
+
+- Production `wenydirqtmkywbxbxfal`, lecture seule : **7 SKU actifs** dans `public.sku_conditionnement` (`actif='OUI'`) et **0 classification** dans `public.erp_sku_fiscalite`.
+- Le module `core/classification_fiscale.py` a été corrigé pour sélectionner la bonne version à date : une version future ou expirée ne bloque plus une version historique applicable ; des versions chevauchantes validées restent refusées. Commit `7478cbd5` et tests `89d81b17` ; assertion précisée en `d4514a76`.
+- Nouveau module pur `core/audit_couverture_tva_sku.py` : détail par SKU préqualifié ou bloqué, sans requête ni mutation SQL et **sans jamais autoriser l'activation** de la facturation. Commits `0684caf1`, `da7e6472`, tests `f1ad31b9` ; workflow mis à jour par `c5f8542e`.
+- CI GitHub Actions du SHA `c5f8542ed43742d39e46ef7e775c23f48d142297` : [40933174395](https://github.com/Verwolfy/erp-mortier/actions/runs/40933174395) et [40933174208](https://github.com/Verwolfy/erp-mortier/actions/runs/40933174208), **completed / success**. Le job du premier run confirme le succès des étapes « Tests du socle fiscal » et « Tous les tests ERP ».
+- **Bloquant métier inchangé** : aucune affectation arbitraire de TVA aux 7 SKU. La RPC historique conserve des taux codés en dur ; le brouillon SQL 013 reste non activable. Les nouveaux modules sont des précontrôles, non un déploiement de conformité réglementaire.
+
