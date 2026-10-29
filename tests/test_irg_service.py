@@ -52,3 +52,32 @@ def test_erreur_reseau_sans_secret():
     with pytest.raises(IRGNonDisponible,match="Référentiel IRG inaccessible") as error:
         simuler_irg_depuis_supabase("50000","2026-10-28","SALARIE",db_client=db)
     assert "SECRET_DO_NOT_ECHO" not in str(error.value)
+
+
+@pytest.mark.parametrize("invalid", [
+    SimpleNamespace(data=[bar()], count=True),
+    SimpleNamespace(data=[bar()], count=1.0),
+    SimpleNamespace(data=[bar()], count=None),
+    SimpleNamespace(data=[bar()], count="1"),
+    SimpleNamespace(data=[bar(), 42], count=2),
+    SimpleNamespace(data={"rows": [bar()]}, count=1),
+])
+def test_irg_refuse_compteurs_mal_types_ou_lignes_non_structurees(invalid):
+    db,q=client()
+    q.execute.return_value=invalid
+    with pytest.raises(IRGNonDisponible,match="incomplète"):
+        simuler_irg_depuis_supabase(
+            "50000","2026-10-28","SALARIE",db_client=db
+        )
+    assert q.insert.call_count==0
+    assert q.update.call_count==0
+
+
+def test_irg_connexion_serveur_indisponible_masque_erreur(monkeypatch):
+    from core import db_service
+    def erreur():
+        raise RuntimeError("DETAIL_PRIVE_NE_PAS_EXPOSER")
+    monkeypatch.setattr(db_service,"get_supabase_client",erreur)
+    with pytest.raises(IRGNonDisponible,match="inaccessible") as exc:
+        simuler_irg_depuis_supabase("50000","2026-10-28","SALARIE")
+    assert "DETAIL_PRIVE_NE_PAS_EXPOSER" not in str(exc.value)
