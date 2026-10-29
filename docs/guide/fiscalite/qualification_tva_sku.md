@@ -40,3 +40,20 @@ contrôle plutôt que d'afficher un taux arbitraire.
 
 Aucune sauvegarde PostgreSQL n'est imposée. Le circuit historique de
 facturation n'est pas modifié par cette étape.
+
+
+## État des bases — 29 octobre 2026
+
+Les migrations `erp_022_qualification_tva_sku_20261029` et
+`erp_023_tva_sku_acl_lecture_20261029` ont été appliquées sur TEST
+et PRODUCTION. Les deux projets contiennent 7 SKU et **0 dossier fiscal
+classé**. Aucune facture n'a été modifiée.
+
+Un écart initial a été détecté : production héritait de permissions
+`service_role` permettant l'écriture. La migration 023 a explicitement
+révoqué ces permissions. Vérification finale identique sur les deux bases :
+RLS active, lecture serveur autorisée, aucune lecture publique ni
+écriture du rôle serveur.
+
+Ce contrôle est un **état préparatoire**, pas une preuve de conformité
+ou une autorisation d'appliquer 19 %/9 % à tous les SKU.
