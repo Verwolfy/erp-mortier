@@ -70,6 +70,17 @@ def selectionner_classification_bdd(
             raise ClassificationIndisponible("Date de validation invalide") from exc
         if validation < verification:
             raise ClassificationIndisponible("Validation antérieure à la vérification")
+        debut_fiscal = ligne.get("date_effet")
+        fin_fiscal = ligne.get("date_fin")
+        try:
+            debut_fiscal = debut_fiscal if isinstance(debut_fiscal, date) and not hasattr(debut_fiscal, "hour") else date.fromisoformat(debut_fiscal)
+            fin_fiscal = fin_fiscal if isinstance(fin_fiscal, date) and not hasattr(fin_fiscal, "hour") else date.fromisoformat(fin_fiscal) if fin_fiscal else None
+        except (TypeError, ValueError) as exc:
+            raise ClassificationIndisponible("Dates d'effet fiscal invalides") from exc
+        if validation > date_operation:
+            raise ClassificationIndisponible("Classification validée après la date d'opération")
+        if fin_fiscal is not None and fin_fiscal < debut_fiscal:
+            raise ClassificationIndisponible("Période fiscale invalide")
         categorie = ligne.get("categorie_tva")
         code = ligne.get("code_parametre")
         attendus = {"NORMAL": "TVA_TAUX_NORMAL", "REDUIT": "TVA_TAUX_REDUIT",
