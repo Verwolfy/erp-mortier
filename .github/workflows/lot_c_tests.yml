@@ -36,6 +36,13 @@ jobs:
           python -m pip install -r requirements.txt pytest
       - name: Compilation Python
         run: python -m compileall -q core modules tests
+      - name: Verrou de préactivation du SQL 013 (refus attendu)
+        run: |
+          set +e
+          python scripts/preactivation_facturation.py sql/013_facturation_parametree.sql
+          result=$?
+          set -e
+          test "$result" -eq 2
       - name: Tests du socle fiscal
         run: >-
           python -m pytest -q
