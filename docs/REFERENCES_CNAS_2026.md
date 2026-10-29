@@ -41,3 +41,19 @@ La migration ne modifie ni bulletin, salarié, facture, journal,
 RLS, accès public ni plan comptable. L'étape de mise en service
 nécessite des règles par catégorie et une validation complète
 des assiettes et des contributions distinctes.
+
+
+## Déploiement vérifié — 29 octobre 2026
+
+Migration Supabase `erp_024_cnas_references_documentaires_20261029`
+appliquée avec succès sur TEST puis PRODUCTION.
+
+Contrôles SQL identiques dans les deux environnements :
+**3 références**, total `0.345` (34,5 %), **0 paramètre de
+paie exécutable** `CNAS_SALARIE_TAUX` ou `CNAS_EMPLOYEUR_TAUX`,
+**0 employé**, RLS active et aucune lecture `anon`.
+Aucun bulletin ni règlement n'a été modifié ou créé par ce lot.
+
+Le statut `a_confirmer` est volontaire : les références du décret 2015
+sont conservées pour revue du régime général et des éventuelles dispositions
+sectorielles/amendements, non pour calculer les retenues.
