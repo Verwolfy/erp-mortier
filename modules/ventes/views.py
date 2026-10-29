@@ -550,8 +550,9 @@ def show_ventes_page() -> None:
     # Ces lectures doivent intervenir APRES validation fraîche de l'identité.
     try:
         invoices = get_factures()
-        tab_draft, tab_order, tab_ship, tab_workflow = st.tabs([
-            "Facture / Avoir", "Commandes clients", "Bons de livraison", "Suivi factures",
+        tab_draft, tab_order, tab_ship, tab_workflow, tab_tva = st.tabs([
+            "Facture / Avoir", "Commandes clients", "Bons de livraison",
+            "Suivi factures", "TVA par SKU (contrôle)",
         ])
         with tab_draft:
             _draft_tab(user_id, can_write, invoices)
@@ -561,6 +562,67 @@ def show_ventes_page() -> None:
             _ship_tab(user_id, can_write)
         with tab_workflow:
             _workflow_tab(user_id, can_write, invoices)
+        with tab_tva:
+            _controle_tva_sku_tab(user_id)
     except Exception as exc:
         _LOG.warning("Interface Ventes interrompue (%s)", type(exc).__name__)
         st.error("Consultation Ventes interrompue : vérifier la connexion et la cohérence des données.")
+
+
+def _controle_tva_sku_tab(user_id: str) -> None:
+    """Photographie des dossiers TVA SKU ; aucun taux injecté en facture."""
+    st.subheader("État de qualification fiscale TVA par SKU")
+    st.caption(
+        "Les taux généraux officiels existent dans le registre, mais aucune "
+        "catégorie n'est présumée pour un produit. Cette vue n'autorise pas "
+        "une facturation automatique à un taux particulier."
+    )
+    if not st.button("Contrôler la couverture fiscale", key="ventes_tva_coverage"):
+        return
+    _mark_ventes_activity()
+    access = _sale_access()  # relire la session et le rôle serveur au clic
+    if access is None or access[0] != user_id:
+        st.error("Lecture TVA refusée : autorisation non vérifiable.")
+        return
+    from datetime import date
+    from core.couverture_tva_sku import (
+        QualificationTVAIndisponible, verifier_couverture_tva,
+    )
+    try:
+        skus = fetch_data_paginated("sku_conditionnement")
+        response = (
+            get_supabase_client().table("erp_sku_fiscalite")
+            .select("sku_id,date_effet,date_fin,categorie_tva,code_parametre,"
+                    "statut,source_juridique,justification,date_verification,"
+                    "valide_par,date_validation", count="exact")
+            .range(0, 999).execute()
+        )
+        rows = response.data
+        if (not isinstance(rows, list) or isinstance(response.count, bool)
+                or not isinstance(response.count, int)
+                or response.count != len(rows) or len(rows) > 1000):
+            raise QualificationTVAIndisponible("Lecture TVA incomplète")
+        result = verifier_couverture_tva(
+            skus, rows, date.today().isoformat()
+        )
+    except Exception as exc:
+        _LOG.warning("Couverture TVA non consultable (%s)", type(exc).__name__)
+        st.error("Référentiel TVA incomplet ou inaccessible ; aucune conclusion possible.")
+        return
+    st.metric("SKU contrôlés", result["nombre_skus"])
+    for key, label in (
+        ("NON_CLASSE", "SKU non classés"),
+        ("A_VALIDER", "Dossiers à valider"),
+        ("VALIDE", "Dossiers validés"),
+    ):
+        st.metric(label, result["par_statut"][key])
+    if result["lignes"]:
+        st.dataframe(
+            pd.DataFrame(result["lignes"]), use_container_width=True,
+            hide_index=True,
+        )
+    st.warning(
+        "Audit uniquement : aucun taux TVA n'a été affecté ni appliqué "
+        "aux factures. Une validation juridique par produit et du régime "
+        "de l'entreprise reste nécessaire."
+    )

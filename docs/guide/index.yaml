@@ -19,3 +19,7 @@ pages:
     module: fiscalite
     titre: Timbre de quittance — règlements
     roles_autorises: [ADMIN, COMPTABLE]
+  - chemin: docs/guide/fiscalite/qualification_tva_sku.md
+    module: fiscalite
+    titre: TVA par SKU — dossier et contrôles
+    roles_autorises: [ADMIN, COMPTABLE]
