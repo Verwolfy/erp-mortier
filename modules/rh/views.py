@@ -73,7 +73,10 @@ def show_rh_page():
                     date_embauche = c1.date_input("Date d'embauche")
 
                     if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_rh_activity):
-                        if nom:
+                        fresh = _rh_access()
+                        if fresh is None or fresh[0] != user_role or fresh[1] is not True:
+                            st.error("Droit RH écriture absent ou révoqué ; ajout interdit.")
+                        elif nom:
                             create_employe(nom, poste, service, manager, str(date_embauche))
                             st.success(f"Employé {nom} ajouté avec succès !")
                             st.rerun()
@@ -105,7 +108,10 @@ def show_rh_page():
                     motif = st.text_input("Motif (Ex: Congé annuel, Maladie)")
 
                     if st.form_submit_button("Soumettre la demande", type="primary", on_click=_mark_rh_activity):
-                        if date_fin < date_debut:
+                        fresh = _rh_access()
+                        if fresh is None or fresh[0] != user_role or fresh[1] is not True:
+                            st.error("Droit RH écriture absent ou révoqué ; congé non enregistré.")
+                        elif date_fin < date_debut:
                             st.error("La date de fin ne peut pas précéder la date de début.")
                         else:
                             create_demande_conge(emp_choisi, str(date_debut), str(date_fin), motif)
