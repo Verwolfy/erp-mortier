@@ -116,6 +116,9 @@ def comparer_arrondis_tva(simulation: Mapping[str, Any]) -> dict[str, Any]:
         details.append(groupe)
 
     ecart = tva_lignes - tva_par_groupes
+    nombre_groupes_en_ecart = sum(1 for groupe in details if groupe["ecart"] != 0)
+    # Un écart positif sur un groupe peut annuler un écart négatif sur
+    # un autre : un écart net nul ne signifie PAS une concordance.
     return {
         "montant_ht": total_ht,
         # Ancien champ conservé pour les simulations mono-groupe uniquement.
@@ -127,7 +130,8 @@ def comparer_arrondis_tva(simulation: Mapping[str, Any]) -> dict[str, Any]:
         # et non d'un taux moyen ou d'une assiette universelle.
         "tva_arrondie_globalement": tva_par_groupes,
         "ecart": ecart,
-        "statut": "ECART" if ecart else "CONCORDANT",
+        "nombre_groupes_en_ecart": nombre_groupes_en_ecart,
+        "statut": "ECART" if nombre_groupes_en_ecart else "CONCORDANT",
         "conventions_non_homologuees": True,
         "autorise_activation_facturation": False,
     }
