@@ -446,6 +446,9 @@ def _revue_exonerations_tva_clients() -> None:
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
+    # Repère vérifiable uniquement pour un gestionnaire habilité.
+    # Ne constitue PAS une confirmation du déploiement Streamlit hébergé.
+    st.caption("Version Administration fiscale : SOF-ERP-20261029-EXO-028")
     try:
         dossiers = lister_attestations_pour_manager()
     except (PermissionError, ValueError, RuntimeError):
