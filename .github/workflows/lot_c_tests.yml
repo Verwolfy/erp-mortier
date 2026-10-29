@@ -46,6 +46,7 @@ jobs:
           tests/test_fiscalite_facturation_dates_2026.py
           tests/test_fiscalite_service.py
           tests/test_facturation_sql_013.py
+          tests/test_facturation_ecart_historique.py
           tests/test_ventes_atomic.py
       - name: Tous les tests ERP (sans secrets et sans acces production)
         run: python -m pytest -q
