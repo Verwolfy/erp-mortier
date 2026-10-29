@@ -57,3 +57,29 @@ SCF ou un bulletin de paie n'est pas accepté sur une période déjà clôturée
 Ces protections SQL sont **encore des propositions non appliquées**. Leurs
 tests Python et contrôles statiques ne remplacent pas des essais transactionnels
 dans Supabase TEST. Aucun jeu de données réel n'a été modifié.
+
+
+## Pré-audit de trésorerie avant passage SCF (29 octobre 2026)
+
+Le module `core/rapprochement_finance_scf.py` et l'onglet
+**Finance → Pré-audit Finance → SCF** contrôlent en lecture seule les
+règlements provenant de la RPC Finance (`REGF-`) et les deux lignes
+de comptabilité de trésorerie associées.
+
+Pour chaque règlement, le contrôle exige :
+- une référence unique et un statut `VALIDE` ;
+- des dates identiques entre règlement et écritures ;
+- deux comptes actifs et distincts, Banque/Caisse et Tiers correspondant
+  au sens ENCAISSEMENT / DECAISSEMENT ;
+- des montants avec deux décimales au plus, les débits et crédits exclusifs ;
+- un montant débité et crédité égal au règlement enregistré ;
+- aucun règlement sans écriture ni écriture RPC orpheline.
+
+Les règlements historiques hors RPC sont **dénombrés mais non certifiés**.
+Les comptes indiqués sont les numéros **saisis dans Finance** : ils ne sont
+pas automatiquement validés dans le plan SCF et ne génèrent aucune écriture.
+
+**Le passage réel en SCF reste distinct.** Il exigera un plan de comptes
+actif homologué, un journal et un exercice ouverts, la détermination des
+imputations et la non-duplication des écritures. Les états réglementaires
+restent soumis à validation comptable.
