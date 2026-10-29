@@ -58,3 +58,34 @@ def test_parametre_inexistant_refuse():
     with pytest.raises(FiscaliteNonDisponible):
         taux_par_ligne([{"sku_id": "SKU-X"}], date(2026, 2, 1),
                        [classification(category="REDUIT")], [param()])
+
+
+def test_parametre_tva_non_confirme_concurrent_bloque_tout():
+    valide = param()
+    provisoire = param(rate="0.21", status="a_confirmer")
+    with pytest.raises(FiscaliteNonDisponible, match="non confirmé"):
+        taux_par_ligne(
+            [{"sku_id": "SKU-X"}], date(2026, 2, 1),
+            [classification()], [valide, provisoire],
+        )
+
+
+def test_parametre_tva_provisoire_futur_ne_bloque_pas_historique():
+    valide = param()
+    futur = param(rate="0.21", status="a_confirmer")
+    futur["date_effet"] = "2027-01-01"
+    assert taux_par_ligne(
+        [{"sku_id": "SKU-X"}], date(2026, 2, 1),
+        [classification()], [futur, valide],
+    )[0]["taux_tva"] == Decimal("0.17")
+
+
+def test_parametre_tva_provisoire_expire_ne_bloque_pas_periode_courante():
+    valide = param()
+    ancien = param(rate="0.21", status="a_confirmer")
+    ancien["date_effet"] = "2025-01-01"
+    ancien["date_fin"] = "2025-12-31"
+    assert taux_par_ligne(
+        [{"sku_id": "SKU-X"}], date(2026, 2, 1),
+        [classification()], [ancien, valide],
+    )[0]["taux_tva"] == Decimal("0.17")
