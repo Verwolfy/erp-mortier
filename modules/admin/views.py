@@ -15,7 +15,10 @@ from modules.admin.service import (
     add_produit, add_sku, add_client, sauvegarder_modifications,
     add_user, add_permission, get_users, get_permissions, get_audit_logs
 )
-from modules.admin.exonerations_service import lister_attestations_pour_manager
+from modules.admin.exonerations_service import (
+    lister_attestations_pour_manager, creer_brouillon_attestation,
+)
+from uuid import uuid4
 
 # --- FALLBACKS SÉCURISÉS (Directement alignés avec import_data.py) ---
 PAYS_FALLBACK = ["DZ", "CN", "TR", "IT", "FR", "ES", "DE", "AE", "SA", "IN", "EG", "TN", "MA", "PT", "BE", "KR", "Autre"]
@@ -197,6 +200,113 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
                     st.error("Modification non confirmée dans Supabase.")
 
 
+def _creer_brouillon_exoneration() -> None:
+    """Formulaire de demande en attente, sans qualification fiscale automatique."""
+    st.divider()
+    st.subheader("Préparer une attestation client — À VALIDER")
+    st.caption(
+        "La création d'un brouillon n'accorde aucune exonération. "
+        "Référence de pièce réelle et portée SKU obligatoires. "
+        "La validation nécessite un second contrôleur fiscal habilité."
+    )
+    pending_key = "_erp_exoneration_creation_pending"
+    pending = st.session_state.get(pending_key)
+    if pending is not None:
+        if (not isinstance(pending, dict)
+            or set(pending) != {"operation_id", "payload"}):
+            st.error("Demande en cours incohérente ; contrôle Supabase requis.")
+            return
+        st.warning(
+            "Création non confirmée : conserver l'identifiant d'opération. "
+            "Reprendre sans changer le contenu pour éviter un doublon."
+        )
+        if st.button("Reprendre la création", key="exo_resume_creation"):
+            try:
+                identifiant = creer_brouillon_attestation(
+                    pending["payload"], operation_id=pending["operation_id"]
+                )
+            except (ValueError, RuntimeError, PermissionError):
+                st.error("Création non confirmée. Vérifier le dossier serveur.")
+            except Exception:
+                st.error("Transaction incertaine : reprendre avec le même identifiant.")
+            else:
+                st.session_state.pop(pending_key, None)
+                st.success(f"Brouillon enregistré : {identifiant} (non validé).")
+                st.rerun()
+        return
+
+    try:
+        clients = get_dataframe("Clients")
+        skus = get_dataframe("SkuConditionnement")
+    except Exception:
+        st.error("Impossible de consulter les référentiels autorisés.")
+        return
+    if (clients.empty or skus.empty
+        or not {"client_id", "nom"}.issubset(clients.columns)
+        or not {"sku_id", "format"}.issubset(skus.columns)):
+        st.info("Clients et SKU enregistrés requis avant préparation.")
+        return
+    client_options = {
+        str(row["client_id"]): f'{row["client_id"]} — {row["nom"]}'
+        for _, row in clients.iterrows()
+        if str(row.get("actif", "OUI")).upper() == "OUI"
+        and isinstance(row.get("client_id"), str)
+    }
+    sku_options = {
+        str(row["sku_id"]): f'{row["sku_id"]} — {row["format"]}'
+        for _, row in skus.iterrows()
+        if str(row.get("actif", "OUI")).upper() == "OUI"
+        and isinstance(row.get("sku_id"), str)
+    }
+    if not client_options or not sku_options:
+        st.info("Aucun client ou SKU actif disponible.")
+        return
+    with st.form("exo_brouillon_form"):
+        client = st.selectbox(
+            "Client concerné", list(client_options),
+            format_func=lambda x: client_options[x],
+        )
+        portee = st.multiselect(
+            "SKU explicitement couverts", list(sku_options),
+            format_func=lambda x: sku_options[x],
+        )
+        reference = st.text_input("Référence de l'attestation reçue")
+        autorite = st.text_input("Autorité émettrice (à vérifier)")
+        piece = st.text_input("Référence interne de la pièce vérifiable")
+        justification = st.text_area("Objet / justification à examiner")
+        c1, c2 = st.columns(2)
+        debut = c1.date_input("Début de validité de la pièce")
+        fin = c2.date_input("Fin de validité de la pièce")
+        envoyer = st.form_submit_button("Créer le brouillon (sans exonération)")
+    if envoyer:
+        payload = {
+            "client_id": client, "sku_ids": list(portee),
+            "reference_attestation": reference,
+            "autorite_emettrice": autorite,
+            "reference_piece_interne": piece,
+            "justification": justification,
+            "date_effet": debut.isoformat(),
+            "date_fin": fin.isoformat(),
+        }
+        # Figer opération et saisie avant tout appel réseau.
+        # Même après un timeout, le bouton Reprendre ne génère pas de nouvel ID.
+        snapshot = {"operation_id": str(uuid4()), "payload": payload}
+        st.session_state[pending_key] = snapshot
+        try:
+            identifiant = creer_brouillon_attestation(
+                payload, operation_id=snapshot["operation_id"]
+            )
+        except (ValueError, PermissionError):
+            st.session_state.pop(pending_key, None)
+            st.error("Saisie ou autorisation invalide, aucun succès confirmé.")
+        except Exception:
+            st.error("Résultat réseau incertain : utiliser Reprendre la création.")
+        else:
+            st.session_state.pop(pending_key, None)
+            st.success(f"Brouillon enregistré : {identifiant} (non validé).")
+            st.rerun()
+
+
 def _revue_exonerations_tva_clients() -> None:
     """Consultation privée sans création, validation ni révocation depuis l'ERP."""
     st.subheader("Attestations d'exonération TVA clients — revue sécurisée")
@@ -213,16 +323,17 @@ def _revue_exonerations_tva_clients() -> None:
         return
     if not dossiers:
         st.info("Aucune attestation enregistrée. Aucune exonération présumée.")
-        return
-    st.dataframe(
-        pd.DataFrame(dossiers),
-        hide_index=True,
-        use_container_width=True,
-    )
-    st.warning(
-        "Consultation uniquement : preuve documentaire, portée SKU et contrôle "
-        "juridique requis avant validation. Aucune activation à 0 % par cette vue."
-    )
+    else:
+        st.dataframe(
+            pd.DataFrame(dossiers),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.warning(
+            "Dossiers consultables ; les validations fiscales sont distinctes "
+            "et aucune activation à 0 % n'est réalisée depuis cette page."
+        )
+    _creer_brouillon_exoneration()
 
 
 def show_admin_page():
