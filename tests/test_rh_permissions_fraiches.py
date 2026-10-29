@@ -15,6 +15,8 @@ SOURCE=Path(__file__).resolve().parents[1]/"modules"/"rh"/"views.py"
 def setup(monkeypatch):
     st=types.ModuleType("streamlit")
     st.title=MagicMock()
+    st.subheader=MagicMock()
+    st.caption=MagicMock()
     st.error=MagicMock()
     st.session_state={
         "authenticated": True,
