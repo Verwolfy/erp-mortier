@@ -59,7 +59,8 @@ def comparer_arrondis_tva(simulation: Mapping[str, Any]) -> dict[str, Any]:
         categorie = ligne.get("categorie_tva")
         justificatif = ligne.get("justificatif_taux")
         if (
-            categorie not in _CODES
+            not isinstance(categorie, str)
+            or categorie not in _CODES
             or not isinstance(justificatif, Mapping)
             or justificatif.get("code") != _CODES[categorie]
             or not Decimal("0") <= taux <= Decimal("1")
