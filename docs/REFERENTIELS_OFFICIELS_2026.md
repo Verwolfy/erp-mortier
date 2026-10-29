@@ -89,3 +89,29 @@ place des contrôles côté serveur et les écritures de bout en bout.
 
 **Une entrée de référence « confirmée » ne constitue pas une
 attestation de conformité fiscale de l'entreprise.**
+
+
+## Déploiement constaté le 29 octobre 2026
+
+La migration `erp_021_referentiels_officiels_dgi_scf_20261029` a été
+**appliquée avec succès d'abord sur Supabase TEST, ensuite sur PRODUCTION**.
+Contrôle SQL en lecture seule effectué immédiatement après chaque installation :
+
+| Compteur | TEST | PRODUCTION |
+|---|---:|---:|
+| Taux TVA généraux sourcés | 2 | 2 |
+| Règle G50 du régime réel | 1 | 1 |
+| Comptes SCF proposés | 25 | 25 |
+| Comptes SCF actifs ou mouvementables | 0 | 0 |
+| Journaux, exercices et pièces SCF | 0 | 0 |
+| Taux universel de facturation | 0 | 0 |
+| Factures historiques | 1 | 1 |
+
+La RLS de `scf_plan_comptes` reste active et `anon` n'a pas
+le droit de consultation. Les comptes sont disponibles pour revue,
+**sans accès au moteur de comptabilisation**. La migration n'a
+touché ni les factures ni les déclarations.
+
+L'enregistrement des taux **ne valide pas** l'assujettissement de la
+société ni la classification TVA de ses produits. Les nouvelles valeurs
+ne sont pas raccordées au circuit transactionnel Ventes historique.
