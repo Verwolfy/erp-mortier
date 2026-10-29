@@ -17,6 +17,7 @@ from modules.admin.service import (
 )
 from modules.admin.exonerations_service import (
     lister_attestations_pour_manager, creer_brouillon_attestation,
+    est_validateur_fiscal, transition_attestation,
 )
 from uuid import uuid4
 
@@ -307,6 +308,138 @@ def _creer_brouillon_exoneration() -> None:
             st.rerun()
 
 
+def _controle_exonerations_tva(dossiers: list[dict]) -> None:
+    """Décision fiscale avec deuxième habilitation vérifiée côté RPC."""
+    st.divider()
+    try:
+        autorise = est_validateur_fiscal()
+    except (RuntimeError, PermissionError):
+        st.error("Habilitation du contrôleur fiscal non vérifiable.")
+        return
+    except Exception:
+        st.error("Consultation de l'habilitation fiscale indisponible.")
+        return
+    if not autorise:
+        st.info(
+            "Validation et révocation indisponibles : aucun droit fiscal "
+            "distinct n'est confirmé pour ce compte."
+        )
+        return
+
+    pending_key = "_erp_exoneration_transition_pending"
+    pending = st.session_state.get(pending_key)
+    if pending is not None:
+        if (not isinstance(pending, dict)
+            or set(pending) != {"action", "attestation_id",
+                               "operation_id", "justification"}):
+            st.error("Transition en cours incohérente : contrôle serveur requis.")
+            return
+        st.warning(
+            "Résultat de transition incertain : conserver l'opération et "
+            "reprendre avec le même contenu, sans nouvelle demande."
+        )
+        if st.button("Reprendre la décision", key="exo_reprise_transition"):
+            try:
+                identifiant = transition_attestation(
+                    pending["action"],
+                    attestation_id=pending["attestation_id"],
+                    operation_id=pending["operation_id"],
+                    justification=pending["justification"],
+                )
+            except Exception:
+                st.error("Décision non confirmée. Vérifier le dossier serveur.")
+            else:
+                st.session_state.pop(pending_key, None)
+                st.success(f"Décision confirmée pour l'attestation {identifiant}.")
+                st.rerun()
+        return
+
+    choix = st.radio(
+        "Décision fiscale", ["VALIDER", "REVOQUER"],
+        horizontal=True, key="exo_action_fiscale",
+    )
+    attendu = "A_VALIDER" if choix == "VALIDER" else "VALIDEE"
+    user = st.session_state.get("user")
+    acteur = user.get("user_id") if isinstance(user, dict) else None
+    cibles = {
+        row["attestation_id"]: (
+            f'{row.get("client_id")} — {row.get("reference_attestation")}'
+        )
+        for row in dossiers
+        if row.get("statut") == attendu
+        and isinstance(row.get("attestation_id"), str)
+        and row.get("cree_par") is not None
+        and row.get("cree_par") != acteur
+    }
+    if not cibles:
+        st.info("Aucun dossier admissible pour cette décision.")
+        return
+
+    from core.utils import get_local_now
+    with st.form(f"exo_transition_{choix}"):
+        dossier = st.selectbox(
+            "Attestation à contrôler", list(cibles),
+            format_func=lambda x: cibles[x],
+        )
+        if choix == "VALIDER":
+            st.caption(
+                "Contrôler la pièce authentique, sa portée, les plafonds "
+                "éventuels et les dates hors ERP avant de confirmer."
+            )
+            verification = st.date_input(
+                "Date effective de vérification", value=get_local_now().date()
+            )
+            avis = st.text_input("Référence de l'avis fiscal / documentaire")
+            confirme = st.checkbox(
+                "Je confirme la vérification documentaire indépendante"
+            )
+            justification = {
+                "date_verification": verification.isoformat(),
+                "reference_avis_validation": avis,
+                "verification_documentaire": confirme,
+            }
+        else:
+            motif = st.text_area("Motif obligatoire de révocation")
+            justification = {"motif_revocation": motif}
+        executer = st.form_submit_button(
+            "Confirmer la décision (écriture auditée)"
+        )
+
+    if not executer:
+        return
+    if choix == "VALIDER" and not confirme:
+        st.error("Confirmation documentaire explicite obligatoire.")
+        return
+    if not all(
+        isinstance(v, str) and v.strip() for k, v in justification.items()
+        if k != "verification_documentaire"
+    ):
+        st.error("Justificatif de décision obligatoire.")
+        return
+    # Le contrôleur ne peut pas créer deux opérations au premier timeout.
+    snapshot = {
+        "action": choix, "attestation_id": dossier,
+        "operation_id": str(uuid4()),
+        "justification": justification,
+    }
+    st.session_state[pending_key] = snapshot
+    try:
+        identifiant = transition_attestation(
+            choix, attestation_id=dossier,
+            operation_id=snapshot["operation_id"],
+            justification=justification,
+        )
+    except (ValueError, PermissionError):
+        st.session_state.pop(pending_key, None)
+        st.error("Décision rejetée : contrôleur ou justificatif insuffisant.")
+    except Exception:
+        st.error("Transaction incertaine : reprendre avec la même opération.")
+    else:
+        st.session_state.pop(pending_key, None)
+        st.success(f"Décision auditée : {identifiant}.")
+        st.rerun()
+
+
 def _revue_exonerations_tva_clients() -> None:
     """Consultation privée sans création, validation ni révocation depuis l'ERP."""
     st.subheader("Attestations d'exonération TVA clients — revue sécurisée")
@@ -334,6 +467,7 @@ def _revue_exonerations_tva_clients() -> None:
             "et aucune activation à 0 % n'est réalisée depuis cette page."
         )
     _creer_brouillon_exoneration()
+    _controle_exonerations_tva(dossiers)
 
 
 def show_admin_page():
