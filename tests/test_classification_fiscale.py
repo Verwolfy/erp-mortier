@@ -110,3 +110,30 @@ def test_classification_bdd_date_validation_invalide_refusee():
     }
     with pytest.raises(ClassificationIndisponible, match="Date de validation invalide"):
         selectionner_classification_bdd("SKU-TEST", date(2026, 2, 1), [bdd])
+
+
+def test_classification_validee_apres_operation_refusee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    item = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-01-01",
+        "date_fin": None, "statut": "VALIDEE", "categorie_tva": "NORMAL",
+        "code_parametre": "TVA_TAUX_NORMAL", "source_juridique": "TEST",
+        "justification": "TEST", "valide_par": "TEST",
+        "date_verification": "2026-02-01", "date_validation": "2026-02-02",
+    }
+    with pytest.raises(ClassificationIndisponible, match="après la date"):
+        selectionner_classification_bdd("SKU-TEST", date(2026, 1, 15), [item])
+
+
+def test_classification_bdd_fin_avant_debut_refusee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    item = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-02-01",
+        "date_fin": "2026-01-01", "statut": "VALIDEE",
+        "categorie_tva": "NORMAL", "code_parametre": "TVA_TAUX_NORMAL",
+        "source_juridique": "TEST", "justification": "TEST",
+        "valide_par": "TEST", "date_verification": "2026-01-02",
+        "date_validation": "2026-01-03",
+    }
+    with pytest.raises(ClassificationIndisponible, match="Période fiscale"):
+        selectionner_classification_bdd("SKU-TEST", date(2026, 2, 3), [item])
