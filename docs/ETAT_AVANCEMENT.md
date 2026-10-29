@@ -170,3 +170,14 @@ Les historiques internes Supabase listent les migrations **016 à 024 sur les de
 
 ### Vérification complémentaire des statuts du registre (29/10/2026)
 La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION : `TVA_TAUX_NORMAL` et `TVA_TAUX_REDUIT` sont `en_vigueur` depuis le 01/01/2026, sans date de fin ; `CNAS_REG_GENERAL_EMPLOYEUR_REF`, `CNAS_REG_GENERAL_SALARIE_REF` et `CNAS_REG_GENERAL_FONDS_OEUVRES_REF` sont `a_confirmer` sur la période 01/01/2026–31/12/2026. **Ne pas déclencher de calcul CNAS automatique sur ces trois références documentaires.** Le statut TVA seul ne prouve pas l'assujettissement d'une opération ou d'un SKU. Contrôle des sources, valeurs et fonctions de calcul encore nécessaire.
+
+
+## Consolidation des branches — 29/10/2026
+- Branche cible exclusivement : `main`.
+- 31 branches secondaires comparées à `main` via GitHub compare_commits.
+- 30 branches : `ahead_by=0` ; leur historique est inclus dans `main`.
+- Exception : `feat/reglementation-lot-c-socle-20261028`, `ahead_by=1`. Son fichier divergent `sql/012_reglementation_registre.sql` a exactement le même blob SHA `bc742ac1d964347a55e02324ad34137434a848da` sur la branche et sur `main` : le contenu utile de ce fichier est déjà repris. Le commit en tant que tel n'est pas dans l'ascendance de `main`.
+- Aucune suppression de branche GitHub ou de projet Supabase n'a été réalisée : les outils disponibles ne fournissent pas actuellement l'action de suppression. Ne pas présenter le nettoyage comme terminé.
+- La base de TEST `ffuhbmcfyexsbjwhryvj` existe encore ; PRODUCTION `wenydirqtmkywbxbxfal` reste la cible de travail.
+- La copie locale Windows `C:\LH\Perso\ERP_PYT\erp-mortier` n'est pas accessible depuis les connecteurs. Préserver les modifications non commitées avant synchronisation.
+- Prochain objectif : nettoyage distant via un accès GitHub permettant de supprimer les références, fermeture de TEST via les contrôles Supabase, puis synchronisation locale contrôlée.
