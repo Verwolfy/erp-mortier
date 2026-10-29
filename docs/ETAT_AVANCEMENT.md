@@ -167,3 +167,6 @@ Les historiques internes Supabase listent les migrations **016 à 024 sur les de
 5. Compléter les tests de bout en bout, l'administration des paramètres et les règles SCF/fiscales avec sources officielles et validation requise.
 
 **État global : EN COURS.** Réconciliation et conformité réglementaire non démontrées.
+
+### Vérification complémentaire des statuts du registre (29/10/2026)
+La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION : `TVA_TAUX_NORMAL` et `TVA_TAUX_REDUIT` sont `en_vigueur` depuis le 01/01/2026, sans date de fin ; `CNAS_REG_GENERAL_EMPLOYEUR_REF`, `CNAS_REG_GENERAL_SALARIE_REF` et `CNAS_REG_GENERAL_FONDS_OEUVRES_REF` sont `a_confirmer` sur la période 01/01/2026–31/12/2026. **Ne pas déclencher de calcul CNAS automatique sur ces trois références documentaires.** Le statut TVA seul ne prouve pas l'assujettissement d'une opération ou d'un SKU. Contrôle des sources, valeurs et fonctions de calcul encore nécessaire.
