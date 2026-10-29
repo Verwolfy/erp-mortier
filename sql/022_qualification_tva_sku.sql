@@ -25,12 +25,12 @@ CREATE TABLE public.erp_sku_fiscalite (
     CONSTRAINT erp_sku_fiscalite_dates CHECK (
         date_fin IS NULL OR date_fin >= date_effet
     ),
-    CONSTRAINT erp_sku_fiscalite_codes CHECK (
-        categorie_tva IS NULL AND code_parametre IS NULL
-        OR categorie_tva = 'NORMAL' AND code_parametre = 'TVA_TAUX_NORMAL'
-        OR categorie_tva = 'REDUIT' AND code_parametre = 'TVA_TAUX_REDUIT'
-        OR categorie_tva IN ('EXONERE','HORS_CHAMP') AND code_parametre IS NULL
-    ),
+    CONSTRAINT erp_sku_fiscalite_codes CHECK ((
+        (categorie_tva IS NULL AND code_parametre IS NULL)
+        OR (categorie_tva = 'NORMAL' AND code_parametre = 'TVA_TAUX_NORMAL')
+        OR (categorie_tva = 'REDUIT' AND code_parametre = 'TVA_TAUX_REDUIT')
+        OR (categorie_tva IN ('EXONERE','HORS_CHAMP') AND code_parametre IS NULL)
+    ) IS TRUE),
     CONSTRAINT erp_sku_fiscalite_justificatifs CHECK (
         statut <> 'VALIDEE'
         OR (
