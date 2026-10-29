@@ -52,3 +52,14 @@ sans afficher de salaire, simuler de retenue ni créer de bulletin.
 
 Ce renforcement ne charge pas de barème IRG/CNAS et ne transforme pas
 une simulation en déclaration légale.
+
+
+## Préparation des composantes de rémunération — 29 octobre 2026
+
+**Pourquoi :** le salaire brut et l'assiette imposable IRG ne sont pas nécessairement identiques ; les indemnisations, primes et éléments particuliers ont des traitements sociaux et fiscaux distincts. Aucun traitement n'est déduit automatiquement de leur libellé.
+
+**Comment :** `core/paie_assiettes.py` additionne exclusivement des éléments de rémunération positifs, identifiés une seule fois, avec une qualification CNAS et IRG explicite (`INCLUS` ou `EXCLU`) et une référence datée, sourcée et en vigueur pour chacun. Les éléments incomplets, montants négatifs, retenues, doublons et dates incohérentes sont refusés.
+
+La sortie présente **les composantes des bases avant déductions**, pas les assiettes juridiques définitives : plafonds éventuels, cotisations déductibles, règles d'abattement et particularités individuelles n'y sont PAS intégrés. La sortie est expressément marquée `BASES_SIMULATION_DOCUMENTEES_NON_HOMOLOGUEES`, et aucun bulletin officiel n'est autorisé.
+
+**À venir :** rapprocher ces composantes des règles d'assiettes complètes après validation des traitements réglementaires, puis les confronter au moteur de préparation de paie avec des contrôles de cohérence. Les simulations existantes ne sont ni modifiées ni activées automatiquement.
