@@ -85,7 +85,63 @@ BEGIN
      length(btrim(coalesce(v_reg.mode_paiement, ''))) NOT BETWEEN 1 AND 200 OR
      length(btrim(coalesce(v_reg.reference_trace, ''))) NOT BETWEEN 1 AND 200 OR
      v_reg.date_reglement IS NULL OR
-     v_reg.date_reglement !~ '^\\d{4}-\\d{2}-\\d{2}$' THEN
+     v_reg.date_reglement !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} THEN
+    RAISE EXCEPTION 'Encaissement incoherent, refuse sans mutation'
+      USING ERRCODE = '23514';
+  END IF;
+  BEGIN
+    v_date := v_reg.date_reglement::date;
+  EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN
+    RAISE EXCEPTION 'Date de reglement non valide' USING ERRCODE='23514';
+  END;
+  IF to_char(v_date, 'YYYY-MM-DD') <> v_reg.date_reglement THEN
+    RAISE EXCEPTION 'Date de reglement non canonique' USING ERRCODE='23514';
+  END IF;
+
+  SELECT * INTO v_recu FROM public.erp_recus_internes
+    WHERE reglement_id = p_reglement_id;
+  IF FOUND THEN
+    IF v_recu.operation_id IS DISTINCT FROM p_operation_id OR
+       v_recu.client_id IS DISTINCT FROM v_reg.partenaire_id OR
+       v_recu.montant_encaisse IS DISTINCT FROM v_reg.montant_total OR
+       v_recu.date_reglement IS DISTINCT FROM v_date OR
+       v_recu.mode_paiement IS DISTINCT FROM v_reg.mode_paiement OR
+       v_recu.reference_reglement IS DISTINCT FROM v_reg.reference_trace THEN
+      RAISE EXCEPTION 'Recu deja emis ou source historique modifiee'
+        USING ERRCODE='23505';
+    END IF;
+    RETURN jsonb_build_object(
+      'recu_id', v_recu.recu_id,
+      'reglement_id', v_recu.reglement_id,
+      'operation_id', v_recu.operation_id,
+      'statut', v_recu.statut,
+      'timbre_statut', v_recu.timbre_statut
+    );
+  END IF;
+
+  v_id := 'RINT-' || gen_random_uuid()::text;
+  INSERT INTO public.erp_recus_internes (
+    recu_id, reglement_id, operation_id, client_id, date_reglement,
+    montant_encaisse, mode_paiement, reference_reglement
+  ) VALUES (
+    v_id, p_reglement_id, p_operation_id, v_reg.partenaire_id,
+    v_date, v_reg.montant_total, v_reg.mode_paiement, v_reg.reference_trace
+  );
+  RETURN jsonb_build_object(
+    'recu_id', v_id,
+    'reglement_id', p_reglement_id,
+    'operation_id', p_operation_id,
+    'statut', 'INTERNE_NON_FISCAL',
+    'timbre_statut', 'NON_CALCULE'
+  );
+END;
+$body$;
+
+REVOKE ALL ON FUNCTION public.erp_bloquer_mutation_recu_interne() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.erp_emettre_recu_interne(text,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.erp_emettre_recu_interne(text,text) TO service_role;
+COMMIT;
+ THEN
     RAISE EXCEPTION 'Encaissement incoherent, refuse sans mutation'
       USING ERRCODE = '23514';
   END IF;
