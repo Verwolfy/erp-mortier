@@ -564,3 +564,46 @@ def test_order_timeout_retry_keeps_operation_id(ui):
         for call in ui.mod.creer_commande_client.call_args_list
     )
     assert ui.st.session_state[key]["status"] == "confirmed"
+
+
+def test_tva_ui_ne_lit_rien_sans_clic(ui):
+    ui.mod._controle_tva_sku_tab("USR-1")
+    ui.db.fetch_data_paginated.assert_not_called()
+    ui.st.metric.assert_not_called()
+
+
+def test_tva_ui_refuse_sans_permission(ui):
+    ui.mod._sale_access = MagicMock(return_value=None)
+    ui.st.button.return_value = True
+    ui.mod._controle_tva_sku_tab("USR-1")
+    ui.db.fetch_data_paginated.assert_not_called()
+    ui.st.metric.assert_not_called()
+
+
+def test_tva_ui_couverture_sans_classification(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [
+        {"sku_id": "SKU-1", "pf_id": "PF-1", "actif": "OUI"}
+    ]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+    ui.mod._controle_tva_sku_tab("USR-1")
+    ui.st.metric.assert_any_call("SKU non classés", 1)
+    ui.st.dataframe.assert_called_once()
+    ui.sales.create_facture_brouillon.assert_not_called()
+    ui.sales.valider_facture.assert_not_called()
+
+
+def test_tva_ui_refuse_lecture_tronquee(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [{"sku_id": "SKU-1"}]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=1)
+    ui.mod._controle_tva_sku_tab("USR-1")
+    ui.st.metric.assert_not_called()
+    ui.st.dataframe.assert_not_called()
+    ui.st.error.assert_called()
