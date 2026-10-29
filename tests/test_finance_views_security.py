@@ -673,4 +673,4 @@ def test_accuses_nouveau_reglement_emet_une_seule_fois(ui):
     ui.st.button.return_value=True
     ui.mod._accuses_internes_tab("USR-1", True, _payments())
     ui.finance.creer_accuse_encaissement.assert_called_once()
-    assert ui.finance.creer_accuse_encaissement.call_args.args==("REG-1",)
+    assert ui.finance.creer_accuse_encaissement.call_args.kwargs["reglement_id"] == "REG-1"
