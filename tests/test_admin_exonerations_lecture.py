@@ -89,3 +89,79 @@ def test_limite_bloque_pagination_tronquee(monkeypatch):
     prepare(monkeypatch, [attestation("AT-%d" % i) for i in range(501)], [])
     with pytest.raises(RuntimeError, match="incomplète"):
         service.lister_attestations_pour_manager()
+
+
+def payload_brouillon():
+    return {
+        "client_id": "CLI-X",
+        "reference_attestation": "EXO-TEST",
+        "autorite_emettrice": "AUTORITE-TEST",
+        "reference_piece_interne": "PIECE-INTERNE",
+        "justification": "A examiner",
+        "date_effet": "2026-01-01",
+        "date_fin": "2026-12-31",
+        "sku_ids": ["SKU-001"],
+    }
+
+
+def test_creation_brouillon_appelle_rpc_protegee(monkeypatch):
+    op_id = "00000000-0000-4000-8000-000000000027"
+    attestation_id = "00000000-0000-4000-8000-000000000028"
+    gate, client, db = prepare(monkeypatch, [], [])
+    db.rpc.return_value.execute.return_value.data = {
+        "operation_id": op_id, "action": "CREER_BROUILLON",
+        "statut": "A_VALIDER", "attestation_id": attestation_id,
+    }
+    result = service.creer_brouillon_attestation(
+        payload_brouillon(), operation_id=op_id
+    )
+    assert result == attestation_id
+    gate.assert_called_once_with()
+    db.rpc.assert_called_once_with(
+        "erp_exoneration_tva_action", {
+            "p_actor_id": "USR-ADMIN", "p_action": "CREER_BROUILLON",
+            "p_operation_id": op_id, "p_payload": payload_brouillon(),
+        }
+    )
+    db.table.assert_not_called()
+
+
+def test_creation_brouillon_refuse_utilisateur_sans_droit(monkeypatch):
+    gate, client, db = prepare(monkeypatch, [], [], autorise=False)
+    with pytest.raises(PermissionError):
+        service.creer_brouillon_attestation(
+            payload_brouillon(), operation_id="00000000-0000-4000-8000-000000000027"
+        )
+    client.assert_not_called()
+
+
+@pytest.mark.parametrize("mutation", [
+    {"sku_ids": []}, {"sku_ids": ["SKU-001", "SKU-001"]},
+    {"date_effet": "2026-13-01"}, {"date_fin": "2025-01-01"},
+    {"reference_piece_interne": ""}, {"client_id": None},
+    {"statut": "VALIDEE"},
+])
+def test_creation_brouillon_invalide_ne_touche_pas_rpc(monkeypatch, mutation):
+    gate, client, db = prepare(monkeypatch, [], [])
+    donnees = payload_brouillon()
+    donnees.update(mutation)
+    with pytest.raises(ValueError):
+        service.creer_brouillon_attestation(
+            donnees, operation_id="00000000-0000-4000-8000-000000000027"
+        )
+    gate.assert_not_called()
+    client.assert_not_called()
+
+
+@pytest.mark.parametrize("reponse", [
+    None, {}, {"action": "VALIDER"},
+    {"operation_id": "autre", "action": "CREER_BROUILLON",
+     "statut": "A_VALIDER", "attestation_id": "00000000-0000-4000-8000-000000000028"},
+])
+def test_reponse_sql_non_confirmee_refusee(monkeypatch, reponse):
+    _, _, db = prepare(monkeypatch, [], [])
+    db.rpc.return_value.execute.return_value.data = reponse
+    with pytest.raises(RuntimeError):
+        service.creer_brouillon_attestation(
+            payload_brouillon(), operation_id="00000000-0000-4000-8000-000000000027"
+        )
