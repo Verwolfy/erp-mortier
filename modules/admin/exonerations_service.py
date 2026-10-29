@@ -19,8 +19,8 @@ def lister_attestations_pour_manager() -> list[dict[str, Any]]:
     headers = (
         client.table("erp_exonerations_tva_clients")
         .select("attestation_id,client_id,reference_attestation,"
-                "reference_piece_interne,date_effet,date_fin,statut,"
-                "date_verification,date_validation,valide_par")
+                "reference_piece_interne,date_effet,date_fin,statut,cree_par,"
+                "date_verification,date_validation,valide_par,reference_avis_validation")
         .order("attestation_id").range(0, _MAX_DOSSIERS).execute().data
     )
     if not isinstance(headers, list) or len(headers) > _MAX_DOSSIERS:
@@ -133,4 +133,87 @@ def creer_brouillon_attestation(
             raise ValueError
     except (ValueError, AttributeError) as exc:
         raise RuntimeError("Référence d'attestation invalide") from exc
+    return attestation_id
+
+
+def est_validateur_fiscal() -> bool:
+    """Vérification fraîche et distincte de l'habilitation fiscalité."""
+    acteur = require_security_manager()
+    response = get_supabase_client().rpc(
+        "erp_exoneration_tva_is_validator", {"p_actor_id": acteur}
+    ).execute()
+    if type(response.data) is not bool:
+        raise RuntimeError("Habilitation fiscale non vérifiable")
+    return response.data
+
+
+def transition_attestation(
+    action: str,
+    *,
+    attestation_id: str,
+    operation_id: str,
+    justification: dict[str, Any],
+) -> str:
+    """Valider/révoquer via RPC avec double habilitation et UUID de reprise.
+
+    Aucune écriture directe vers les tables d'attestations. La fonction SQL
+    contrôle de nouveau la séparation créateur / validateur et la chronologie.
+    """
+    from datetime import date
+    from uuid import UUID
+
+    if action not in ("VALIDER", "REVOQUER"):
+        raise ValueError("Transition fiscale interdite")
+    for name, value in (("attestation_id", attestation_id),
+                        ("operation_id", operation_id)):
+        if not isinstance(value, str):
+            raise ValueError(f"{name} invalide")
+        try:
+            if str(UUID(value)) != value:
+                raise ValueError
+        except (ValueError, AttributeError) as exc:
+            raise ValueError(f"{name} invalide") from exc
+
+    if not isinstance(justification, dict):
+        raise ValueError("Justification fiscale invalide")
+    if action == "VALIDER":
+        champs = {"verification_documentaire", "date_verification",
+                  "reference_avis_validation"}
+        if set(justification) != champs or justification["verification_documentaire"] is not True:
+            raise ValueError("Contrôle documentaire explicite requis")
+        valeur = justification["date_verification"]
+        try:
+            if (not isinstance(valeur, str)
+                or date.fromisoformat(valeur).isoformat() != valeur):
+                raise ValueError
+        except (ValueError, TypeError) as exc:
+            raise ValueError("Date de vérification invalide") from exc
+        avis = justification["reference_avis_validation"]
+        if not isinstance(avis, str) or not 1 <= len(avis.strip()) <= 250:
+            raise ValueError("Référence d'avis fiscal obligatoire")
+    else:
+        if set(justification) != {"motif_revocation"}:
+            raise ValueError("Motif de révocation obligatoire")
+        motif = justification["motif_revocation"]
+        if not isinstance(motif, str) or not 1 <= len(motif.strip()) <= 2000:
+            raise ValueError("Motif de révocation invalide")
+
+    acteur = require_security_manager()
+    perm = get_supabase_client().rpc(
+        "erp_exoneration_tva_is_validator", {"p_actor_id": acteur}
+    ).execute().data
+    if perm is not True:
+        raise PermissionError("Validateur fiscal non habilité")
+    data = get_supabase_client().rpc("erp_exoneration_tva_action", {
+        "p_actor_id": acteur, "p_action": action,
+        "p_operation_id": operation_id,
+        "p_payload": {**justification, "attestation_id": attestation_id},
+    }).execute().data
+    expected = "VALIDEE" if action == "VALIDER" else "REVOQUEE"
+    if (not isinstance(data, dict)
+        or data.get("operation_id") != operation_id
+        or data.get("action") != action
+        or data.get("attestation_id") != attestation_id
+        or data.get("statut") != expected):
+        raise RuntimeError("Transition d'attestation non confirmée")
     return attestation_id
