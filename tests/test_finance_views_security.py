@@ -797,3 +797,20 @@ def test_correspondances_refuse_un_droit_revoque(ui):
     ui.mod._correspondances_finance_scf_tab("USR-1", _accounts())
     ui.st.metric.assert_not_called()
     ui.st.dataframe.assert_not_called()
+
+
+def test_correspondances_finance_scf_synthese_sans_mutation(ui, monkeypatch):
+    stub = types.ModuleType("core.correspondances_finance_scf")
+    stub.CorrespondanceSCFIndisponible = ValueError
+    stub.lire_correspondances_finance_scf = MagicMock(return_value={
+        "nombre_comptes_finance": 1, "nombre_comptes_scf": 25,
+        "repartition": {"REFERENCE_INACTIVE": 1, "SANS_NUMERO": 0, "NON_REFERENCE": 0},
+        "lignes": [{"compte_finance_id": "F-1", "statut": "REFERENCE_INACTIVE"}],
+    })
+    monkeypatch.setitem(sys.modules, "core.correspondances_finance_scf", stub)
+    ui.st.button.return_value = True
+    ui.mod._correspondances_finance_scf_tab("USR-1", _accounts())
+    assert ui.st.metric.call_count == 4
+    ui.st.dataframe.assert_called_once()
+    ui.finance.creer_compte.assert_not_called()
+    ui.finance.enregistrer_reglement.assert_not_called()
