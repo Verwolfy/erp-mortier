@@ -93,3 +93,36 @@ def test_attestation_validee_apres_facture_refusee():
     d["date_verification"] = "2026-04-30"
     with pytest.raises(FiscaliteNonDisponible):
         lecture([d])
+
+
+def test_preuve_bdd_conserve_id_et_piece_jusque_dans_la_facture_simulee():
+    from decimal import Decimal
+    from core.simulation_facture_tva_lignes import simuler_tva_facture_lignes
+
+    attestation = lecture()
+    classes = [{
+        "sku_id": "SKU-X", "date_effet": "2026-01-01", "date_fin": None,
+        "statut": "VALIDEE", "categorie_tva": "NORMAL",
+        "code_parametre": "TVA_TAUX_NORMAL",
+        "source_juridique": "SOURCE-FICTIVE",
+        "justification": "TEST", "valide_par": "TEST",
+        "date_verification": "2026-01-02", "date_validation": "2026-01-03",
+    }]
+    parametres = [{
+        "code": "TVA_TAUX_NORMAL", "valeur": "0.19", "unite": "fraction",
+        "statut_juridique": "en_vigueur", "niveau_confiance": "CONFIRMEE",
+        "source": "SOURCE-FICTIVE", "date_effet": "2026-01-01",
+        "date_fin": None, "date_verification": "2026-01-02",
+    }]
+    simule = simuler_tva_facture_lignes(
+        [{"sku_id": "SKU-X", "quantite": "1", "prix_unitaire": "100"}],
+        date(2026, 3, 15), classes, parametres,
+        client_id="CLI-X", attestation_exoneration=attestation,
+    )
+    ligne = simule["lignes"][0]
+    assert ligne["taux_tva"] == Decimal("0")
+    preuve = ligne["justificatif_exoneration_client"]
+    assert preuve["attestation_id"] == A
+    assert preuve["reference_piece_interne"] == "INTERNE-TEST"
+    assert ligne["montant_tva"] == Decimal("0.00")
+    assert simule["autorise_activation_facturation"] is False
