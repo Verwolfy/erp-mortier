@@ -52,11 +52,13 @@ def ui(monkeypatch):
         "total_tva": 19., "timbre_fiscal": 0., "total_ttc": 119.,
     }
 
+    core_package = types.ModuleType("core")
+    core_package.__path__ = [str(Path(__file__).resolve().parents[1] / "core")]
     for key, val in {
         "streamlit": st,
         "config": types.ModuleType("config"),
         "config.roles": roles,
-        "core": types.ModuleType("core"),
+        "core": core_package,
         "core.db_service": db,
         "modules": types.ModuleType("modules"),
         "modules.ventes": types.ModuleType("modules.ventes"),
