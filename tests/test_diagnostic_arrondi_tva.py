@@ -78,6 +78,8 @@ def test_taux_multiples_comparables_seulement_par_groupe_fiscal():
     assert result["tva_arrondie_par_ligne"] == Decimal("0.02")
     assert result["tva_arrondie_globalement"] == Decimal("0.02")
     assert result["ecart"] == Decimal("0.00")
+    assert result["nombre_groupes_en_ecart"] == 2
+    assert result["statut"] == "ECART"  # écarts contraires non compensables
     assert [(g["code_parametre"], g["ecart"]) for g in result["groupes_tva"]] == [
         ("TVA_TAUX_NORMAL", Decimal("0.01")),
         ("TVA_TAUX_REDUIT", Decimal("-0.01")),
@@ -117,6 +119,7 @@ def test_diagnostic_ne_modifie_pas_simulation():
 def test_comparaison_mono_groupe_conserve_contrat_historique():
     r = comparer_arrondis_tva(simulation())
     assert r["nombre_groupes"] == 1
+    assert r["nombre_groupes_en_ecart"] == 1
     assert r["taux_comparatif"] == Decimal("0.17")
     assert r["groupes_tva"][0]["ecart"] == Decimal("0.01")
 
@@ -157,3 +160,18 @@ def test_comparaison_ne_modifie_pas_entree_multitaux():
     before = deepcopy(s)
     comparer_arrondis_tva(s)
     assert s == before
+
+
+def test_tous_les_groupes_concordants_sont_vraiment_concordants():
+    s = simuler_tva_facture_lignes(
+        [{"sku_id": "SKU-X", "quantite": "1", "prix_unitaire": "100"},
+         {"sku_id": "SKU-Y", "quantite": "1", "prix_unitaire": "100"}],
+        date(2026, 2, 1),
+        [classification(), classification("SKU-Y", "REDUIT")],
+        [parametre(), parametre("REDUIT", "0.09")],
+    )
+    result = comparer_arrondis_tva(s)
+    assert result["nombre_groupes"] == 2
+    assert result["nombre_groupes_en_ecart"] == 0
+    assert result["statut"] == "CONCORDANT"
+    assert result["autorise_activation_facturation"] is False
