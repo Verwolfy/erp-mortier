@@ -75,6 +75,11 @@ SCHEMA_CONFIG = {
     "ecritures_comptables": {"module": "finance", "sheet": "EcrituresComptables", "cols": ["ecriture_id", "date_ecriture", "compte_id", "document_source_id", "libelle", "debit", "credit", "lettrage_id"]},
     "reglements": {"module": "finance", "sheet": "Reglements", "cols": ["reglement_id", "date_reglement", "type_flux", "partenaire_id", "compte_id", "mode_paiement", "reference_trace", "montant_total", "montant_alloue", "statut"]},
     "lettrage": {"module": "finance", "sheet": "Lettrage", "cols": ["lettrage_id", "date", "reglement_id", "document_id", "type_document", "montant_applique"]},
+    # Accusés internes : consultation Finance uniquement, aucune écriture hybride.
+    "erp_recus_internes": {"module": "finance", "sheet": None, "cols": [
+        "recu_id", "reglement_id", "operation_id", "client_id", "date_reglement",
+        "montant_encaisse", "mode_paiement", "reference_reglement",
+        "statut", "timbre_statut", "cree_le"]},
 
     # --- CRM ---
     "interactions": {"module": "crm", "sheet": "Interactions", "cols": ["interaction_id", "client_id", "date_creation", "type_action", "notes", "date_rappel", "statut_rappel"]},
@@ -104,7 +109,7 @@ _EXTRA_COLUMNS = {
 
 # Aucune donnée de comptes ou d'autorisations n'est recopiée dans Sheets.
 # Supabase est la source de vérité pour ces informations sensibles.
-_NO_SHEETS_SYNC = frozenset({"users", "permissions", "audit_trail", "erreurs", "logs"})
+_NO_SHEETS_SYNC = frozenset({"users", "permissions", "audit_trail", "erreurs", "logs", "erp_recus_internes"})
 _PRIMARY_KEY_OVERRIDES = {
     "permissions": "permission_id",
     "listes_reference": "id",
