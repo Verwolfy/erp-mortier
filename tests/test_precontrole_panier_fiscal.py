@@ -69,3 +69,12 @@ def test_panier_reutilise_referentiel_sans_altération():
         date(2026, 2, 1), referentiel,
     )
     assert referentiel == [a, b]
+
+
+
+def test_ligne_referentiel_non_structuree_refusee():
+    with pytest.raises(ClassificationIndisponible, match="non structurée"):
+        verifier_panier_fiscal(
+            [{"sku_id": "SKU-A"}], date(2026, 2, 1),
+            [classement("SKU-A"), None],
+        )
