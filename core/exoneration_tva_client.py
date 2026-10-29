@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any, Mapping
+from uuid import UUID
 
 from core.fiscalite_facturation import FiscaliteNonDisponible
 
@@ -71,7 +72,28 @@ def qualifier_exoneration_client(
             or any(not isinstance(s, str) or not s.strip() for s in portee)
             or len(set(portee)) != len(portee)):
         raise FiscaliteNonDisponible("Portée SKU de l'attestation manquante ou invalide")
+    # Une lecture attestée depuis le registre 025 fournit ces deux
+    # identifiants de provenance. Conserver leur association dans la trace.
+    metadata = {}
+    identifiant_piece = attestation.get("attestation_id")
+    reference_interne = attestation.get("reference_piece_interne")
+    if identifiant_piece is not None or reference_interne is not None:
+        if not isinstance(identifiant_piece, str):
+            raise FiscaliteNonDisponible("Identifiant d'attestation absent")
+        try:
+            normalise = str(UUID(identifiant_piece))
+        except (ValueError, AttributeError) as exc:
+            raise FiscaliteNonDisponible("Identifiant d'attestation invalide") from exc
+        if normalise != identifiant_piece:
+            raise FiscaliteNonDisponible("Identifiant d'attestation non canonique")
+        metadata = {
+            "attestation_id": normalise,
+            "reference_piece_interne": _texte(
+                reference_interne, "reference_piece_interne"
+            ),
+        }
     return {
+        **metadata,
         "client_id": identifiant, "statut": "VALIDEE",
         "date_effet": debut.isoformat(), "date_fin": fin.isoformat(),
         "date_verification": verification.isoformat(),
