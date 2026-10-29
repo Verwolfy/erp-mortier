@@ -61,6 +61,7 @@ jobs:
           tests/test_admin_exonerations_lecture.py
           tests/test_exoneration_sql_027.py
           tests/test_exoneration_sql_028.py
+          tests/test_exoneration_sql_029.py
           tests/test_audit_couverture_tva_sku.py
           tests/test_registre_qualification_sku.py
           tests/test_simulation_facture_tva_lignes.py
