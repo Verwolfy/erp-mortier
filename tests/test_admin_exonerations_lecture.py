@@ -165,3 +165,128 @@ def test_reponse_sql_non_confirmee_refusee(monkeypatch, reponse):
         service.creer_brouillon_attestation(
             payload_brouillon(), operation_id="00000000-0000-4000-8000-000000000027"
         )
+
+
+def test_statut_validateur_fiscal_lit_habilitation_serveur(monkeypatch):
+    gate, _, db = prepare(monkeypatch, [], [])
+    db.rpc.return_value.execute.return_value.data = False
+    assert service.est_validateur_fiscal() is False
+    gate.assert_called_once_with()
+    db.rpc.assert_called_once_with(
+        "erp_exoneration_tva_is_validator", {"p_actor_id": "USR-ADMIN"}
+    )
+
+
+@pytest.mark.parametrize("valeur", [None, {}, [], 1, "true"])
+def test_habilitation_fiscale_non_bool_refusee(monkeypatch, valeur):
+    _, _, db = prepare(monkeypatch, [], [])
+    db.rpc.return_value.execute.return_value.data = valeur
+    with pytest.raises(RuntimeError, match="non vérifiable"):
+        service.est_validateur_fiscal()
+
+
+def _rpc_replies(permission, reply):
+    def call(name, args):
+        result = MagicMock()
+        if name == "erp_exoneration_tva_is_validator":
+            result.execute.return_value.data = permission
+        elif name == "erp_exoneration_tva_action":
+            result.execute.return_value.data = reply
+        else:
+            raise AssertionError("RPC imprévue")
+        return result
+    return call
+
+
+@pytest.mark.parametrize("action,justification,status", [
+    ("VALIDER", {
+        "verification_documentaire": True,
+        "date_verification": "2026-10-29",
+        "reference_avis_validation": "AVIS-TEST"
+    }, "VALIDEE"),
+    ("REVOQUER", {
+        "motif_revocation": "Avis retiré après contrôle"
+    }, "REVOQUEE"),
+])
+def test_transition_attestation_protegee(monkeypatch, action, justification, status):
+    attestation = "00000000-0000-4000-8000-000000000028"
+    operation = "00000000-0000-4000-8000-000000000029"
+    gate, _, db = prepare(monkeypatch, [], [])
+    reply = {
+        "operation_id": operation, "attestation_id": attestation,
+        "action": action, "statut": status, "idempotent": False,
+    }
+    db.rpc.side_effect = _rpc_replies(True, reply)
+    assert service.transition_attestation(
+        action, attestation_id=attestation,
+        operation_id=operation, justification=justification
+    ) == attestation
+    gate.assert_called_once_with()
+    assert db.rpc.call_count == 2
+    assert db.rpc.call_args_list[0].args[0] == "erp_exoneration_tva_is_validator"
+    assert db.rpc.call_args_list[1].args == (
+        "erp_exoneration_tva_action", {
+            "p_actor_id": "USR-ADMIN", "p_action": action,
+            "p_operation_id": operation,
+            "p_payload": {**justification, "attestation_id": attestation},
+        }
+    )
+
+
+@pytest.mark.parametrize("permission", [False, None, "true", 1, {}])
+def test_decision_refusee_sans_validation_fiscale_fraiche(monkeypatch, permission):
+    _, _, db = prepare(monkeypatch, [], [])
+    db.rpc.side_effect = _rpc_replies(permission, {})
+    with pytest.raises(PermissionError, match="non habilité"):
+        service.transition_attestation(
+            "REVOQUER",
+            attestation_id="00000000-0000-4000-8000-000000000028",
+            operation_id="00000000-0000-4000-8000-000000000029",
+            justification={"motif_revocation": "Test"},
+        )
+    assert db.rpc.call_count == 1
+
+
+@pytest.mark.parametrize("action,justification", [
+    ("INCONNU", {}),
+    ("VALIDER", {"verification_documentaire": False,
+                  "date_verification": "2026-10-29",
+                  "reference_avis_validation": "AVIS-TEST"}),
+    ("VALIDER", {"verification_documentaire": True,
+                  "date_verification": "2026-13-29",
+                  "reference_avis_validation": "AVIS-TEST"}),
+    ("VALIDER", {"verification_documentaire": True,
+                  "date_verification": "2026-10-29",
+                  "reference_avis_validation": ""}),
+    ("REVOQUER", {"motif_revocation": ""}),
+    ("REVOQUER", {"motif_revocation": "raison", "statut": "VALIDEE"}),
+])
+def test_transition_invalide_ne_touche_ni_autorisation_ni_rpc(
+    monkeypatch, action, justification
+):
+    gate, client, db = prepare(monkeypatch, [], [])
+    with pytest.raises(ValueError):
+        service.transition_attestation(
+            action, attestation_id="00000000-0000-4000-8000-000000000028",
+            operation_id="00000000-0000-4000-8000-000000000029",
+            justification=justification,
+        )
+    gate.assert_not_called()
+    client.assert_not_called()
+
+
+def test_reponse_transition_non_confirmee_refusee(monkeypatch):
+    _, _, db = prepare(monkeypatch, [], [])
+    db.rpc.side_effect = _rpc_replies(True, {
+        "operation_id": "00000000-0000-4000-8000-000000000029",
+        "attestation_id": "00000000-0000-4000-8000-000000000028",
+        "action": "VALIDER", "statut": "REVOQUEE",
+    })
+    with pytest.raises(RuntimeError, match="non confirmée"):
+        service.transition_attestation(
+            "VALIDER", attestation_id="00000000-0000-4000-8000-000000000028",
+            operation_id="00000000-0000-4000-8000-000000000029",
+            justification={"verification_documentaire": True,
+                "date_verification": "2026-10-29",
+                "reference_avis_validation": "AVIS-TEST"}
+        )
