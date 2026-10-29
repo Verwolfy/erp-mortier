@@ -12,14 +12,46 @@ def _mark_rh_activity() -> None:
     st.session_state["_erp_rh_interacted"] = True
 
 
+def _rh_access() -> tuple[str, bool, bool] | None:
+    """Rôle de la base et compte actif, non du champ role en session."""
+    try:
+        if st.session_state.get("authenticated") is not True:
+            return None
+        user = st.session_state.get("user")
+        user_id = user.get("user_id") if isinstance(user, dict) else None
+        if not isinstance(user_id, str) or not user_id.strip():
+            return None
+        from core.db_service import get_supabase_client
+        result = (get_supabase_client().table("users")
+                  .select("user_id,role,actif").eq("user_id", user_id)
+                  .limit(2).execute())
+        rows = result.data
+        if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+            return None
+        actor = rows[0]
+        active = actor.get("actif")
+        if (actor.get("user_id") != user_id
+                or (active is not True and str(active).strip().upper()
+                    not in {"OUI", "TRUE", "1", "ACTIF", "ACTIVE", "YES"})
+                or not isinstance(actor.get("role"), str)):
+            return None
+        user_role = actor["role"]
+        if has_permission(user_role, "RH", "lecture") is not True:
+            return None
+        can_write = has_permission(user_role, "RH", "ecriture") is True
+        can_read_paie = has_permission(user_role, "Paie", "lecture") is True
+        return user_role, can_write, can_read_paie
+    except Exception:
+        return None
+
+
 def show_rh_page():
     st.title("👥 Ressources Humaines")
-
-    user_role = st.session_state.get("user", {}).get("role", "")
-    can_write = has_permission(user_role, "RH", "ecriture")
-
-    # Autorisation Paie spécifique et relue sur le serveur ; l'accès RH ne suffit pas.
-    can_read_paie = has_permission(user_role, "Paie", "lecture")
+    access = _rh_access()
+    if access is None:
+        st.error("Accès RH refusé : session, compte ou permission non vérifiable.")
+        return
+    user_role, can_write, can_read_paie = access
     noms_onglets = ["👨‍💼 Registre des Employés", "🌴 Gestion des Congés"]
     if can_read_paie:
         noms_onglets.append("🧮 Simulation IRG (non validée)")
@@ -114,6 +146,10 @@ def show_rh_page():
                 "Simuler IRG", key="rh_irg_simuler",
                 on_click=_mark_rh_activity,
             ):
+                fresh = _rh_access()
+                if fresh is None or fresh[0] != user_role or fresh[2] is not True:
+                    st.error("Droit Paie absent ou révoqué ; simulation interdite.")
+                    return
                 from core.irg_salaires import IRGNonDisponible
                 from core.irg_service import simuler_irg_depuis_supabase
                 try:

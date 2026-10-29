@@ -36,3 +36,19 @@ par défaut dans Supabase. Le prototype traite les revenus mensuels réguliers
 uniquement ; les primes exceptionnelles, revenus occasionnels, particularités
 individuelles et arrondis légaux doivent être validés avec un professionnel
 avant émission.
+
+
+## Vérification des droits avant tout accès (29 octobre 2026)
+
+La rubrique RH relit désormais depuis la table `users` le compte actif,
+son identifiant et **son rôle actuel**. Le rôle affiché dans la session
+Streamlit ne suffit plus à autoriser la lecture.
+
+L'accès au registre RH exige `RH/lecture`. La saisie RH exige
+`RH/ecriture`. La simulation IRG exige séparément `Paie/lecture`
+et ce droit est relu **au clic** avant tout calcul. Si la base de données
+ou la matrice des permissions est indisponible, l'opération est refusée
+sans afficher de salaire, simuler de retenue ni créer de bulletin.
+
+Ce renforcement ne charge pas de barème IRG/CNAS et ne transforme pas
+une simulation en déclaration légale.
