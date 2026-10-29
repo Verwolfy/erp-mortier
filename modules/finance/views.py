@@ -21,6 +21,7 @@ from modules.finance.service import (
     creer_compte,
     enregistrer_lettrage,
     enregistrer_reglement,
+    creer_accuse_encaissement,
 )
 
 _LOG = logging.getLogger(__name__)
