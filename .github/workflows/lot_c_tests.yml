@@ -3,7 +3,7 @@ name: ERP - tests lot C facturation
 on:
   push:
     branches:
-      - feat/reglementation-lot-c-socle-20261028
+      - main
   pull_request:
     branches:
       - main
@@ -43,6 +43,7 @@ jobs:
           tests/test_baremes.py
           tests/test_reglementation_sql_012.py
           tests/test_fiscalite_facturation.py
+          tests/test_fiscalite_facturation_dates_2026.py
           tests/test_fiscalite_service.py
           tests/test_facturation_sql_013.py
           tests/test_ventes_atomic.py
