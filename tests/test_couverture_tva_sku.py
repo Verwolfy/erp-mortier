@@ -145,3 +145,41 @@ def test_filtre_actifs_ne_cache_pas_dossier_inactif_incoherent():
 def test_filtre_actifs_requires_bool():
     with pytest.raises(QualificationTVAIndisponible, match="Filtre"):
         verifier_couverture_tva([sku()], [], "2026-10-29", uniquement_actifs="oui")
+
+
+def test_dossier_valide_apres_date_operation_reste_en_attente_asof():
+    result = check(
+        fiches=[fiche(date_validation="2026-11-02",
+                      date_verification="2026-11-01")],
+        date="2026-10-29",
+    )
+    assert result["par_statut"] == {
+        "NON_CLASSE": 0, "A_VALIDER": 1, "VALIDE": 0
+    }
+    assert result["lignes"][0]["categorie_tva"] is None
+    assert result["lignes"][0]["code_parametre"] is None
+    assert result["lignes"][0]["date_validation"] == "2026-11-02"
+    assert result["facturation_automatique_autorisee"] is False
+
+
+def test_dossier_devenu_valide_apres_validation():
+    result = check(
+        fiches=[fiche(date_validation="2026-11-02",
+                      date_verification="2026-11-01")],
+        date="2026-11-02",
+    )
+    assert result["par_statut"]["VALIDE"] == 1
+    assert result["lignes"][0]["categorie_tva"] == "NORMAL"
+
+
+def test_validation_antérieure_a_verification_refusee():
+    with pytest.raises(QualificationTVAIndisponible, match="antérieure"):
+        check(fiches=[fiche(date_verification="2026-04-10",
+                            date_validation="2026-04-09")])
+
+
+def test_dossier_non_valide_ne_montre_pas_categorie_proposee():
+    result = check(fiches=[fiche(statut="A_VALIDER")])
+    assert result["par_statut"]["A_VALIDER"] == 1
+    assert result["lignes"][0]["categorie_tva"] is None
+    assert result["lignes"][0]["code_parametre"] is None
