@@ -74,6 +74,8 @@ def preparer_bulletin_paie(
     base = _nombre(salaire_base, "salaire_base")
     bonus = _nombre(primes, "primes")
     brut = base + bonus
+    if brut >= Decimal("1e15"):
+        raise PaieNonDisponible("Salaire brut total hors limites")
     social = _nombre(assiette_cnas, "assiette_cnas")
     fiscale = _nombre(assiette_irg, "assiette_irg")
     irg = _nombre(montant_irg, "montant_irg")
@@ -90,8 +92,12 @@ def preparer_bulletin_paie(
         raise PaieNonDisponible("Preuve du calcul IRG obligatoire et datée")
     lignes = list(parametres)
     try:
-        s = chercher_parametre(lignes, "CNAS_SALARIE_TAUX", instant)
-        e = chercher_parametre(lignes, "CNAS_EMPLOYEUR_TAUX", instant)
+        s = chercher_parametre(
+            lignes, "CNAS_SALARIE_TAUX", instant, unite_attendue="fraction"
+        )
+        e = chercher_parametre(
+            lignes, "CNAS_EMPLOYEUR_TAUX", instant, unite_attendue="fraction"
+        )
     except RegleIndisponible as exc:
         raise PaieNonDisponible("Taux sociaux vérifiés manquants") from exc
     if not (Decimal(0) <= s.valeur <= Decimal(1)
