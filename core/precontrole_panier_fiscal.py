@@ -25,6 +25,8 @@ def verifier_panier_fiscal(
         raise ClassificationIndisponible("Panier fiscal supérieur à 500 lignes")
     if not isinstance(date_operation, date) or hasattr(date_operation, "hour"):
         raise ClassificationIndisponible("Date d'opération invalide")
+    if not isinstance(classifications, (list, tuple)):
+        raise ClassificationIndisponible("Référentiel fiscal invalide")
     resultats = []
     for ligne in lignes:
         if not isinstance(ligne, Mapping):
@@ -33,6 +35,6 @@ def verifier_panier_fiscal(
         if not isinstance(sku, str) or not sku.strip():
             raise ClassificationIndisponible("SKU obligatoire sur chaque ligne")
         resultats.append(
-            selectionner_classification_bdd(sku, date_operation, list(classifications))
+            selectionner_classification_bdd(sku, date_operation, classifications)
         )
     return resultats
