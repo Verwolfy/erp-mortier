@@ -254,3 +254,14 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - CI GitHub Actions du SHA `c5f8542ed43742d39e46ef7e775c23f48d142297` : [40933174395](https://github.com/Verwolfy/erp-mortier/actions/runs/40933174395) et [40933174208](https://github.com/Verwolfy/erp-mortier/actions/runs/40933174208), **completed / success**. Le job du premier run confirme le succès des étapes « Tests du socle fiscal » et « Tous les tests ERP ».
 - **Bloquant métier inchangé** : aucune affectation arbitraire de TVA aux 7 SKU. La RPC historique conserve des taux codés en dur ; le brouillon SQL 013 reste non activable. Les nouveaux modules sont des précontrôles, non un déploiement de conformité réglementaire.
 
+
+
+## Registre opérationnel TVA des SKU — 29 octobre 2026
+
+- Lecture seule Supabase PROD `wenydirqtmkywbxbxfal` : `public.sku_conditionnement` contient **7 SKU actifs** ; `public.erp_sku_fiscalite` reste à **0 classification**. La requête d'audit renvoie `QUALIFICATION_MANQUANTE` pour les 7 SKU.
+- Générateur de registre de qualification **sans affectation automatique** : `core/registre_qualification_sku.py`, `scripts/generer_registre_qualification_sku.py`, tests `tests/test_registre_qualification_sku.py`. Commit CI `e0b66ea4b539d643487b4d3037995a2a3f888b7d` : deux workflows GitHub Actions `completed / success`.
+- Nouveau script SQL de diagnostic **SELECT uniquement** `sql/audit_qualification_tva_sku_lecture_seule.sql`, commit `c7672f7f75700dfaf729fd4f83a6dea7cc8c019c`, exécuté en lecture seule sur production : 7 statuts `QUALIFICATION_MANQUANTE`. Deux workflows de ce commit : [40934496662](https://github.com/Verwolfy/erp-mortier/actions/runs/40934496662) et [40934496894](https://github.com/Verwolfy/erp-mortier/actions/runs/40934496894), `completed / success`.
+- Le registre éditable des 7 SKU (identifiants, produits, formats et unités lus depuis la production, champs fiscaux vides) a été fourni en Markdown dans la conversation du projet ; il n'est pas enregistré dans le dépôt public.
+- **Blocage maintenu :** les catégories TVA par SKU et le régime fiscal de l'entreprise doivent être validés sur preuves juridiques datées. Les règles de timbre et la concordance transactionnelle Python/SQL restent incomplètes ; ne pas activer la migration 013 ni inventer de taux.
+- Aucun changement de schéma, de privilèges ou de données métier Supabase durant cette livraison.
+
