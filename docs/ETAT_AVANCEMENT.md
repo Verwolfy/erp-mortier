@@ -214,3 +214,10 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Ce workflow inclut la suite complète `python -m pytest -q` dans son script. La conclusion `success` témoigne du succès du workflow, mais les nombres précis de tests ne sont pas extraits dans cette reprise.
 - La publication du présent suivi peut déclencher une nouvelle exécution CI ; distinguer chaque run et son SHA.
 - Aucune écriture Supabase ni activation fiscale dans cette étape.
+
+
+## Tests fiscaux complémentaires — 29 octobre 2026
+- Commit `46e80a89e9a00bd067ab96437228cd7f47713ed8` : 4 contrôles ajoutés aux tests fiscaux datés (unité incompatible, date illégale, montant booléen, variation du taux sans modification du code).
+- Workflow déclenché sur `main` : https://github.com/Verwolfy/erp-mortier/actions/runs/40903575162. Statut observé durant cette étape : `in_progress`, conclusion non connue au moment de cette note.
+- Le lot C précédent `a2f82368ab2a1a5d911182d3fe8cd8f1c7da9159` dispose d'un workflow `success` : https://github.com/Verwolfy/erp-mortier/actions/runs/40903121197.
+- Aucune activation fiscale ni migration de la base principale ; l'ancien calcul de ventes reste présent en production et doit être remplacé seulement avec concordance SQL/Python et classification fiscale juridiquement validée.
