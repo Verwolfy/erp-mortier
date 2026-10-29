@@ -72,8 +72,10 @@ def selectionner_classification_bdd(
     for ligne in lignes_bdd:
         if not isinstance(ligne, Mapping):
             raise ClassificationIndisponible("Ligne SKU non structurée")
-        if ligne.get("sku_id") != sku_id or ligne.get("statut") != "VALIDEE":
+        if ligne.get("sku_id") != sku_id:
             continue
+        if ligne.get("statut") not in ("VALIDEE", "A_VALIDER"):
+            raise ClassificationIndisponible("Statut de classification inconnu")
 
         debut = lire_date(ligne.get("date_effet"), "Date d'effet fiscal")
         fin_valeur = ligne.get("date_fin")
@@ -82,6 +84,10 @@ def selectionner_classification_bdd(
             raise ClassificationIndisponible("Période fiscale invalide")
         if not (debut <= date_operation and (fin is None or date_operation <= fin)):
             continue
+        # Une classification A_VALIDER couvrant la même opération interdit
+        # de réutiliser silencieusement une version VALIDEE concurrente.
+        if ligne["statut"] == "A_VALIDER":
+            raise ClassificationIndisponible("Classification applicable en attente de validation")
 
         for champ in ("source_juridique", "justification", "valide_par"):
             val = ligne.get(champ)
