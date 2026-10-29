@@ -93,7 +93,7 @@ def test_doublon_element_bloque():
 @pytest.mark.parametrize("value", [[], None, {}, "bad", [None], [ligne()] * 501])
 def test_liste_invalide_bloque(value):
     with pytest.raises(AssiettesNonDisponibles):
-        audit(value)
+        consolider_assiettes_paie(value, "2026-10-29")
 
 
 @pytest.mark.parametrize("datevalue", ["2026-02-30", "2026-10-2", None])
