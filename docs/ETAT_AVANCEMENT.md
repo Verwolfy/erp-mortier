@@ -229,3 +229,10 @@ La lecture SQL des cinq codes montre un état identique sur TEST et PRODUCTION :
 - Le job `tests` de l'exécution `40903656833` confirme deux étapes vertes : « Tests du socle fiscal » et « Tous les tests ERP (sans secrets et sans acces production) ».
 - Preuve : https://github.com/Verwolfy/erp-mortier/actions/runs/40903656833 ; https://github.com/Verwolfy/erp-mortier/actions/runs/40903656894.
 - Ce résultat valide la CI du code, pas la conformité juridique ni les fonctions SQL réellement déployées sur Supabase. Aucune migration appliquée à cette occasion.
+
+
+## Concordance RPC en production — contrôle lecture seule du 29 octobre 2026
+- Interrogation de `pg_proc` sur PRODUCTION `wenydirqtmkywbxbxfal` : une fonction `public.erp_sale_transaction(p_action text, p_operation_id text, p_payload jsonb)` existe.
+- Aucune fonction `public.erp_facture_parametre` ni `public.get_param` trouvée sous ces noms dans le schéma `public` par cette requête.
+- Conséquence : **le moteur fiscal SQL paramétrable n'est pas encore démontré installé**. Le fichier `sql/013_facturation_parametree.sql` reste un brouillon non appliqué. Ne pas remplacer le calcul Python isolément, car la RPC doit contrôler les mêmes règles et dates.
+- Ce contrôle ne modifie ni données ni permissions.
