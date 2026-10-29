@@ -77,6 +77,17 @@ def verifier_referentiels_paie(
             raise PreparationPaieIndisponible("Règle IRG ambiguë ou inapplicable") from exc
         if rule.get("type_regle") != "progressif":
             raise PreparationPaieIndisponible("Type de barème IRG incorrect")
+        source = rule.get("source")
+        if not isinstance(source, str) or not source.strip():
+            raise PreparationPaieIndisponible("Source IRG absente")
+        verification = rule.get("date_verification")
+        if not isinstance(verification, str):
+            raise PreparationPaieIndisponible("Date de vérification IRG absente")
+        try:
+            if date.fromisoformat(verification).isoformat() != verification:
+                raise PreparationPaieIndisponible("Date de vérification IRG non canonique")
+        except ValueError as exc:
+            raise PreparationPaieIndisponible("Date de vérification IRG invalide") from exc
         settings = rule.get("donnees")
         if (not isinstance(settings, Mapping)
                 or not isinstance(settings.get("tranches"), list)
