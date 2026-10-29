@@ -490,7 +490,8 @@ def show_finance_page() -> None:
     st.title("🏦 Comptabilité & Trésorerie")
     tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
                     "🔗 Lettrage", "📖 Journal des écritures",
-                    "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances"])
+                    "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
+                    "🧾 Accusés internes"])
     try:
         accounts = _load_table("comptes")
         reglements = _load_table("reglements")
@@ -519,6 +520,8 @@ def show_finance_page() -> None:
         _scf_balance_tab(user_id)
     with tabs[6]:
         _quittances_rapprochement_tab(user_id)
+    with tabs[7]:
+        _accuses_internes_tab(user_id, can_write, reglements)
 
 
 def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
