@@ -38,3 +38,15 @@ Aucun taux, timbre, comptabilisation SCF ou déclaration ne doit être activé p
 - `modules/ventes/service.py`
 - `core/fiscalite_facturation.py`
 - `sql/013_facturation_parametree.sql`
+
+## Contrôle direct de la RPC production — 29 octobre 2026
+
+Lecture seule de `pg_get_functiondef(public.erp_sale_transaction)` sur le projet `wenydirqtmkywbxbxfal` :
+
+- `v_tax := round(v_net_ht * 0.19,2)` dans la branche `DRAFT` ;
+- `v_stamp := ... round((v_net_ht+v_tax)*0.01,2),2500` pour le paiement en espèces ;
+- `factures.taux_tva` est alimenté par la constante `0.19` à l'insertion.
+
+**Conclusion technique :** la RPC réellement installée applique toujours les trois conventions fiscales historiques. Le calcul Python `core/fiscalite_facturation.py` fondé sur `TVA_VENTE_TAUX` ne peut pas être raccordé à cette RPC sans changement transactionnel coordonné, migrations testées et classification effective des SKU. Une réussite du CI du code ne démontre pas la conformité fiscale de la RPC installée.
+
+La requête complémentaire sur les volumes SKU et paramètres a été bloquée par les contrôles d'accès à l'outil ; ne pas déduire de nouveaux comptes à partir de cette tentative. Aucune mutation SQL effectuée.
