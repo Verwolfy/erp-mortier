@@ -34,6 +34,7 @@ _ACTIONS = {
         "mode_paiement", "reference_trace", "montant_total", "contrepartie_compte_id"})),
     "allocate": ("enregistrer_lettrage", "lettrage_id", frozenset({
         "reglement_id", "document_id", "type_document", "montant_applique"})),
+    "receipt": ("creer_accuse_encaissement", "recu_id", frozenset({"reglement_id"})),
 }
 _TREASURY_TYPES = frozenset({"banque", "caisse"})
 _COUNTER_TYPES = {
@@ -115,7 +116,7 @@ def _execute_operation(kind: str, user_id: str) -> None:
     if record["status"] == "confirmed":
         return
     methods = {"account": creer_compte, "payment": enregistrer_reglement,
-               "allocate": enregistrer_lettrage}
+               "allocate": enregistrer_lettrage, "receipt": creer_accuse_encaissement}
     try:
         document_id = methods[kind](**deepcopy(record["payload"]),
                                     operation_id=record["operation_id"])
