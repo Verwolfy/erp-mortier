@@ -36,3 +36,17 @@ def test_catalogue_vide_n_est_pas_presenté_comme_valide():
 def test_donnees_invalides_refusees(rows):
     with pytest.raises(ValueError):
         registre_qualification_sku(rows)
+
+
+def test_cli_genere_registre_hors_ligne(tmp_path):
+    import json
+    from scripts.generer_registre_qualification_sku import main
+
+    entree = tmp_path / "sku.json"
+    sortie = tmp_path / "registre.md"
+    entree.write_text(json.dumps([sku("SKU-T")]), encoding="utf-8")
+    assert main(["--entree", str(entree), "--sortie", str(sortie)]) == 0
+    registre = sortie.read_text(encoding="utf-8")
+    assert "SKU-T" in registre
+    assert "À qualifier" in registre
+    assert "0/1 classifications" in registre
