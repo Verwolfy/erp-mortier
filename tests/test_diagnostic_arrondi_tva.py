@@ -125,6 +125,8 @@ def test_comparaison_mono_groupe_conserve_contrat_historique():
     ("categorie_tva", "EXONERE"),
     ("categorie_tva", "INCONNUE"),
     ("categorie_tva", None),
+    ("categorie_tva", ["NORMAL"]),
+    ("categorie_tva", {"valeur": "NORMAL"}),
     ("justificatif_taux", None),
     ("justificatif_taux", {"code": "TVA_TAUX_REDUIT"}),
     ("montant_ttc", Decimal("0.05")),
