@@ -107,3 +107,57 @@ def test_nouvelle_verification_avant_calcul_irg():
     assert "fresh = _rh_access()" in source
     assert "fresh[2] is not True" in source
     assert "simuler_irg_depuis_supabase" in source
+
+
+def test_preflight_paie_aucune_lecture_sans_clic(setup, monkeypatch):
+    from datetime import date
+    stub_utils=types.ModuleType("core.utils")
+    stub_utils.get_local_now=MagicMock(return_value=types.SimpleNamespace(
+        date=lambda: date(2026,10,29)
+    ))
+    monkeypatch.setitem(sys.modules,"core.utils",stub_utils)
+    setup.st.date_input=MagicMock(return_value=date(2026,10,29))
+    setup.st.button=MagicMock(return_value=False)
+    setup.mod._preflight_paie_tab("RH")
+    setup.db.get_supabase_client.assert_not_called()
+
+
+def test_preflight_paie_droit_revoque_bloque_lecture(setup, monkeypatch):
+    from datetime import date
+    stub_utils=types.ModuleType("core.utils")
+    stub_utils.get_local_now=MagicMock(return_value=types.SimpleNamespace(
+        date=lambda: date(2026,10,29)
+    ))
+    monkeypatch.setitem(sys.modules,"core.utils",stub_utils)
+    setup.st.date_input=MagicMock(return_value=date(2026,10,29))
+    setup.st.button=MagicMock(return_value=True)
+    setup.mod._rh_access=MagicMock(return_value=None)
+    setup.mod._preflight_paie_tab("RH")
+    setup.db.get_supabase_client.assert_not_called()
+    setup.st.error.assert_called()
+
+
+def test_preflight_paie_documente_sans_bulletin(setup, monkeypatch):
+    from datetime import date
+    stub_utils=types.ModuleType("core.utils")
+    stub_utils.get_local_now=MagicMock(return_value=types.SimpleNamespace(
+        date=lambda: date(2026,10,29)
+    ))
+    monkeypatch.setitem(sys.modules,"core.utils",stub_utils)
+    stub_paie=types.ModuleType("core.preflight_paie")
+    stub_paie.PreparationPaieIndisponible=ValueError
+    stub_paie.lire_preparation_paie=MagicMock(return_value={
+        "reference_cnas_salarie":False,
+        "reference_cnas_employeur":False,
+        "reference_irg_mensuel":False,
+    })
+    monkeypatch.setitem(sys.modules,"core.preflight_paie",stub_paie)
+    setup.st.date_input=MagicMock(return_value=date(2026,10,29))
+    setup.st.button=MagicMock(return_value=True)
+    setup.st.metric=MagicMock()
+    setup.st.warning=MagicMock()
+    setup.mod._rh_access=MagicMock(return_value=("RH",True,True))
+    setup.mod._preflight_paie_tab("RH")
+    assert setup.st.metric.call_count==3
+    stub_paie.lire_preparation_paie.assert_called_once()
+    assert "bulletin" in setup.st.warning.call_args.args[0]
