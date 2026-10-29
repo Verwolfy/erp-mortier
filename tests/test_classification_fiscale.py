@@ -181,3 +181,56 @@ def test_bdd_version_future_seule_refusee():
     future = _classification_validee_bdd("SKU-TEST", "2026-07-01", validation="2026-07-03")
     with pytest.raises(ClassificationIndisponible, match="absente"):
         selectionner_classification_bdd("SKU-TEST", date(2026, 3, 1), [future])
+
+
+def test_bdd_version_en_attente_chevauchante_interdit_une_validee():
+    from core.classification_fiscale import selectionner_classification_bdd
+    validee = _classification_validee_bdd("SKU-TEST", "2026-01-01")
+    en_attente = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-02-01",
+        "date_fin": None, "statut": "A_VALIDER", "categorie_tva": None,
+        "code_parametre": None,
+    }
+    for versions in ([validee, en_attente], [en_attente, validee]):
+        with pytest.raises(ClassificationIndisponible, match="attente de validation"):
+            selectionner_classification_bdd(
+                "SKU-TEST", date(2026, 3, 1), versions
+            )
+
+
+def test_bdd_attente_future_ne_bloque_pas_version_courante():
+    from core.classification_fiscale import selectionner_classification_bdd
+    validee = _classification_validee_bdd("SKU-TEST", "2026-01-01")
+    future = {
+        "sku_id": "SKU-TEST", "date_effet": "2027-01-01",
+        "date_fin": None, "statut": "A_VALIDER", "categorie_tva": None,
+        "code_parametre": None,
+    }
+    assert selectionner_classification_bdd(
+        "SKU-TEST", date(2026, 3, 1), [validee, future]
+    ) is validee
+
+
+def test_bdd_attente_expiree_ne_bloque_pas_version_courante():
+    from core.classification_fiscale import selectionner_classification_bdd
+    validee = _classification_validee_bdd("SKU-TEST", "2026-07-01", validation="2026-07-03")
+    ancienne = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-01-01",
+        "date_fin": "2026-06-30", "statut": "A_VALIDER",
+        "categorie_tva": None, "code_parametre": None,
+    }
+    assert selectionner_classification_bdd(
+        "SKU-TEST", date(2026, 8, 1), [ancienne, validee]
+    ) is validee
+
+
+def test_bdd_statut_inconnu_refuse():
+    from core.classification_fiscale import selectionner_classification_bdd
+    incorrecte = {
+        "sku_id": "SKU-TEST", "date_effet": "2026-01-01",
+        "statut": "UNKNOWN",
+    }
+    with pytest.raises(ClassificationIndisponible, match="Statut"):
+        selectionner_classification_bdd(
+            "SKU-TEST", date(2026, 3, 1), [incorrecte]
+        )
