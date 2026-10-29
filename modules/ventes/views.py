@@ -590,7 +590,7 @@ def _controle_tva_sku_tab(user_id: str) -> None:
     if access is None or access[0] != user_id:
         st.error("Lecture TVA refusée : autorisation non vérifiable.")
         return
-    from datetime import date
+    from core.utils import get_local_now
     from core.couverture_tva_sku import (
         QualificationTVAIndisponible, verifier_couverture_tva,
     )
@@ -609,7 +609,7 @@ def _controle_tva_sku_tab(user_id: str) -> None:
                 or response.count != len(rows) or len(rows) > 1000):
             raise QualificationTVAIndisponible("Lecture TVA incomplète")
         result = verifier_couverture_tva(
-            skus, rows, date.today().isoformat(), uniquement_actifs=True
+            skus, rows, get_local_now().date().isoformat(), uniquement_actifs=True
         )
     except Exception as exc:
         _LOG.warning("Couverture TVA non consultable (%s)", type(exc).__name__)
