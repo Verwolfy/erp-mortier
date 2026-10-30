@@ -107,6 +107,25 @@ def _operation_key(kind: str, user_id: str) -> str:
     return f"ventes_{kind}_{user_id}"
 
 
+def _client_facture_pour_validation(facture_id: str) -> str:
+    """Rafraîchit l'identité du client avant validation ou reprise d'un brouillon."""
+    if not isinstance(facture_id, str) or not facture_id.strip():
+        raise ValueError("Identifiant facture absent")
+    response = (
+        get_supabase_client().table("factures")
+        .select("facture_id,client_id")
+        .eq("facture_id", facture_id).limit(2).execute()
+    )
+    dossiers = response.data
+    if (not isinstance(dossiers, list) or len(dossiers) != 1
+        or not isinstance(dossiers[0], dict)
+        or dossiers[0].get("facture_id") != facture_id
+        or not isinstance(dossiers[0].get("client_id"), str)
+        or not dossiers[0]["client_id"].strip()):
+        raise RuntimeError("Client de facture non vérifiable")
+    return dossiers[0]["client_id"]
+
+
 def _execute_operation(kind: str, user_id: str) -> None:
     """Ne crée JAMAIS un nouvel identifiant après un échec réseau."""
     key = _operation_key(kind, user_id)
@@ -122,6 +141,13 @@ def _execute_operation(kind: str, user_id: str) -> None:
                 raise RuntimeError("Numéro de facture non confirmé")
             document_id = result
         elif kind == "validate":
+            # Contrôle avant chaque émission, y compris après reprise réseau :
+            # les anciens brouillons ne doivent pas contourner la garde TVA.
+            client_facture = _client_facture_pour_validation(payload["facture_id"])
+            if _dossier_client_exoneration_a_revoir(client_facture):
+                raise PermissionError(
+                    "Facture historique bloquée : dossier fiscal client à revoir"
+                )
             result = valider_facture(**payload, operation_id=operation_id)
             if not isinstance(result, dict) or result.get("statut") != "VALIDE" \
                     or result.get("facture_id") != payload["facture_id"]:
