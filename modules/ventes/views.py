@@ -31,7 +31,7 @@ from modules.ventes.service import (
 _LOG = logging.getLogger(__name__)
 # Repère public de la livraison de l'écran, sans revendication d'un SHA
 # déployé. Permet une vérification visuelle de Streamlit après mise à jour.
-_UI_REVISION = "SOF-ERP-20261030-EXO-GARDE-01"
+_UI_REVISION = "SOF-ERP-20261030-EXO-HIST-02"
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
