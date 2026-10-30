@@ -36,16 +36,21 @@ def _canonical_supabase_url(value: object) -> str:
     return f"https://{host}"
 
 
-def _policy(config: object) -> tuple[str, str, str]:
+def _policy(config: object) -> tuple[str, str | None, str]:
     if not isinstance(config, Mapping):
         raise EnvironmentSafetyError("Configuration d'environnement manquante")
     name = config.get("name")
     if name not in ("TEST", "PRODUCTION"):
         raise EnvironmentSafetyError("Environnement non déclaré : TEST ou PRODUCTION requis")
-    test_url = _canonical_supabase_url(config.get("test_supabase_url"))
     prod_url = _canonical_supabase_url(config.get("production_supabase_url"))
-    if test_url == prod_url:
-        raise EnvironmentSafetyError("Les environnements TEST et PRODUCTION doivent être distincts")
+    # Le seul projet utilisé aujourd'hui est PRODUCTION. Ne pas imposer
+    # l'existence ni la configuration d'un ancien projet TEST supprimable.
+    value = config.get("test_supabase_url")
+    test_url = _canonical_supabase_url(value) if value not in (None, "") else None
+    if name == "TEST" and test_url is None:
+        raise EnvironmentSafetyError("Projet TEST absent : configuration refusée")
+    if test_url is not None and test_url == prod_url:
+        raise EnvironmentSafetyError("Les environnements doivent être distincts")
     if name == "PRODUCTION" and config.get("production_enabled") is not True:
         raise EnvironmentSafetyError("PRODUCTION désactivée : autorisation explicite requise")
     return name, test_url, prod_url
