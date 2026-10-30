@@ -11,6 +11,7 @@ from datetime import date
 from uuid import UUID
 
 from core.db_service import get_supabase_client
+from core.utils import get_local_now
 
 
 class PrecontroleTVAIndisponible(ValueError):
@@ -27,7 +28,7 @@ def verifier_exoneration_panier(
             or len(sku_ids) != len(set(sku_ids))):
         raise PrecontroleTVAIndisponible("SKU invalides")
     if (not isinstance(date_facture, date) or hasattr(date_facture, "hour")
-            or date_facture > date.today()):
+            or date_facture > get_local_now().date()):
         raise PrecontroleTVAIndisponible("Date facture invalide")
     response = get_supabase_client().rpc(
         "erp_exoneration_tva_precontrole_vente",
@@ -68,6 +69,17 @@ def verifier_exoneration_panier(
         reference = result.get("reference_attestation")
         if not isinstance(reference, str) or not reference.strip():
             raise PrecontroleTVAIndisponible("Preuve d'attestation absente")
+        valid_date = result.get("date_validation")
+        if not isinstance(valid_date, str):
+            raise PrecontroleTVAIndisponible("Date de validation absente")
+        try:
+            parsed = date.fromisoformat(valid_date)
+            if parsed.isoformat() != valid_date or parsed > date_facture:
+                raise ValueError
+        except ValueError as exc:
+            raise PrecontroleTVAIndisponible(
+                "Date de validation incohérente"
+            ) from exc
     elif result.get("attestation_id") is not None:
         raise PrecontroleTVAIndisponible(
             "Attestation fournie malgré le refus fiscal"
