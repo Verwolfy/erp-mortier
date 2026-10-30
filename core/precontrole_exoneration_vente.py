@@ -21,24 +21,34 @@ class PrecontroleTVAIndisponible(ValueError):
 def verifier_exoneration_panier(
     client_id: str, sku_ids: list[str], date_facture: date
 ) -> dict:
-    if not isinstance(client_id, str) or not 1 <= len(client_id.strip()) <= 200:
+    if (not isinstance(client_id, str)
+            or not 1 <= len(client_id.strip()) <= 200
+            or client_id != client_id.strip()):
         raise PrecontroleTVAIndisponible("Client invalide")
     if (not isinstance(sku_ids, list) or not 1 <= len(sku_ids) <= 200
-            or any(not isinstance(s, str) or not s.strip() for s in sku_ids)
+            or any(
+                not isinstance(s, str) or not 1 <= len(s.strip()) <= 200
+                or s != s.strip() for s in sku_ids
+            )
             or len(sku_ids) != len(set(sku_ids))):
         raise PrecontroleTVAIndisponible("SKU invalides")
     if (not isinstance(date_facture, date) or hasattr(date_facture, "hour")
             or date_facture > get_local_now().date()):
         raise PrecontroleTVAIndisponible("Date facture invalide")
-    response = get_supabase_client().rpc(
-        "erp_exoneration_tva_precontrole_vente",
-        {
-            "p_client_id": client_id,
-            "p_sku_ids": sku_ids,
-            "p_date_facture": date_facture.isoformat(),
-        },
-    ).execute()
-    result = response.data
+    try:
+        response = get_supabase_client().rpc(
+            "erp_exoneration_tva_precontrole_vente",
+            {
+                "p_client_id": client_id,
+                "p_sku_ids": sku_ids,
+                "p_date_facture": date_facture.isoformat(),
+            },
+        ).execute()
+        result = response.data
+    except Exception as exc:
+        raise PrecontroleTVAIndisponible(
+            "Précontrôle SQL absent, indisponible ou non autorisé"
+        ) from exc
     if not isinstance(result, dict) or result.get("autorise_facturation") is not False:
         raise PrecontroleTVAIndisponible("Réponse fiscale non sécurisée")
 
@@ -52,7 +62,9 @@ def verifier_exoneration_panier(
         },
         "PRECONTROLE_OK": {"ATTESTATION_ET_PORTEE_VERIFIEES"},
     }
-    if statut not in motifs or result.get("motif") not in motifs[statut]:
+    motif = result.get("motif")
+    if (not isinstance(statut, str) or statut not in motifs
+            or not isinstance(motif, str) or motif not in motifs[statut]):
         raise PrecontroleTVAIndisponible("Statut fiscal inconnu")
 
     if statut == "PRECONTROLE_OK":
@@ -64,7 +76,8 @@ def verifier_exoneration_panier(
             raise PrecontroleTVAIndisponible(
                 "Référence d'attestation invalide"
             ) from exc
-        if result.get("nombre_sku") != len(sku_ids):
+        if (type(result.get("nombre_sku")) is not int
+                or result["nombre_sku"] != len(sku_ids)):
             raise PrecontroleTVAIndisponible("Nombre de SKU incohérent")
         reference = result.get("reference_attestation")
         if not isinstance(reference, str) or not reference.strip():
@@ -80,9 +93,13 @@ def verifier_exoneration_panier(
             raise PrecontroleTVAIndisponible(
                 "Date de validation incohérente"
             ) from exc
-    elif result.get("attestation_id") is not None:
+    elif any(
+        result.get(name) is not None
+        for name in ("attestation_id", "reference_attestation",
+                     "date_validation", "nombre_sku")
+    ):
         raise PrecontroleTVAIndisponible(
-            "Attestation fournie malgré le refus fiscal"
+            "Justificatif présent malgré le refus fiscal"
         )
 
     # Une copie explicite empêche qu'un autre champ injecté dans la réponse
