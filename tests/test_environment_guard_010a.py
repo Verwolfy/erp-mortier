@@ -79,3 +79,25 @@ def test_automated_job_policy():
     assert require_supabase_target(policy_from_environment(variables), TEST) == "TEST"
     with pytest.raises(EnvironmentSafetyError):
         require_supabase_target(policy_from_environment({}), TEST)
+
+
+def test_production_unique_sans_ancienne_url_test():
+    configuration = cfg("PRODUCTION", test_supabase_url=None)
+    assert require_supabase_target(configuration, PROD) == "PRODUCTION"
+    assert require_sheet_id(
+        configuration, PROD, "stocks",
+        {"stocks": "classeur-production"},
+    ) == "classeur-production"
+
+
+@pytest.mark.parametrize("target", [TEST, "", None])
+def test_production_sans_test_refuse_une_url_non_autorisee(target):
+    with pytest.raises(EnvironmentSafetyError):
+        require_supabase_target(
+            cfg("PRODUCTION", test_supabase_url=None), target
+        )
+
+
+def test_aucun_test_configure_ne_permet_mode_test():
+    with pytest.raises(EnvironmentSafetyError, match="Projet TEST absent"):
+        require_supabase_target(cfg(test_supabase_url=None), TEST)
