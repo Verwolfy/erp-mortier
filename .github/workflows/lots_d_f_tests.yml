@@ -1,10 +1,6 @@
 name: ERP - lots D et F
 
 on:
-  push:
-    branches: [feat/erp-scf-paie-socle-20261028]
-  pull_request:
-    branches: [feat/reglementation-lot-c-socle-20261028]
   workflow_dispatch:
 
 permissions:
