@@ -710,7 +710,7 @@ def test_reperage_version_interface_apres_autorisation(ui):
         setattr(ui.mod, nom, MagicMock())
     ui.mod.show_ventes_page()
     ui.st.caption.assert_any_call(
-        "Version interface Ventes : SOF-ERP-20261029-TVA-ASOF-01"
+        "Version interface Ventes : SOF-ERP-20261030-EXO-GARDE-01"
     )
 
 
@@ -745,4 +745,92 @@ def test_exoneration_client_signalee_bloque_brouillon_historique(ui):
     )
     ui.mod._start_operation.assert_not_called()
     ui.sales.create_facture_brouillon.assert_not_called()
+    ui.st.number_input.assert_not_called()
+
+
+def _mock_exonerations(ui, dossiers):
+    client = ui.db.get_supabase_client.return_value
+    q = client.table.return_value.select.return_value.eq.return_value
+    q.lte.return_value.gte.return_value.limit.return_value.execute.return_value.data = dossiers
+    return client
+
+
+def test_brouillon_client_exonere_existant_bloque_automatiquement(ui):
+    ui.mod._operation_panel = MagicMock(return_value=False)
+    ui.mod._start_operation = MagicMock()
+    ui.mod._read_required = MagicMock(side_effect=lambda name: {
+        "clients": pd.DataFrame([{"client_id": "CLI-1", "nom": "TEST", "actif": "OUI"}]),
+        "sku_conditionnement": pd.DataFrame([
+            {"sku_id": "SKU-A", "pf_id": "PF-A", "format": "Sac 25kg", "actif": "OUI"}
+        ]),
+        "produits": pd.DataFrame([{"pf_id": "PF-A", "nom": "TEST", "actif": "OUI"}]),
+    }[name])
+    _mock_exonerations(ui, [
+        {"attestation_id": "AT-1", "statut": "VALIDEE"}
+    ])
+    ui.st.checkbox.return_value = False
+
+    ui.mod._draft_tab("USR-1", True, pd.DataFrame())
+
+    assert any(
+        "Dossier d'exonération TVA existant" in call.args[0]
+        for call in ui.st.warning.call_args_list
+    )
+    ui.mod._start_operation.assert_not_called()
+    ui.st.number_input.assert_not_called()
+
+
+@pytest.mark.parametrize("etat,attendu", [
+    ("VALIDEE", True), ("A_VALIDER", True), ("REVOQUEE", False),
+])
+def test_lecture_dossier_fiscal_et_statut_daté(ui, etat, attendu):
+    client = _mock_exonerations(ui, [
+        {"attestation_id": "AT-1", "statut": etat}
+    ])
+    assert ui.mod._dossier_client_exoneration_a_revoir("CLI-1") is attendu
+    client.table.assert_called_once_with("erp_exonerations_tva_clients")
+    q = client.table.return_value.select.return_value.eq.return_value
+    q.lte.assert_called_once_with("date_effet", "2026-10-29")
+    q.lte.return_value.gte.assert_called_once_with("date_fin", "2026-10-29")
+
+
+def test_client_sans_dossier_exoneration_ne_bloque_pas(ui):
+    _mock_exonerations(ui, [])
+    assert ui.mod._dossier_client_exoneration_a_revoir("CLI-1") is False
+
+
+@pytest.mark.parametrize("dossiers", [
+    None, {}, ["incorrect"],
+    [{"attestation_id": "AT-1", "statut": "INCONNU"}],
+    [{"attestation_id": None, "statut": "VALIDEE"}],
+    [{"attestation_id": "AT-%d" % i, "statut": "REVOQUEE"} for i in range(200)],
+])
+def test_registre_non_fiable_refuse_avant_facturation(ui, dossiers):
+    _mock_exonerations(ui, dossiers)
+    with pytest.raises(RuntimeError):
+        ui.mod._dossier_client_exoneration_a_revoir("CLI-1")
+
+
+def test_erreur_reseau_bloque_automatiquement_ancien_brouillon(ui):
+    ui.mod._operation_panel = MagicMock(return_value=False)
+    ui.mod._start_operation = MagicMock()
+    ui.mod._read_required = MagicMock(side_effect=lambda name: {
+        "clients": pd.DataFrame([{"client_id": "CLI-1", "nom": "TEST", "actif": "OUI"}]),
+        "sku_conditionnement": pd.DataFrame([
+            {"sku_id": "SKU-A", "pf_id": "PF-A", "format": "Sac", "actif": "OUI"}
+        ]),
+        "produits": pd.DataFrame([{"pf_id": "PF-A", "nom": "TEST", "actif": "OUI"}]),
+    }[name])
+    ui.st.checkbox.return_value = False
+    client = _mock_exonerations(ui, [])
+    q = client.table.return_value.select.return_value.eq.return_value
+    q.lte.return_value.gte.return_value.limit.return_value.execute.side_effect = (
+        RuntimeError("Supabase indisponible")
+    )
+    ui.mod._draft_tab("USR-1", True, pd.DataFrame())
+    assert any(
+        "Brouillon bloqué" in call.args[0]
+        for call in ui.st.error.call_args_list
+    )
+    ui.mod._start_operation.assert_not_called()
     ui.st.number_input.assert_not_called()
