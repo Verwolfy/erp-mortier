@@ -43,7 +43,7 @@ def test_dossier_non_homologue_et_portee_partielle_refuses():
                  "d.date_verification>p_date_facture",
                  "d.valide_par=d.cree_par",
                  "d.statut<>'VALIDEE'",
-                 "d.date_effet<=p_date_facture"):
+                 "e.date_effet<=p_date_facture"):
         assert name in SQL
     assert "p_date_facture > CURRENT_DATE" in SQL
 
