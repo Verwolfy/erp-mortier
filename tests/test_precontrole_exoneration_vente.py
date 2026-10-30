@@ -144,3 +144,64 @@ def test_resultat_est_filtre_et_independant_du_dictionnaire_sql(rpc):
     avant = deepcopy(out)
     original["reference_attestation"] = "ALTEREE"
     assert out == avant
+
+
+@pytest.mark.parametrize("champ,valeur", [
+    ("statut", []),
+    ("statut", {}),
+    ("motif", []),
+    ("motif", {}),
+    ("motif", None),
+])
+def test_statut_ou_motif_non_textuel_refuse_proprement(rpc, champ, valeur):
+    data = reponse()
+    data[champ] = valeur
+    rpc.rpc.return_value.execute.return_value.data = data
+    with pytest.raises(PrecontroleTVAIndisponible, match="Statut fiscal"):
+        appel()
+
+
+@pytest.mark.parametrize("champ,valeur", [
+    ("reference_attestation", "FAUSSE-PREUVE"),
+    ("date_validation", "2026-10-29"),
+    ("nombre_sku", 2),
+])
+def test_absence_dossier_avec_preuve_contradictoire_refusee(rpc, champ, valeur):
+    data = reponse()
+    data[champ] = valeur
+    rpc.rpc.return_value.execute.return_value.data = data
+    with pytest.raises(PrecontroleTVAIndisponible, match="Justificatif présent"):
+        appel()
+
+
+def test_nombre_sku_bool_n_est_pas_un_entier_valide(rpc):
+    data = reponse("PRECONTROLE_OK", "ATTESTATION_ET_PORTEE_VERIFIEES")
+    data["nombre_sku"] = True
+    rpc.rpc.return_value.execute.return_value.data = data
+    with pytest.raises(PrecontroleTVAIndisponible, match="Nombre de SKU"):
+        verifier_exoneration_panier("CLI-TEST", ["SKU-X"], DATE)
+
+
+@pytest.mark.parametrize("operation", ["rpc", "execute"])
+def test_rpc_manquante_ou_non_autorisee_refusee(rpc, operation):
+    if operation == "rpc":
+        rpc.rpc.side_effect = RuntimeError("RPC manquante")
+    else:
+        rpc.rpc.return_value.execute.side_effect = PermissionError("42501")
+    with pytest.raises(PrecontroleTVAIndisponible, match="indisponible"):
+        appel()
+
+
+@pytest.mark.parametrize("client,ids", [
+    (" CLI-TEST", ["SKU-X"]),
+    ("CLI-TEST ", ["SKU-X"]),
+    ("CLI-TEST", [" SKU-X"]),
+    ("CLI-TEST", ["SKU-X "]),
+    ("CLI-TEST", ["A" * 201]),
+    ("CLI-TEST", ["SKU-X", {"sku": "SKU-Y"}]),
+    ("CLI-TEST", ["SKU-X", ["SKU-Y"]]),
+])
+def test_identifiants_mal_formes_bloquent_avant_reseau(rpc, client, ids):
+    with pytest.raises(PrecontroleTVAIndisponible):
+        verifier_exoneration_panier(client, ids, DATE)
+    rpc.rpc.assert_not_called()
