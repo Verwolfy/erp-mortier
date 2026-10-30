@@ -723,7 +723,7 @@ def test_reperage_version_interface_apres_autorisation(ui):
         setattr(ui.mod, nom, MagicMock())
     ui.mod.show_ventes_page()
     ui.st.caption.assert_any_call(
-        "Version interface Ventes : SOF-ERP-20261030-EXO-GARDE-01"
+        "Version interface Ventes : SOF-ERP-20261030-EXO-HIST-02"
     )
 
 
