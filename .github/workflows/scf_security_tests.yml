@@ -1,12 +1,6 @@
 name: ERP - securite SCF et clotures
 
 on:
-  push:
-    branches:
-      - fix/scf-paie-verrous-acces-20261028
-  pull_request:
-    branches:
-      - feat/scf-lecture-et-verrous-20261028
   workflow_dispatch:
 
 permissions:
