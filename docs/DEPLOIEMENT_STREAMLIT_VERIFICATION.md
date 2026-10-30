@@ -3,10 +3,12 @@
 ## Source du code
 
 - Dépôt : `Verwolfy/erp-mortier`
-- Branche principale : `main`
+- Branche principale et unique : `main`
+- Base unique active : Supabase `erp-mortier` (`wenydirqtmkywbxbxfal`), PRODUCTION.
+- Ancien projet TEST : inactif, non nécessaire au fonctionnement en PRODUCTION.
 - Point d'entrée Streamlit : `app.py`
 - Identifiant visuel à rechercher **après authentification et accès au module Ventes** :
-  `Version interface Ventes : SOF-ERP-20261029-TVA-ASOF-01`
+  `Version interface Ventes : SOF-ERP-20261030-EXO-HIST-02`
 
 L'identifiant est codé dans `modules/ventes/views.py` ; sa présence permet de
 vérifier que **cette version du code UI** a atteint l'application consultée.
@@ -29,7 +31,9 @@ Il ne s'agit **pas** d'un SHA Git, ni d'une preuve de conformité de la facturat
 
 ## Frontière réglementaire
 
-Le nouvel écran fournit un diagnostic, un registre non homologué et une
+Le service central Ventes bloque désormais DRAFT/VALIDATE lorsqu'un dossier
+fiscal client existe ou que sa lecture échoue. C'est un contrôle applicatif,
+non atomique avec la RPC SQL. Le nouvel écran fournit un diagnostic, un registre non homologué et une
 simulation pure par SKU. Ces fonctions **n'activent pas** la facture
 transactionnelle. La RPC `public.erp_sale_transaction` utilise encore
 une TVA historique codée en dur et la migration SQL 013 reste bloquée.
