@@ -31,7 +31,7 @@ from modules.ventes.service import (
 _LOG = logging.getLogger(__name__)
 # Repère public de la livraison de l'écran, sans revendication d'un SHA
 # déployé. Permet une vérification visuelle de Streamlit après mise à jour.
-_UI_REVISION = "SOF-ERP-20261029-TVA-ASOF-01"
+_UI_REVISION = "SOF-ERP-20261030-EXO-GARDE-01"
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
@@ -262,6 +262,37 @@ def _remaining_for_order(order_id: str, order_lines: pd.DataFrame,
     return remaining
 
 
+def _dossier_client_exoneration_a_revoir(client_id: str) -> bool:
+    """Recherche un dossier fiscal à vérifier avant toute facture historique.
+
+    La lecture utilise les tables 025 déjà présentes en production et non
+    la RPC 031 bloquée. Une réponse ambiguë doit refuser la facturation.
+    """
+    from core.utils import get_local_now
+
+    if not isinstance(client_id, str) or not client_id.strip():
+        raise ValueError("Client inconnu")
+    jour = get_local_now().date().isoformat()
+    response = (
+        get_supabase_client().table("erp_exonerations_tva_clients")
+        .select("attestation_id,statut")
+        .eq("client_id", client_id)
+        .lte("date_effet", jour).gte("date_fin", jour)
+        .limit(200).execute()
+    )
+    dossiers = response.data
+    if not isinstance(dossiers, list) or len(dossiers) >= 200:
+        raise RuntimeError("Dossiers d'exonération non vérifiables")
+    for dossier in dossiers:
+        if (not isinstance(dossier, dict)
+            or not isinstance(dossier.get("attestation_id"), str)
+            or dossier.get("statut") not in ("VALIDEE", "A_VALIDER", "REVOQUEE")):
+            raise RuntimeError("Statut fiscal non vérifiable")
+        if dossier["statut"] != "REVOQUEE":
+            return True
+    return False
+
+
 def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
     st.subheader("Créer une facture ou un avoir (brouillon)")
     st.warning(
@@ -301,6 +332,24 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
             "Facture client exonéré bloquée : l'attestation et sa portée "
             "doivent être vérifiées, puis la transaction SQL adaptée avant "
             "toute émission à 0 %."
+        )
+        return
+    try:
+        dossier_a_revoir = _dossier_client_exoneration_a_revoir(client_id)
+    except Exception as exc:
+        _LOG.warning(
+            "Brouillon Ventes arrêté : contrôle exonération indisponible (%s)",
+            type(exc).__name__,
+        )
+        st.error(
+            "Impossible de vérifier les attestations TVA de ce client. "
+            "Brouillon bloqué pour éviter une erreur de taxation."
+        )
+        return
+    if dossier_a_revoir:
+        st.warning(
+            "Dossier d'exonération TVA existant ou en attente pour ce client : "
+            "la transaction historique à 19 % est bloquée jusqu'à revue fiscale."
         )
         return
     echeance = st.date_input("Date d'échéance", key="vente_echeance")
