@@ -291,3 +291,69 @@ def test_sql_contract(sales):
     assert 'p_operation_id' in text
     assert 'Seuls les brouillons peuvent être validés ou annulés' in text
     assert 'Aucune entrée en stock' in text
+
+
+@pytest.mark.parametrize('action', ['DRAFT', 'VALIDATE'])
+def test_historique_exoneration_bloque_ecriture_au_service(sales, action):
+    mod, db, backend = sales
+    original_table = db.get_supabase_client.return_value.table.side_effect
+    def fiscal_table(name):
+        table = original_table(name)
+        if name == 'erp_exonerations_tva_clients':
+            table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+                {'attestation_id': 'ATT-TEST-1'}
+            ]
+        return table
+    db.get_supabase_client.return_value.table.side_effect = fiscal_table
+    with pytest.raises(mod.SaleOperationError) as exc:
+        if action == 'DRAFT':
+            facture(mod, operation_id='GARD-TEST-DRAFT')
+        else:
+            mod.valider_facture('FAC-100', operation_id='GARD-TEST-VALIDATE')
+    assert exc.value.operation_id == (
+        'GARD-TEST-DRAFT' if action == 'DRAFT' else 'GARD-TEST-VALIDATE'
+    )
+    backend.rpc.assert_not_called()
+
+
+@pytest.mark.parametrize('action', ['DRAFT', 'VALIDATE'])
+def test_lecture_exoneration_indisponible_ne_facture_pas(sales, action):
+    mod, db, backend = sales
+    db.get_supabase_client.return_value.table.side_effect = TimeoutError(
+        'lecture fiscale inaccessible'
+    )
+    with pytest.raises(mod.SaleOperationError) as exc:
+        if action == 'DRAFT':
+            facture(mod, operation_id='GARD-NET-DRAFT')
+        else:
+            mod.valider_facture('FAC-100', operation_id='GARD-NET-VALIDATE')
+    assert exc.value.operation_id.startswith('GARD-NET-')
+    backend.rpc.assert_not_called()
+
+
+def test_validation_client_facture_ambigu_ne_passe_pas(sales):
+    mod, db, backend = sales
+    original_table = db.get_supabase_client.return_value.table.side_effect
+    def fiscal_table(name):
+        table = original_table(name)
+        if name == 'factures':
+            table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+        return table
+    db.get_supabase_client.return_value.table.side_effect = fiscal_table
+    with pytest.raises(mod.SaleOperationError):
+        mod.valider_facture('FAC-100', operation_id='GARD-AMBIGU')
+    backend.rpc.assert_not_called()
+
+
+def test_annulation_et_livraison_n_utilisent_pas_verrou_exoneration(sales):
+    mod, db, backend = sales
+    db.get_supabase_client.return_value.table.side_effect = TimeoutError(
+        'registre indisponible'
+    )
+    mod.annuler_facture('FAC-100', operation_id='CANCEL-SANS-FISCAL')
+    mod.creer_bon_livraison(
+        'CMD-1', 'T', 'Nord', [{'sku_id': 'SKU-1', 'quantite_livree': 1}],
+        operation_id='SHIP-SANS-FISCAL',
+    )
+    assert backend.rpc.call_count == 2
+    db.get_supabase_client.return_value.table.assert_not_called()
