@@ -64,6 +64,7 @@ jobs:
           tests/test_exoneration_sql_029.py
           tests/test_exoneration_sql_030.py
           tests/test_exoneration_sql_031.py
+          tests/test_factures_garde_exo_sql_032.py
           tests/test_precontrole_exoneration_vente.py
           tests/test_audit_couverture_tva_sku.py
           tests/test_registre_qualification_sku.py
