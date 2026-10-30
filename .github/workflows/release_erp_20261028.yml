@@ -1,10 +1,6 @@
 name: ERP - livraison controlee
 
 on:
-  push:
-    branches: [release/erp-registres-scf-paie-20261028]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
