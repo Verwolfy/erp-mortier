@@ -2,7 +2,7 @@ name: ERP - audit de reconciliation sans modification
 
 on:
   push:
-    branches: [main, audit/reconciliation-reglementaire-20261028, ops/sauvegardes-erp-preflight-20261028]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
