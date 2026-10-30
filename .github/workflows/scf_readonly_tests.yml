@@ -1,10 +1,6 @@
 name: ERP - balance SCF lecture seule
 
 on:
-  push:
-    branches: [feat/scf-lecture-et-verrous-20261028]
-  pull_request:
-    branches: [feat/irg-simulations-20261028]
   workflow_dispatch:
 
 permissions:
