@@ -126,6 +126,10 @@ def _client_facture_pour_validation(facture_id: str) -> str:
     return dossiers[0]["client_id"]
 
 
+class _DossierFiscalBloquant(RuntimeError):
+    """Refus de facturation : conserve la tentative et son ID de reprise."""
+
+
 def _execute_operation(kind: str, user_id: str) -> None:
     """Ne crée JAMAIS un nouvel identifiant après un échec réseau."""
     key = _operation_key(kind, user_id)
@@ -136,6 +140,10 @@ def _execute_operation(kind: str, user_id: str) -> None:
         payload = deepcopy(record["payload"])
         operation_id = record["operation_id"]
         if kind == "draft":
+            # Refaire la lecture à CHAQUE tentative, y compris après un timeout.
+            # Le simple contrôle dans _draft_tab ne protège pas une reprise.
+            if _dossier_client_exoneration_a_revoir(payload["client_id"]):
+                raise _DossierFiscalBloquant("Historique fiscal client à revoir")
             result = create_facture_brouillon(**payload, operation_id=operation_id)
             if not isinstance(result, str) or not result.strip():
                 raise RuntimeError("Numéro de facture non confirmé")
@@ -145,7 +153,7 @@ def _execute_operation(kind: str, user_id: str) -> None:
             # les anciens brouillons ne doivent pas contourner la garde TVA.
             client_facture = _client_facture_pour_validation(payload["facture_id"])
             if _dossier_client_exoneration_a_revoir(client_facture):
-                raise PermissionError(
+                raise _DossierFiscalBloquant(
                     "Facture historique bloquée : dossier fiscal client à revoir"
                 )
             result = valider_facture(**payload, operation_id=operation_id)
@@ -169,6 +177,16 @@ def _execute_operation(kind: str, user_id: str) -> None:
             if not isinstance(result, str) or not result.strip():
                 raise RuntimeError("BL non confirmé")
             document_id = result
+    except _DossierFiscalBloquant:
+        # Ne jamais oublier une opération déjà tentée et potentiellement
+        # COMMITée avant une panne réseau : conserver son UUID original.
+        record["status"] = "uncertain"
+        st.error(
+            "Dossier d'exonération présent, même ancien ou révoqué : "
+            "facturation historique suspendue pour revue fiscale."
+        )
+        st.code(record["operation_id"])
+        return
     except (ValueError, PermissionError) as exc:
         # Le service valide les paramètres et droits avant le RPC.
         _LOG.warning("Opération Ventes refusée localement (%s)", type(exc).__name__)
@@ -289,34 +307,31 @@ def _remaining_for_order(order_id: str, order_lines: pd.DataFrame,
 
 
 def _dossier_client_exoneration_a_revoir(client_id: str) -> bool:
-    """Recherche un dossier fiscal à vérifier avant toute facture historique.
+    """Conservateur : toute trace fiscale client exige une revue avant TVA 19 %.
 
-    La lecture utilise les tables 025 déjà présentes en production et non
-    la RPC 031 bloquée. Une réponse ambiguë doit refuser la facturation.
+    Une attestation expirée/révoquée peut avoir couvert une vente historique.
+    La date de facture n'est pas homologuée dans la RPC héritée : aucune
+    attestation (y compris ancienne, future ou révoquée) ne doit être ignorée.
+    Utilise exclusivement la table 025 ; ne dépend pas de la migration 031.
     """
-    from core.utils import get_local_now
-
     if not isinstance(client_id, str) or not client_id.strip():
         raise ValueError("Client inconnu")
-    jour = get_local_now().date().isoformat()
     response = (
         get_supabase_client().table("erp_exonerations_tva_clients")
         .select("attestation_id,statut")
         .eq("client_id", client_id)
-        .lte("date_effet", jour).gte("date_fin", jour)
         .limit(200).execute()
     )
     dossiers = response.data
     if not isinstance(dossiers, list) or len(dossiers) >= 200:
-        raise RuntimeError("Dossiers d'exonération non vérifiables")
+        raise RuntimeError("Historique d'exonération non vérifiable")
     for dossier in dossiers:
         if (not isinstance(dossier, dict)
             or not isinstance(dossier.get("attestation_id"), str)
+            or not dossier["attestation_id"].strip()
             or dossier.get("statut") not in ("VALIDEE", "A_VALIDER", "REVOQUEE")):
             raise RuntimeError("Statut fiscal non vérifiable")
-        if dossier["statut"] != "REVOQUEE":
-            return True
-    return False
+    return bool(dossiers)
 
 
 def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
@@ -374,8 +389,8 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
         return
     if dossier_a_revoir:
         st.warning(
-            "Dossier d'exonération TVA existant ou en attente pour ce client : "
-            "la transaction historique à 19 % est bloquée jusqu'à revue fiscale."
+            "Historique d'exonération TVA détecté pour ce client, y compris "
+            "un dossier ancien ou révoqué : la facture à 19 % attend une revue fiscale."
         )
         return
     echeance = st.date_input("Date d'échéance", key="vente_echeance")
