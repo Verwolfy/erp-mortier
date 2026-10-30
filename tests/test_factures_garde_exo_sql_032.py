@@ -54,3 +54,9 @@ def test_guard_032_preserve_les_droits_et_ne_peuple_pas_production():
     assert "erp_sale_transaction" not in SQL
     assert SQL.strip().startswith("-- ERP 032")
     assert SQL.rstrip().endswith("COMMIT;")
+
+
+def test_sql_032_parser_postgres_si_disponible():
+    import pytest
+    pglast = pytest.importorskip("pglast")
+    pglast.parse_sql(SQL)
