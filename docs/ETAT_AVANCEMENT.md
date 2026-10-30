@@ -1,3 +1,21 @@
+## 30 octobre 2026 — migration 031 appliquée directement sur PRODUCTION (état actuel, prioritaire)
+
+**Décision de l'exploitant :** pour les prochaines migrations sûres, travailler directement sur les scripts GitHub `main` et sur **Supabase PRODUCTION** (`wenydirqtmkywbxbxfal`), sans faire de la base TEST une étape obligatoire. Appliquer les contrôles de prévol, CI, permissions et validation post-déploiement directement sur PRODUCTION, sans données d'essai fictives ni contournement des gardes de sécurité. Demander une validation préalable uniquement pour les opérations critiques/destructrices. L'exploitant ne demande pas de sauvegarde PostgreSQL.
+
+**Migration 031 effectivement installée :** `sql/031_precontrole_exoneration_vente.sql`, historique Supabase PROD `20261030155229 / erp_031_precontrole_exoneration_vente`. Le refus antérieur sur TEST était un état historique, **pas** l'état actuel de PRODUCTION.
+
+Vérifications en lecture seule sur PRODUCTION :
+- Fonction `public.erp_exoneration_tva_precontrole_vente(text,text[],date)` **présente**.
+- `has_function_privilege` : `anon=false`, `authenticated=false`, `service_role=true` pour EXECUTE.
+- Client actif `CLI-0007`, SKU actif `SKU-001` : renvoie `statut=AUCUN_DOSSIER`, `motif=AUCUNE_PREUVE_ENREGISTREE`, `autorise_facturation=false`. Les identifiants sont uniquement une lecture de référentiels existants, sans modification.
+- Entrée comportant un SKU dupliqué : refus SQL attendu (`22023`), sans écriture.
+- Registre : **0 attestation**, **0 validateur fiscal actif**. Migration 031 ne délivre aucune exonération, ne modifie ni `erp_sale_transaction` ni le calcul de TVA transactionnel. Elle sert seulement à la vérification préalable.
+- Conseiller Supabase sécurité : uniquement avis `rls_enabled_no_policy` INFO (84 éléments préexistants/privés), aucune alerte nouvelle propre à la fonction 031 remontée. Vérifier la configuration RLS à chaque modification ultérieure.
+
+**Statut** : code `main` et migration SQL PRODUCTION alignés. **Aucun déploiement hébergé Streamlit vérifié.** La fonction 031 n'est pas encore raccordée à la transaction fiscale réelle ni une permission d'émettre à 0 %. Règle métier inchangée : ventes à 19 % ou 0 % seulement si exonération client validée, jamais 9 % pour ce business.
+
+---
+
 # ERP Mortier — ETAT D'AVANCEMENT (28 octobre 2026)
 
 ## Phase en cours
