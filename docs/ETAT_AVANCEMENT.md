@@ -1,3 +1,13 @@
+## ⚠️ Politique opérationnelle prioritaire — 30 octobre 2026
+
+**État vérifié :** `Verwolfy/erp-mortier` ne conserve que la branche `main` après suppression de **31 branches secondaires**. Le nettoyage GitHub a réussi via un workflow ponctuel, immédiatement retiré du dépôt après exécution.
+
+**PRODUCTION unique :** Supabase `erp-mortier`, projet `wenydirqtmkywbxbxfal`, reste actif. L'ancien projet `erp-mortier-test`, `ffuhbmcfyexsbjwhryvj`, a été **mis en pause et constaté INACTIVE**, mais **n'est pas encore supprimé définitivement** : l'outil Supabase connecté ne dispose pas de la commande de suppression de projet. La suppression permanente doit se faire dans le Dashboard Supabase, uniquement sur le projet TEST, Settings > General > Delete project, en confirmant `erp-mortier-test`.
+
+**Consignes pour les prochains tours :** travailler directement sur `main` et la BDD de production, sans nouvelle branche ni passage par la base de test. Vérifier les CI, le SQL, l'identité du projet et les permissions avant et après chaque opération. Ne pas inventer de justificatifs fiscaux ni activer les transactions 0 % sans homologation. La documentation détaillée est `docs/EXPLOITATION_UNIQUE_MAIN_PRODUCTION.md`.
+
+---
+
 ## 30 octobre 2026 — migration 031 appliquée directement sur PRODUCTION (état actuel, prioritaire)
 
 **Décision de l'exploitant :** pour les prochaines migrations sûres, travailler directement sur les scripts GitHub `main` et sur **Supabase PRODUCTION** (`wenydirqtmkywbxbxfal`), sans faire de la base TEST une étape obligatoire. Appliquer les contrôles de prévol, CI, permissions et validation post-déploiement directement sur PRODUCTION, sans données d'essai fictives ni contournement des gardes de sécurité. Demander une validation préalable uniquement pour les opérations critiques/destructrices. L'exploitant ne demande pas de sauvegarde PostgreSQL.
