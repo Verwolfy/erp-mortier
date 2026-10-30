@@ -1,10 +1,6 @@
 name: ERP - accusés internes
 
 on:
-  push:
-    branches: [feat/quittances-internes-transaction-20261029]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
