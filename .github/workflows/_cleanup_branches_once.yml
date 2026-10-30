@@ -24,18 +24,10 @@ jobs:
           open_pr_count="$(gh api "repos/$GH_REPO/pulls?state=open&per_page=100" --jq 'length')"
           test "$open_pr_count" = "0"
           cat > /tmp/erp_branches_to_delete <<'BRANCHES'
-          audit/acl-sans-sauvegarde-20261028 850be9a65e283da81b1003c1ee37529bf95a6a4c
-          audit/reconciliation-reglementaire-20261028 f694f72d99a19964f6def5e6318b1060243ca5ba
-          correctif-db-service 9b43f4fcc7e54930e684771cc1438302af4954f0
-          docs/erp-reste-a-faire-20261029 a00da87b9c7ea66b8c8495567db0a7f684d2e9b2
-          feat/erp-preflight-fiscal-scf-20261029 97bef8c2cc0958892776a318f180d2a28ba0f81d
-          feat/erp-scf-paie-socle-20261028 8d80b1b38785db689fc46857bbc251e7bad9611a
-          feat/erp-tva-sku-controle-20261029 5a2f2bf13c2921753925b8983d8a2ce3b4d26c69
-          feat/finance-audit-vers-scf-20261029 babe20ab39dbac70a7d9302d135ed36ea153ee0c
-          feat/finance-quittances-lecture-20261028 4c71ea3037e9f10ad1b1a573ce1403c739f2b4
+          feat/finance-quittances-lecture-20261028 4c71ea3037e9f10ad1b1b1a573ce1403c739f2b4
           feat/finance-scf-correspondances-20261029 666247a1f71dcf04be063a05e9fb40c0fbc4e157
           feat/irg-simulations-20261028 ad1e82895feffdddefeb9700e3a2aeb2a290d1cd
-          feat/paie-assiettes-qualifiees-20261029 e0c74f4810e9ce86dd079a9276b9780c8d4
+          feat/paie-assiettes-qualifiees-20261029 e0c74f4810e9ce86dd079a9276b7eefb9780c8d4
           feat/preflight-finance-interface-20261029 c09b42f25652b65b4ffb21d814a8fcb14b0c73cf
           feat/preflight-irg-cnas-20261029 e3954ec512856501edd77abdfcf0b767c36356ee
           feat/quittances-internes-transaction-20261029 b76c773e8e6752c49e9da5af39ad4f90d272ee98
