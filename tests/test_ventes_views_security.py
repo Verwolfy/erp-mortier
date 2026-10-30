@@ -169,6 +169,9 @@ def test_zero_not_allowed_for_ship(ui):
     ("ship", "creer_bon_livraison", "BL-1"),
 ])
 def test_each_operation_confirmed(ui, kind, service, expected):
+    if kind == "validate":
+        ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+        ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     payload = _draft() if kind == "draft" else _ship() if kind == "ship" else {"facture_id": "FAC-1"}
     ui.mod._start_operation(kind, "USR-1", payload)
     key = ui.mod._operation_key(kind, "USR-1")
@@ -186,6 +189,9 @@ def test_each_operation_confirmed(ui, kind, service, expected):
     ("ship", "creer_bon_livraison"),
 ])
 def test_retry_after_unknown_commit_uses_same_id_and_payload(ui, kind, service):
+    if kind == "validate":
+        ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+        ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     payload = _draft() if kind == "draft" else _ship() if kind == "ship" else {"facture_id": "FAC-1"}
     fn = getattr(ui.sales, service)
     original = fn.return_value
@@ -223,6 +229,8 @@ def test_confirmed_result_not_reexecuted(ui):
 
 
 def test_invalid_response_not_a_success(ui):
+    ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     ui.sales.valider_facture.return_value = {"statut": "VALIDE", "facture_id": "BAD"}
     ui.mod._start_operation("validate", "USR-1", {"facture_id": "FAC-1"})
     assert ui.st.session_state[ui.mod._operation_key("validate", "USR-1")]["status"] == "uncertain"
@@ -834,3 +842,59 @@ def test_erreur_reseau_bloque_automatiquement_ancien_brouillon(ui):
     )
     ui.mod._start_operation.assert_not_called()
     ui.st.number_input.assert_not_called()
+
+
+def test_validation_ancien_brouillon_exonere_bloquee(ui):
+    ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=True)
+    ui.mod._start_operation("validate", "USR-1", {"facture_id": "FAC-1"})
+    ui.sales.valider_facture.assert_not_called()
+    assert ui.mod._operation_key("validate", "USR-1") not in ui.st.session_state
+    ui.mod._client_facture_pour_validation.assert_called_once_with("FAC-1")
+    ui.mod._dossier_client_exoneration_a_revoir.assert_called_once_with("CLI-1")
+
+
+def test_validation_ancien_brouillon_si_lecture_indisponible(ui):
+    ui.mod._client_facture_pour_validation = MagicMock(
+        side_effect=RuntimeError("SQL unavailable")
+    )
+    ui.mod._start_operation("validate", "USR-1", {"facture_id": "FAC-1"})
+    ui.sales.valider_facture.assert_not_called()
+    key = ui.mod._operation_key("validate", "USR-1")
+    assert ui.st.session_state[key]["status"] == "uncertain"
+
+
+def test_reprise_de_validation_bloquee_si_exoneration_entretemps(ui):
+    ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(
+        side_effect=[False, True]
+    )
+    ui.sales.valider_facture.side_effect = RuntimeError("timeout")
+    ui.mod._start_operation("validate", "USR-1", {"facture_id": "FAC-1"})
+    key = ui.mod._operation_key("validate", "USR-1")
+    assert ui.st.session_state[key]["status"] == "uncertain"
+    ui.sales.valider_facture.side_effect = None
+    ui.mod._execute_operation("validate", "USR-1")
+    ui.sales.valider_facture.assert_called_once()
+    assert key not in ui.st.session_state
+
+
+@pytest.mark.parametrize("rows", [
+    None, [], [{"facture_id": "FAC-1", "client_id": ""}],
+    [{"facture_id": "FAC-2", "client_id": "CLI-1"}],
+    [{"facture_id": "FAC-1", "client_id": "CLI-1"}] * 2,
+])
+def test_client_facture_non_verifiable_ne_peut_pas_autoriser(ui, rows):
+    db = ui.db.get_supabase_client.return_value
+    db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = rows
+    with pytest.raises(RuntimeError):
+        ui.mod._client_facture_pour_validation("FAC-1")
+
+
+def test_client_facture_relu_au_moment_de_la_validation(ui):
+    db = ui.db.get_supabase_client.return_value
+    db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"facture_id": "FAC-1", "client_id": "CLI-1"}
+    ]
+    assert ui.mod._client_facture_pour_validation("FAC-1") == "CLI-1"
+    db.table.assert_called_once_with("factures")
