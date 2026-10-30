@@ -1,10 +1,6 @@
 name: ERP - simulateur IRG
 
 on:
-  push:
-    branches: [feat/irg-simulations-20261028]
-  pull_request:
-    branches: [feat/erp-scf-paie-socle-20261028]
   workflow_dispatch:
 
 permissions:
