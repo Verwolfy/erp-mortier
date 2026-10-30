@@ -183,12 +183,49 @@ def calculer_montants_facture(panier: list, remise_globale: float = 0.0, paiemen
     return {**{k: float(v) for k, v in sums.items()}, "montant_lettres": wording.capitalize()}
 
 
+def _verifier_absence_exoneration_historique(action: str, payload: dict) -> None:
+    """Refuse l'ancienne TVA 19 % si le client possède un dossier fiscal.
+
+    Cette barrière côté service couvre aussi les appels hors Streamlit.
+    Elle ne remplace pas le contrôle atomique futur dans PostgreSQL.
+    """
+    if action not in ("DRAFT", "VALIDATE"):
+        return
+    db = get_supabase_client()
+    if action == "DRAFT":
+        client_id = _text(payload.get("client_id"), "Client")
+    else:
+        facture_id = _text(payload.get("facture_id"), "Facture")
+        rows = (db.table("factures").select("facture_id,client_id")
+                .eq("facture_id", facture_id).limit(2).execute().data)
+        if (not isinstance(rows, list) or len(rows) != 1
+                or not isinstance(rows[0], dict)
+                or rows[0].get("facture_id") != facture_id):
+            raise ValueError("Client de facture non vérifiable")
+        client_id = _text(rows[0].get("client_id"), "Client")
+    dossiers = (db.table("erp_exonerations_tva_clients")
+                .select("attestation_id").eq("client_id", client_id)
+                .limit(1).execute().data)
+    if not isinstance(dossiers, list):
+        raise ValueError("Registre fiscal client indisponible")
+    if dossiers:
+        raise ValueError("Dossier d'exonération client : revue fiscale obligatoire")
+
+
 def _rpc(action: str, payload: dict, *, operation_id: str | None = None) -> dict:
     op_id = _text(operation_id, "Identifiant opération", max_len=128) if operation_id is not None else f"SALE-{uuid4()}"
     if check_server_permission("factures" if action != "SHIP" else "bons_livraison") is not True:
         raise PermissionError("Droit d'écriture Ventes refusé")
     if action == "SHIP" and check_server_permission("mouvements_pf") is not True:
         raise PermissionError("Droit d'écriture Stocks refusé")
+    try:
+        _verifier_absence_exoneration_historique(action, payload)
+    except Exception as exc:
+        raise SaleOperationError(
+            "Contrôle fiscal client indisponible ou dossier d'exonération présent : "
+            "écriture suspendue. Conserver operation_id",
+            operation_id=op_id,
+        ) from exc
     try:
         response = _stock_rpc_client().rpc("erp_sale_transaction", {
             "p_action": action, "p_operation_id": op_id, "p_payload": payload,
