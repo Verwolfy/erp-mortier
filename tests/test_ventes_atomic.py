@@ -22,6 +22,14 @@ def sales(monkeypatch):
     db.fetch_data = Mock(return_value=[])
     db.fetch_data_filtered = Mock(return_value=[])
     db.get_supabase_client = Mock()
+    def fiscal_table(name):
+        table = Mock()
+        table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = (
+            [{'facture_id': 'FAC-100', 'client_id': 'CL-1'}]
+            if name == 'factures' else []
+        )
+        return table
+    db.get_supabase_client.return_value.table.side_effect = fiscal_table
     utils = types.ModuleType('core.utils')
     utils.get_local_now = Mock()
     stock = types.ModuleType('modules.stocks.service')
