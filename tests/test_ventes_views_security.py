@@ -171,6 +171,7 @@ def test_zero_not_allowed_for_ship(ui):
 def test_each_operation_confirmed(ui, kind, service, expected):
     if kind == "validate":
         ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+    if kind in ("validate", "draft"):
         ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     payload = _draft() if kind == "draft" else _ship() if kind == "ship" else {"facture_id": "FAC-1"}
     ui.mod._start_operation(kind, "USR-1", payload)
@@ -191,6 +192,7 @@ def test_each_operation_confirmed(ui, kind, service, expected):
 def test_retry_after_unknown_commit_uses_same_id_and_payload(ui, kind, service):
     if kind == "validate":
         ui.mod._client_facture_pour_validation = MagicMock(return_value="CLI-1")
+    if kind in ("validate", "draft"):
         ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     payload = _draft() if kind == "draft" else _ship() if kind == "ship" else {"facture_id": "FAC-1"}
     fn = getattr(ui.sales, service)
@@ -216,6 +218,7 @@ def test_retry_after_unknown_commit_uses_same_id_and_payload(ui, kind, service):
 
 
 def test_second_document_blocked_while_uncertain(ui):
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     ui.sales.create_facture_brouillon.side_effect = RuntimeError("timeout")
     ui.mod._start_operation("draft", "USR-1", _draft())
     ui.mod._start_operation("draft", "USR-1", _draft())
@@ -237,12 +240,14 @@ def test_invalid_response_not_a_success(ui):
 
 
 def test_local_error_clears_pending_for_correctable_input(ui):
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     ui.sales.create_facture_brouillon.side_effect = ValueError("bad")
     ui.mod._start_operation("draft", "USR-1", _draft())
     assert ui.mod._operation_key("draft", "USR-1") not in ui.st.session_state
 
 
 def test_draft_clears_cart_only_on_confirmation(ui):
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
     cart_key = ui.mod._cart_key("USR-1")
     ui.st.session_state[cart_key] = [1]
     ui.sales.create_facture_brouillon.side_effect = RuntimeError("timeout")
@@ -759,7 +764,7 @@ def test_exoneration_client_signalee_bloque_brouillon_historique(ui):
 def _mock_exonerations(ui, dossiers):
     client = ui.db.get_supabase_client.return_value
     q = client.table.return_value.select.return_value.eq.return_value
-    q.lte.return_value.gte.return_value.limit.return_value.execute.return_value.data = dossiers
+    q.limit.return_value.execute.return_value.data = dossiers
     return client
 
 
@@ -781,7 +786,7 @@ def test_brouillon_client_exonere_existant_bloque_automatiquement(ui):
     ui.mod._draft_tab("USR-1", True, pd.DataFrame())
 
     assert any(
-        "Dossier d'exonération TVA existant" in call.args[0]
+        "Historique d'exonération TVA détecté" in call.args[0]
         for call in ui.st.warning.call_args_list
     )
     ui.mod._start_operation.assert_not_called()
@@ -789,7 +794,7 @@ def test_brouillon_client_exonere_existant_bloque_automatiquement(ui):
 
 
 @pytest.mark.parametrize("etat,attendu", [
-    ("VALIDEE", True), ("A_VALIDER", True), ("REVOQUEE", False),
+    ("VALIDEE", True), ("A_VALIDER", True), ("REVOQUEE", True),
 ])
 def test_lecture_dossier_fiscal_et_statut_daté(ui, etat, attendu):
     client = _mock_exonerations(ui, [
@@ -798,8 +803,9 @@ def test_lecture_dossier_fiscal_et_statut_daté(ui, etat, attendu):
     assert ui.mod._dossier_client_exoneration_a_revoir("CLI-1") is attendu
     client.table.assert_called_once_with("erp_exonerations_tva_clients")
     q = client.table.return_value.select.return_value.eq.return_value
-    q.lte.assert_called_once_with("date_effet", "2026-10-29")
-    q.lte.return_value.gte.assert_called_once_with("date_fin", "2026-10-29")
+    q.limit.assert_called_once_with(200)
+    q.lte.assert_not_called()
+    q.gte.assert_not_called()
 
 
 def test_client_sans_dossier_exoneration_ne_bloque_pas(ui):
@@ -832,7 +838,7 @@ def test_erreur_reseau_bloque_automatiquement_ancien_brouillon(ui):
     ui.st.checkbox.return_value = False
     client = _mock_exonerations(ui, [])
     q = client.table.return_value.select.return_value.eq.return_value
-    q.lte.return_value.gte.return_value.limit.return_value.execute.side_effect = (
+    q.limit.return_value.execute.side_effect = (
         RuntimeError("Supabase indisponible")
     )
     ui.mod._draft_tab("USR-1", True, pd.DataFrame())
@@ -849,7 +855,9 @@ def test_validation_ancien_brouillon_exonere_bloquee(ui):
     ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=True)
     ui.mod._start_operation("validate", "USR-1", {"facture_id": "FAC-1"})
     ui.sales.valider_facture.assert_not_called()
-    assert ui.mod._operation_key("validate", "USR-1") not in ui.st.session_state
+    key = ui.mod._operation_key("validate", "USR-1")
+    assert ui.st.session_state[key]["status"] == "uncertain"
+    assert ui.st.session_state[key]["operation_id"].startswith("SALE-UI-")
     ui.mod._client_facture_pour_validation.assert_called_once_with("FAC-1")
     ui.mod._dossier_client_exoneration_a_revoir.assert_called_once_with("CLI-1")
 
@@ -876,7 +884,8 @@ def test_reprise_de_validation_bloquee_si_exoneration_entretemps(ui):
     ui.sales.valider_facture.side_effect = None
     ui.mod._execute_operation("validate", "USR-1")
     ui.sales.valider_facture.assert_called_once()
-    assert key not in ui.st.session_state
+    assert ui.st.session_state[key]["status"] == "uncertain"
+    assert ui.st.session_state[key]["operation_id"].startswith("SALE-UI-")
 
 
 @pytest.mark.parametrize("rows", [
@@ -898,3 +907,47 @@ def test_client_facture_relu_au_moment_de_la_validation(ui):
     ]
     assert ui.mod._client_facture_pour_validation("FAC-1") == "CLI-1"
     db.table.assert_called_once_with("factures")
+
+
+def test_nouvelle_tentative_brouillon_relit_toujours_dossier_client(ui):
+    garde = MagicMock(return_value=True)
+    ui.mod._dossier_client_exoneration_a_revoir = garde
+    ui.mod._start_operation("draft", "USR-1", _draft())
+    key = ui.mod._operation_key("draft", "USR-1")
+    assert ui.st.session_state[key]["status"] == "uncertain"
+    identifiant = ui.st.session_state[key]["operation_id"]
+    ui.sales.create_facture_brouillon.assert_not_called()
+    garde.assert_called_once_with("CLI-1")
+
+    ui.mod._execute_operation("draft", "USR-1")
+    assert garde.call_count == 2
+    ui.sales.create_facture_brouillon.assert_not_called()
+    assert ui.st.session_state[key]["operation_id"] == identifiant
+
+
+def test_reprise_brouillon_bloquee_si_attestation_apparait(ui):
+    garde = MagicMock(side_effect=[False, True])
+    ui.mod._dossier_client_exoneration_a_revoir = garde
+    ui.sales.create_facture_brouillon.side_effect = RuntimeError("timeout")
+    ui.mod._start_operation("draft", "USR-1", _draft())
+    key = ui.mod._operation_key("draft", "USR-1")
+    identifiant = ui.st.session_state[key]["operation_id"]
+    assert ui.sales.create_facture_brouillon.call_count == 1
+
+    ui.sales.create_facture_brouillon.side_effect = None
+    ui.mod._execute_operation("draft", "USR-1")
+    assert garde.call_count == 2
+    assert ui.sales.create_facture_brouillon.call_count == 1
+    assert ui.st.session_state[key]["operation_id"] == identifiant
+    assert ui.st.session_state[key]["status"] == "uncertain"
+
+
+def test_historique_revoque_ou_futur_exige_revue_hors_plage_du_jour(ui):
+    client = _mock_exonerations(ui, [{
+        "attestation_id": "AT-ANCIEN", "statut": "REVOQUEE"
+    }])
+    assert ui.mod._dossier_client_exoneration_a_revoir("CLI-1") is True
+    q = client.table.return_value.select.return_value.eq.return_value
+    q.limit.assert_called_once_with(200)
+    q.lte.assert_not_called()
+    q.gte.assert_not_called()
