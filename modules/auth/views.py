@@ -1,9 +1,12 @@
 """Page de connexion Streamlit de l'ERP."""
 import time
+import logging
 
 import streamlit as st
 
 from modules.auth.service import AuthenticationBackendError, authenticate_user
+_LOG = logging.getLogger(__name__)
+
 from core.auth_rate_limit import (
     AuthRateLimitUnavailable,
     begin_login_attempt,
@@ -46,7 +49,8 @@ def show_login_page():
     try:
         token = begin_login_attempt(login)
     except AuthRateLimitUnavailable:
-        st.error("Connexion temporairement indisponible. Veuillez r?essayer plus tard.")
+        _LOG.error("ERP_AUTH_STAGE=BEGIN_UNAVAILABLE")
+        st.error("Connexion temporairement indisponible (AUTH-01). Réessayez plus tard.")
         return
 
     if token is None:
@@ -55,20 +59,22 @@ def show_login_page():
 
     try:
         user_data = authenticate_user(login, password)
-    except Exception:
+    except Exception as exc:
+        _LOG.error("ERP_AUTH_STAGE=ACCOUNT_UNAVAILABLE type=%s", type(exc).__name__)
         # Une erreur technique ne doit pas compter comme mauvais mot de passe.
         try:
             finish_login_attempt(token, "BACKEND_ERROR")
         except AuthRateLimitUnavailable:
-            pass
-        st.error("Connexion temporairement indisponible. Veuillez r?essayer plus tard.")
+            _LOG.error("ERP_AUTH_STAGE=ERROR_FINALIZE_UNAVAILABLE")
+        st.error("Connexion temporairement indisponible (AUTH-02). Réessayez plus tard.")
         return
 
     # La session ne sera ouverte qu'apres confirmation de Supabase.
     try:
         finish_login_attempt(token, "SUCCESS" if user_data else "FAILURE")
     except AuthRateLimitUnavailable:
-        st.error("Connexion temporairement indisponible. Veuillez r?essayer plus tard.")
+        _LOG.error("ERP_AUTH_STAGE=FINISH_UNAVAILABLE")
+        st.error("Connexion temporairement indisponible (AUTH-03). Réessayez plus tard.")
         return
 
     if user_data:
