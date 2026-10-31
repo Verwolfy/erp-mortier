@@ -1,3 +1,49 @@
+## 31 octobre 2026 — parcours hébergé après connexion sécurisée
+
+Cette entrée complète l'audit ci-dessous : le blocage de connexion a été levé
+pendant la même intervention. Compte affiché ADMIN, sans modification des droits.
+Les identifiants ont été saisis via le formulaire sécurisé, sans exposition.
+
+| Module | Consultation effectivement vérifiée |
+|---|---|
+| Administration | Écran Clients et tableau des 7 clients existants |
+| Achats | Nouvelle Commande puis Historique & Suivi ; aucune commande/réception |
+| Stocks | État des Stocks, onglet matières premières en vrac et tableau rendu |
+| Production | Production et CQ ; aucun OF actif (SQL : 1 OF TERMINE) |
+| Ventes | Brouillon affiché sans soumission, avertissement fiscal présent ; Suivi factures : 1 facture existante |
+| Finance | Tableau de bord : aucun règlement ; navigation des onglets visible |
+| RH | Registre des Employés : aucun employé ; onglets conditionnels affichés |
+| CRM | Pipeline sans opportunité et Historique des échanges vide |
+| Dashboards | Les 9 onglets ouverts : Direction, P&L, Ventes, Achats, Stocks, Production, CRM, RH et Finance |
+
+- Aucune erreur applicative visible dans ce parcours. Il s'agit d'un contrôle
+  de consultation ADMIN, pas d'un test exhaustif des formulaires, des autres
+  profils ni des transactions de bout en bout.
+- Recoupement SQL en lecture seule : clients 7, factures 1, commandes achats 0,
+  réceptions 0, employés 0, règlements 0, opportunités 0, interactions 0,
+  OF 1 (TERMINE), lignes de stock MP 3.
+- Le CA HT affiché dans Direction et Ventes correspond au montant de la facture
+  consultée. Les autres calculs de marge, valorisation et fiscalité ne sont pas
+  certifiés par ce constat.
+- **Écart de déploiement :** le guide hébergé affiche encore les 9 anciennes
+  rubriques et le texte « Sauvegarde automatique », sans repère
+  SOF-ERP-20261031-GUIDE-02. Le nouveau guide n'est donc pas attesté dans cette
+  session. La page Ventes affiche SOF-ERP-20261030-EXO-HIST-02.
+  Ne pas annoncer les corrections comme déployées sur Streamlit.
+- Correctif publié sur main : `35ea5e16556efeaf5d7ee779b75efdceb9969a01`.
+  **Deux CI completed/success** : audit
+  https://github.com/Verwolfy/erp-mortier/actions/runs/41224305921
+  et lot C https://github.com/Verwolfy/erp-mortier/actions/runs/41224305908.
+- **Prochaine action :** vérifier la source/branche et la mise à jour du
+  déploiement Streamlit, puis contrôler le nouveau repère ; traiter ensuite
+  les lectures historiques non paginées et les erreurs converties en listes
+  vides avec tests de non-régression. TEST reste en pause.
+- Aucun bouton de validation métier utilisé ; aucune écriture SQL ou changement
+  de permissions. Les opérations normales d'authentification restent distinctes
+  des transactions métier interdites pour les tests.
+
+---
+
 ## 31 octobre 2026 — audit autonome, aide et activité Dashboards
 
 **Consigne prioritaire : TEST doit rester en pause et ne doit pas être supprimé.**
