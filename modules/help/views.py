@@ -1,8 +1,177 @@
-"""
-Module d'Aide et Documentation de l'ERP.
-Accessible à tous les utilisateurs. Format "Documentation" avec menu latéral.
-"""
+"""Guide utilisateur aligné sur les écrans disponibles, sans écriture métier."""
 import streamlit as st
+
+
+HELP_SECTIONS = {
+    "🏠 Introduction": """
+Cet ERP centralise les référentiels, achats, stocks, production, ventes et suivis.
+Les menus visibles dépendent de vos habilitations. Une session inactive expire
+après 30 minutes ; reconnectez-vous si nécessaire.
+
+**Enregistrement et sauvegarde sont distincts.** Une opération confirmée est
+persistée en base ; cela ne constitue pas une sauvegarde PostgreSQL.
+Une réponse réseau incertaine ne prouve ni le succès ni l'échec de l'opération.
+Consultez la rubrique Incidents avant de recommencer une saisie.
+
+**Consultation de contrôle :** utilisez les tableaux, filtres et historiques.
+Ne validez aucune commande, réception, fabrication, facture ou paiement fictif
+pour tester la production. Un tableau vide et une lecture en erreur ne sont pas
+équivalents. Les simulations ne constituent pas une validation réglementaire.
+""",
+    "⚙️ Administration & Référentiels": """
+Les onglets de référentiels permettent de consulter les listes de choix,
+matières premières, produits, clients, fournisseurs et conditionnements (SKU).
+Un SKU est une présentation vendable d'un produit, liée à un emballage.
+Avant une saisie réelle, vérifier l'unité, le produit parent et le conditionnement.
+
+**Utilisateurs & Sécurité :** la gestion des comptes exige une habilitation
+nominative SECURITY_MANAGER, indépendante du seul rôle ADMIN.
+
+**Qualification TVA SKU :** l'inventaire documentaire signale les références
+à qualifier. Exporter un registre ne classe pas fiscalement les produits.
+**Exonérations TVA :** un brouillon de dossier ne vaut pas exonération validée.
+La décision fiscale exige une habilitation supplémentaire et un contrôleur
+distinct du créateur. Ne jamais inventer de pièce ni de validateur.
+""",
+    "🏢 Achats & Fournisseurs": """
+- **Nouvelle Commande :** sélectionner le fournisseur, renseigner les lignes
+  et vérifier quantités, unités et prix avant toute validation réelle.
+- **Réception & Entrée Stock :** sélectionner la commande et renseigner les
+  quantités réellement reçues. La validation crée le bon de réception et
+  affecte les stocks ; ce bouton ne sert pas à tester la connexion.
+- **Historique & Suivi :** consulter les commandes et bons de réception.
+
+Ne pas ressaisir dans Stocks une réception déjà enregistrée ici.
+Après une réponse incertaine, conserver l'identifiant d'opération et utiliser
+la reprise proposée avant d'envisager une nouvelle saisie.
+""",
+    "📦 Stocks & Magasin": """
+- **État des Stocks :** consulter séparément matières premières en vrac,
+  emballages et produits finis, avec unités et dates de mise à jour.
+- **Entrée Manuelle (hors BR) :** réservée aux matières premières et emballages,
+  pour une entrée réelle hors réception d'achat. La quantité doit être positive
+  et une référence est obligatoire. Cet écran ne propose pas de correction
+  négative d'inventaire ; signaler les écarts au responsable.
+- **Historique des Mouvements :** retrouver les mouvements vrac, emballages et PF.
+
+Les entrées de produits finis passent par Production. Ne pas doubler une entrée
+issue d'un bon de réception. Un recalcul de contrôle ne corrige pas à lui seul
+les quantités enregistrées.
+""",
+    "🏭 Production": """
+- **Recettes :** consulter ou préparer une recette avec ses matières premières.
+- **OF :** consulter les paramètres puis créer uniquement un ordre réel autorisé.
+- **Production et CQ :** suivre les ordres et effectuer le contrôle qualité
+  avant la clôture. Vérifier quantités, conditionnement et consommations.
+- **Consommations et contrôles :** consulter l'historique associé aux OF.
+
+La clôture peut modifier les stocks de matières, d'emballages et de produits
+finis. Ne pas clôturer un OF pour tester l'écran. Conserver la référence de
+l'opération si une confirmation réseau manque.
+""",
+    "🤝 Ventes & CRM": """
+**Ventes & Facturation** comporte les onglets **Facture / Avoir**,
+**Commandes clients**, **Bons de livraison**, **Suivi factures** et
+**TVA par SKU (contrôle)**. La facture ou l'avoir est préparé en brouillon,
+puis suit les actions proposées dans Suivi factures. Une commande, un BL et
+une facture sont des documents distincts : contrôler leurs références et statuts.
+Le présent guide ne décrit pas de conversion automatique d'un devis en facture.
+
+**Fiscalité :** la qualification documentaire et le précontrôle d'exonération
+n'autorisent pas à facturer à 0 %. Un historique d'exonération peut bloquer le
+circuit historique et exiger une revue fiscale. Ne pas modifier le client ou
+supprimer un dossier pour contourner ce blocage.
+
+**CRM** comporte **Pipeline (Opportunités)**, **Consigner une interaction** et
+**Historique des échanges**. Le pipeline suit prospect, statut, valeur estimée
+et probabilité ; ce montant n'est pas un chiffre d'affaires facturé.
+Une interaction rattache des notes et un éventuel rappel à un client actif.
+La saisie d'un rappel ne prouve pas qu'un e-mail a été envoyé.
+""",
+    "💰 Finance & Trésorerie": """
+- **Comptes** et **Règlements :** vérifier compte, contrepartie, sens du flux,
+  montant et référence avant d'enregistrer un paiement réel.
+- **Lettrage :** consulter les affectations des règlements aux documents ;
+  un règlement peut être partiellement affecté.
+- **Tableau de bord** et **Journal des écritures :** consulter les flux et
+  écritures enregistrés. Ce journal n'est pas un grand livre SCF complet.
+- **Rapprochement quittances**, **Accusés internes** et **Pré-audit Finance → SCF :**
+  lire les contrôles et leurs réserves. Un accusé interne n'est pas un reçu
+  fiscal officiel.
+- **Balance SCF (lecture seule)**, **Préparation TVA / SCF** et
+  **Correspondances Finance / SCF :** contrôler la configuration existante.
+  Des références présentes ne prouvent pas qu'un exercice, des journaux ou
+  des imputations sont actifs et homologués.
+
+Ne pas créer de paiement fictif ni compléter des comptes ou taux au hasard.
+""",
+    "👥 Ressources Humaines": """
+**Registre des Employés** et **Gestion des Congés** sont soumis aux droits RH.
+Consulter les dossiers uniquement dans le cadre de vos habilitations.
+Les écritures exigent des droits confirmés au moment de l'action.
+
+**Simulation IRG (non validée)** et **Préparation Paie IRG / CNAS** sont visibles
+uniquement avec les droits requis. Une simulation ne produit pas un bulletin
+homologué ni une déclaration officielle. Les références à confirmer, assiettes
+et périodes manquantes doivent être examinées avant tout usage réglementaire.
+Ne pas inventer de salaire, taux, salarié ou justificatif pour lever un blocage.
+""",
+    "📊 Tableaux de bord": """
+Les onglets couvrent Direction, Rentabilité (P&L), Ventes & Facturation, Achats,
+Stocks, Production, CRM, RH et Finance, selon les droits de consultation.
+
+Vérifier la période sélectionnée et conserver une date de début antérieure
+ou égale à la date de fin. Comparer les indicateurs aux documents sources
+avant de prendre une décision. Le P&L est une synthèse de gestion, pas un
+compte de résultat réglementaire certifié. Un pipeline commercial n'est pas
+une vente ; un règlement n'est pas nécessairement intégralement lettré.
+Une absence de données ou une lecture refusée doit être examinée avant
+d'interpréter un indicateur à zéro.
+""",
+    "🛠️ Incidents et reprise": """
+**Lecture indisponible :** noter l'écran, l'heure et le message affiché,
+puis réessayer la consultation. Ne pas remplacer les données absentes par zéro.
+**Opération incertaine :** conserver la session et l'identifiant d'opération ;
+utiliser Reprendre si l'écran le propose. Ne pas créer une nouvelle opération
+pour compenser une réponse manquante : la première peut avoir été enregistrée.
+Si la session est perdue, demander un contrôle des documents et journaux avant
+une nouvelle saisie.
+**Accès refusé :** vérifier l'identité et les habilitations avec le responsable.
+Ne pas désactiver les gardes, la RLS ou les contrôles de session.
+
+Pour signaler une anomalie : module, onglet, étapes, résultat attendu/observé,
+heure et référence interne utile. Masquer mots de passe, clés, données RH et
+informations personnelles dans les captures.
+
+Une CI verte prouve la réussite des tests exécutés, pas le déploiement hébergé.
+Après mise à jour, contrôler les repères de version visibles et les écrans
+sans créer de transaction métier de test.
+""",
+    "🔐 Environnements et sécurité (010-A)": """
+**Consigne actuelle :** exploitation sur main et Supabase PRODUCTION.
+Le projet TEST est conservé en pause : ne pas le réveiller ni le supprimer.
+Les anciens protocoles utilisant TEST décrivent un contexte historique.
+Les tests automatisés utilisent des doubles locaux sans transactions réelles.
+
+Une politique absente, un projet différent ou une production désactivée doit
+être examiné par l'administrateur. Ne pas contourner ces contrôles pour ouvrir
+un écran. Les clés serveur et mots de passe ne doivent jamais figurer dans
+le guide, une capture ou un ticket.
+""",
+    "🔎 Vérification des droits SQL (010-A-02)": """
+Les contrôles de production restent en lecture seule. Aucun GRANT, REVOKE,
+changement de politique ou suppression n'est autorisé par cette page.
+
+La RLS contrôle l'accès aux lignes ; les GRANT contrôlent les privilèges SQL.
+Une RLS active sans politique peut être intentionnelle pour une table privée.
+Le rôle service_role est réservé au serveur et ne doit jamais être exposé.
+
+L'administrateur vérifie l'identité du projet de production puis examine
+schéma, privilèges, politiques, fonctions et historique des migrations.
+Les résultats INFO ou OK portent sur un contrôle précis et ne constituent
+pas une certification globale. Ne pas réactiver TEST pour comparer les droits.
+""",
+}
 
 
 def _mark_help_activity() -> None:
@@ -12,223 +181,15 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.markdown(
-        "Bienvenue dans le manuel d'utilisation. Sélectionnez une rubrique dans le menu de gauche pour consulter les procédures détaillées.")
-
-    # Sous-menu latéral spécifique à la documentation
+    st.caption("Guide révisé le 31 octobre 2026 — SOF-ERP-20261031-GUIDE-02")
+    st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")
     rubrique = st.sidebar.radio(
-        "Choisissez un module :",
-        [
-            "🏠 Introduction",
-            "⚙️ Administration & Référentiels",
-            "🏢 Achats & Fournisseurs",
-            "📦 Stocks & Magasin",
-            "🏭 Production",
-            "🤝 Ventes & CRM",
-            "💰 Finance & Trésorerie",
-            "🔐 Environnements et sécurité (010-A)",
-            "🔎 Vérification des droits SQL (010-A-02)"
-        ],
-        help="Sélectionnez une rubrique pour afficher la procédure et les contrôles correspondants."
-    , on_change=_mark_help_activity)
-
+        "Choisissez un module :", list(HELP_SECTIONS),
+        help="Procédures, limites et conduite à tenir en cas d'incident.",
+        on_change=_mark_help_activity,
+    )
     st.divider()
-
-    if rubrique == "🏠 Introduction":
-        st.header("Introduction")
-        st.markdown("""
-        Cet ERP est conçu pour centraliser la gestion de votre entreprise de production (Mortiers, Peintures, Adjuvants). 
-        Il fonctionne en temps réel et assure une traçabilité totale de vos opérations.
-
-        **Principes de base :**
-        * **Sauvegarde automatique :** Toute action validée est instantanément enregistrée dans la base de données.
-        * **Menus déroulants :** La majorité des formulaires utilisent des listes de choix. Si une option manque, elle doit être ajoutée dans le module *Administration*.
-        * **Droits d'accès :** Si vous ne voyez pas un bouton ou un menu, c'est que votre profil utilisateur ne dispose pas des permissions nécessaires. Rapprochez-vous de votre administrateur.
-        """)
-
-    elif rubrique == "⚙️ Administration & Référentiels":
-        st.header("⚙️ Administration & Référentiels")
-
-        st.info("Gestion des comptes : habilitation SECURITY_MANAGER nominative "
-                "obligatoire, independante du role ADMIN. Les creations sensibles "
-                "et leurs traces passent par des RPC SQL atomiques.")
-        st.subheader("1. Gérer les listes de choix (Menus déroulants)")
-        st.markdown("""
-        Cette section permet d'alimenter toutes les listes de l'ERP (Catégories, Pays, Unités, etc.).
-        1. Allez dans l'onglet **📝 Listes de choix**.
-        2. Sélectionnez une liste existante ou tapez le code d'une nouvelle liste.
-        3. Remplissez le code court (ex: `DZ`) et le libellé affiché (ex: `Algérie`).
-        4. Cliquez sur **➕ Ajouter l'élément**. La modification est immédiate dans tout l'ERP.
-        """)
-
-        st.subheader("2. Ajouter un Produit Fini ou une Matière Première")
-        st.markdown("""
-        1. Ouvrez l'onglet correspondant (**🧪 Matières Premières** ou **🛍️ Produits**).
-        2. Déroulez la section **➕ Nouvelle Matière Première** (ou Nouveau Produit).
-        3. Renseignez obligatoirement le nom, l'unité et la catégorie.
-        4. Validez. Le produit apparaît dans le tableau en dessous.
-        """)
-
-        st.subheader("3. Créer un Conditionnement (SKU)")
-        st.markdown("""
-        Un SKU représente la version vendable d'un produit (ex: *Sac de 25kg* ou *Seau de 20L*).
-        1. Allez dans l'onglet **📦 SKU**.
-        2. Sélectionnez le Produit Fini parent.
-        3. Associez-lui l'emballage correspondant (la matière première de type *EMBALLAGE*).
-        4. Définissez le poids net et le prix de vente par défaut.
-        """)
-
-    elif rubrique == "🏢 Achats & Fournisseurs":
-        st.header("🏢 Achats & Fournisseurs")
-
-        st.subheader("1. Créer un Bon de Commande (BC)")
-        st.markdown("""
-        1. Accédez au module **Achats**.
-        2. Cliquez sur **Nouveau Bon de Commande**.
-        3. Sélectionnez le fournisseur dans la liste.
-        4. Ajoutez les articles un par un en précisant la quantité et le prix unitaire négocié.
-        5. Cliquez sur **Valider la commande**. Son statut passe à *En attente de réception*.
-        """)
-
-        st.subheader("2. Réceptionner la marchandise (Bon de Réception)")
-        st.markdown("""
-        1. Dans la liste des commandes en cours, cliquez sur le bouton **Réceptionner** face à la commande concernée.
-        2. Vérifiez les quantités réellement livrées par le transporteur.
-        3. Si la quantité diffère de la commande, ajustez-la dans le champ correspondant.
-        4. Validez la réception. **Attention :** Cette action met automatiquement à jour vos stocks de matières premières.
-        """)
-
-    elif rubrique == "📦 Stocks & Magasin":
-        st.header("📦 Stocks & Magasin")
-
-        st.subheader("1. Consulter l'état des stocks")
-        st.markdown("""
-        1. Le tableau de bord principal vous affiche les niveaux actuels.
-        2. Les articles en dessous de leur seuil de sécurité sont surlignés en rouge ou apparaissent dans l'onglet **Alertes**.
-        """)
-
-        st.subheader("2. Faire un ajustement d'inventaire (Sortie/Entrée manuelle)")
-        st.markdown("""
-        1. Allez dans l'onglet **Ajustements**.
-        2. Sélectionnez l'article concerné (Matière première ou Produit fini/SKU).
-        3. Indiquez la quantité (utilisez un signe négatif `-` pour une perte, une casse ou une péremption).
-        4. Saisissez obligatoirement un motif justifiant cet écart.
-        5. Validez pour mettre le stock à jour.
-        """)
-
-    elif rubrique == "🏭 Production":
-        st.header("🏭 Production")
-
-        st.subheader("1. Créer un Ordre de Fabrication (OF)")
-        st.markdown("""
-        1. Dans le module Production, cliquez sur **Nouvel OF**.
-        2. Sélectionnez la recette / formule à produire.
-        3. Indiquez la quantité totale à fabriquer.
-        4. Le système calcule automatiquement les besoins théoriques en matières premières.
-        5. Enregistrez l'OF (statut *Planifié*).
-        """)
-
-        st.subheader("2. Clôturer un Ordre de Fabrication")
-        st.markdown("""
-        1. Ouvrez un OF en cours.
-        2. Renseignez les quantités réellement consommées (si elles diffèrent de la théorie suite à des pertes).
-        3. Validez la production.
-        4. **Conséquences automatiques :** Les matières premières sont déduites du stock, et les produits finis sont ajoutés au stock, prêts à être vendus.
-        """)
-
-    elif rubrique == "🤝 Ventes & CRM":
-        st.header("🤝 Ventes & CRM")
-
-        st.subheader("1. Rédiger un Devis (Proforma)")
-        st.markdown("""
-        1. Allez dans l'onglet **Nouveau Devis**.
-        2. Sélectionnez le client.
-        3. Ajoutez les produits (SKU) au panier. Les prix par défaut s'affichent mais restent modifiables.
-        4. Enregistrez. Vous pouvez désormais imprimer ou exporter le devis en PDF.
-        """)
-
-        st.subheader("2. Convertir en Facture & Bon de Livraison (BL)")
-        st.markdown("""
-        1. Ouvrez un devis validé par le client.
-        2. Cliquez sur **Générer le Bon de Livraison**.
-        3. Vérifiez les quantités expédiées. La validation du BL déduira immédiatement les articles du stock de produits finis.
-        4. Une fois expédié, cliquez sur **Générer la Facture** pour transférer la pièce vers la comptabilité.
-        """)
-
-    elif rubrique == "🔐 Environnements et sécurité (010-A)":
-        st.header("🔐 Environnements et sécurité")
-        st.info("La migration 010-A est en préparation. Aucune mise en production n'est autorisée par cette page.")
-        st.markdown("""
-        **Pourquoi distinguer TEST et PRODUCTION ?**
-
-        Les essais peuvent créer des stocks, des factures et des relances fictives.
-        Ils doivent utiliser un projet Supabase et des classeurs Google distincts
-        de ceux de l'entreprise réelle.
-
-        **Signification des messages de sécurité :**
-
-        - *Politique absente* : l'administrateur n'a pas encore déclaré
-          l'environnement dans Streamlit Secrets.
-        - *Projet Supabase différent* : l'application est reliée à une URL
-          qui ne correspond pas à l'environnement annoncé ; aucune connexion
-          ne doit être autorisée.
-        - *Classeur TEST identique* : un classeur de test correspond à un
-          classeur de production déjà référencé.
-        - *PRODUCTION désactivée* : le déploiement n'a pas reçu
-          l'autorisation explicite nécessaire.
-
-        Les tâches de relance exécutées en mode TEST ne doivent envoyer
-        aucun e-mail. En cas d'erreur, ne désactivez pas ces contrôles :
-        contactez l'administrateur.
-
-        **Documentation technique pour l'administrateur :**
-        `docs/guide_migration_010A_01.md`.
-        """)
-
-    elif rubrique == "🔎 Vérification des droits SQL (010-A-02)":
-        st.header("🔎 Contrôle des autorisations Supabase")
-        st.info("Vérification en lecture seule sur Supabase TEST ; aucune correction automatique.")
-        st.markdown("""
-        **À quoi servent ces contrôles ?**
-
-        - **RLS** : contrôle quelles lignes peuvent être accessibles selon le rôle.
-          Activer la RLS sans politique peut refuser l'accès normal, sans prouver
-          à lui seul une faille de sécurité.
-        - **GRANT / REVOKE** : autorisations SQL sur les tables, schémas et fonctions.
-        - **RPC** : fonctions PostgreSQL appelées par l'ERP.
-        - **service_role** : rôle à privilèges élevés, réservé au serveur ;
-          il contourne habituellement les politiques RLS.
-
-        **Procédure administrateur :**
-        1. Vérifier le projet **TEST** dans Supabase SQL Editor.
-        2. Exécuter `sql/010A_02_permissions_audit_readonly.sql` (SELECT uniquement).
-        3. Exporter les lignes du résultat en CSV, sans clés ni secrets.
-        4. Analyser le CSV avec `scripts/verifier_audit_permissions_010a.py`.
-        5. Corriger seulement après examen des risques et plan de retour arrière.
-
-        **Interprétation :** `BLOQUANT` interdit toute promotion du lot,
-        `A_VERIFIER` requiert une revue humaine, `INFO` n'est pas une preuve
-        de conformité et `OK` porte uniquement sur le contrôle effectué.
-
-        **Aide détaillée :** `docs/guide_migration_010A_02.md`.
-        """)
-
-    elif rubrique == "💰 Finance & Trésorerie":
-        st.header("💰 Finance & Trésorerie")
-
-        st.subheader("1. Enregistrer un paiement client")
-        st.markdown("""
-        1. Allez dans l'onglet **Encaissements**.
-        2. Sélectionnez la facture en attente de paiement.
-        3. Indiquez le montant reçu (permet de gérer les acomptes ou paiements partiels).
-        4. Précisez le mode de règlement (Virement, Chèque, Espèces) et la date.
-        5. Validez. Le solde du client est mis à jour.
-        """)
-
-        st.subheader("2. Consulter les impayés")
-        st.markdown("""
-        1. Le tableau de bord financier vous indique la liste des factures échues non réglées.
-        2. Vous pouvez filtrer par client pour préparer vos relances téléphoniques ou par email.
-        """)
+    st.header(rubrique)
+    st.markdown(HELP_SECTIONS[rubrique])

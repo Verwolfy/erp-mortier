@@ -1,3 +1,68 @@
+## 31 octobre 2026 — audit autonome, aide et activité Dashboards
+
+**Consigne prioritaire : TEST doit rester en pause et ne doit pas être supprimé.**
+Cette instruction remplace toutes les anciennes propositions de suppression ou
+réactivation de TEST présentes dans l'historique ci-dessous.
+
+### Actions réalisées
+- Lecture initiale de ce journal sur `main` (`b199f7507f66ef95b108838b0360bbd134c88c5a`).
+- Application `https://nextgent-erp.streamlit.app/` ouverte : écran Connexion ERP
+  rendu, champs login/mot de passe et bouton Se connecter. Aucune session connectée.
+  Les neuf écrans internes **ne sont pas validés sur l'hébergement** ; connexion
+  utilisateur nécessaire, sans récupération de secrets en base ni contournement.
+- Correction des 12 filtres de dates et du curseur de péremption Dashboards :
+  signal d'activité envoyé au contrôleur existant. Aucun renouvellement direct
+  de `last_activity`, aucune modification des droits ou de la durée de session.
+- Guide & Aide réécrit à partir des écrans du dépôt : 12 rubriques, ajout RH,
+  Dashboards et incidents/reprise ; correction du parcours Ventes, de Finance,
+  des entrées de stocks (positives, MP/emballages) et de la confusion entre
+  enregistrement et sauvegarde. Repère `SOF-ERP-20261031-GUIDE-02`.
+
+### Preuves et limites
+- Suite locale avant correctif Dashboards : **2 074 tests réussis** ; test ajouté
+  couvrant les 13 filtres. **Suite finale : 2 075 tests réussis**, compilation et
+  `git diff --check` réussis. Navigation locale Streamlit AppTest des **12 rubriques**
+  du guide : aucune exception. Ce test local ne prouve pas le déploiement hébergé.
+- CI de départ : audit `41223175642` et lot C `41223175689`, tous deux success.
+- Supabase : PROD `wenydirqtmkywbxbxfal` ACTIVE_HEALTHY ; TEST
+  `ffuhbmcfyexsbjwhryvj` INACTIVE. Aucune requête adressée à la base TEST.
+- Schéma PROD : **88 tables public, 88 avec RLS active**. Les colonnes déclarées
+  pour **54 tables de SCHEMA_CONFIG** existent toutes. Cela ne valide pas les
+  types, les projections de tous les appels ni les droits de chaque utilisateur.
+- Historique Supabase : **21 migrations enregistrées**, dont 031 et 032.
+  Trigger `erp_factures_garde_exonerations` présent et actif (`tgenabled=O`).
+  La numérotation historique Supabase 012–018 ne correspond pas nécessairement
+  aux fichiers SQL du même numéro : ne pas rejouer sur la seule base du numéro.
+- Conseiller sécurité : 84 avis INFO RLS sans politique ; aucun WARN/ERROR remonté.
+  Ces tables privées ne doivent pas recevoir de politiques permissives pour
+  effacer l'avis. Voir https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+- Performance : 15 clés étrangères sans index couvrant et 8 index non utilisés
+  signalés INFO. Aucune suppression d'index ni DDL automatique. Voir
+  https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys
+- Logs : inventaire sur la fenêtre par défaut de 24 h (232 edge, 13 postgres,
+  1 pgbouncer). Les champs level/status_code interrogés sont vides : **aucune
+  conclusion d'absence d'erreurs** ne peut être tirée de cet inventaire.
+
+### Anomalies et travaux restant ouverts
+1. Tester Administration, Achats, Stocks, Production, Ventes, Finance, RH, CRM,
+   Dashboards avec une session utilisateur autorisée, en consultation uniquement.
+2. `core/db_service.fetch_data`, `fetch_data_filtered` et
+   `fetch_data_by_date_range` renvoient `[]` sur erreur et ne paginent pas.
+   Les Dashboards/CRM utilisent encore ces chemins : risque de faux zéros ou
+   d'agrégats tronqués. Préparer une migration ciblée vers lectures strictes,
+   avec tests de panne, volumétrie et affichage indisponible avant généralisation.
+3. Les KPI Direction incluent des brouillons dans les impayés et n'excluent pas
+   explicitement tous les statuts non comptabilisés du CA : définir et tester
+   les statuts métier admissibles avant correction du calcul.
+4. Homologation TVA/exonérations, SCF et paie encore incomplète ; aucune donnée,
+   pièce justificative, classification ou habilitation fiscale inventée.
+5. Contrôler la CI du nouveau commit puis le repère du guide en ligne.
+
+**Aucune transaction métier, migration, suppression, modification de permissions
+ou de contrôles de sécurité exécutée.**
+
+---
+
 ## 31 octobre 2026 — qualification documentaire des SKU, sans taux fictifs
 
 - **Contrôle PRODUCTION en lecture seule** : `public.sku_conditionnement` contient 7 SKU actifs (SKU-001 à SKU-007), `public.erp_sku_fiscalite` est vide (0 classification). Les formats et unités réels ont été transcrits dans `docs/QUALIFICATION_SKU_PRODUCTION_20261031.md`.
@@ -13,7 +78,7 @@
 
 **État vérifié :** `Verwolfy/erp-mortier` ne conserve que la branche `main` après suppression de **31 branches secondaires**. Le nettoyage GitHub a réussi via un workflow ponctuel, immédiatement retiré du dépôt après exécution.
 
-**PRODUCTION unique :** Supabase `erp-mortier`, projet `wenydirqtmkywbxbxfal`, reste actif. L'ancien projet `erp-mortier-test`, `ffuhbmcfyexsbjwhryvj`, a été **mis en pause et constaté INACTIVE**, mais **n'est pas encore supprimé définitivement** : l'outil Supabase connecté ne dispose pas de la commande de suppression de projet. La suppression permanente doit se faire dans le Dashboard Supabase, uniquement sur le projet TEST, Settings > General > Delete project, en confirmant `erp-mortier-test`.
+**PRODUCTION unique :** Supabase `erp-mortier`, projet `wenydirqtmkywbxbxfal`, reste actif. L'ancien projet `erp-mortier-test`, `ffuhbmcfyexsbjwhryvj`, a été **mis en pause et constaté INACTIVE**, mais **n'est pas encore supprimé définitivement** : l'outil Supabase connecté ne dispose pas de la commande de suppression de projet. Consigne remplacée le 31/10/2026 : conserver TEST en pause, sans suppression ni réactivation.
 
 **Consignes pour les prochains tours :** travailler directement sur `main` et la BDD de production, sans nouvelle branche ni passage par la base de test. Vérifier les CI, le SQL, l'identité du projet et les permissions avant et après chaque opération. Ne pas inventer de justificatifs fiscaux ni activer les transactions 0 % sans homologation. La documentation détaillée est `docs/EXPLOITATION_UNIQUE_MAIN_PRODUCTION.md`.
 

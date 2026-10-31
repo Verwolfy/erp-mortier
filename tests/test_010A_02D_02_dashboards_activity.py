@@ -47,3 +47,16 @@ def test_dashboard_callback_no_direct_refresh():
 
     assert "last_activity" not in code
     assert "_erp_dashboards_interacted" in code
+
+
+def test_date_and_expiry_filters_signal_activity():
+    widgets = [node for node in ast.walk(_tree())
+               if isinstance(node, ast.Call)
+               and isinstance(node.func, ast.Attribute)
+               and node.func.attr in {"date_input", "slider"}]
+    assert len(widgets) == 13
+    for widget in widgets:
+        callbacks = [kw.value for kw in widget.keywords if kw.arg == "on_change"]
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ast.Name)
+        assert callbacks[0].id == "_mark_dashboards_activity"

@@ -49,8 +49,8 @@ def show_dashboards_page():
     with onglets[1]:
         st.subheader("Compte de Résultat Simplifié (P&L)")
         c_deb_pnl, c_fin_pnl = st.columns(2)
-        date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl")
-        date_fin_pnl = c_fin_pnl.date_input("Date de fin", datetime.date.today(), key="f_pnl")
+        date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
+        date_fin_pnl = c_fin_pnl.date_input("Date de fin", datetime.date.today(), key="f_pnl", on_change=_mark_dashboards_activity)
 
         if date_deb_pnl <= date_fin_pnl:
             ts_deb_pnl, ts_fin_pnl = pd.Timestamp(date_deb_pnl), pd.Timestamp(date_fin_pnl) + pd.Timedelta(days=1, seconds=-1)
@@ -75,8 +75,8 @@ def show_dashboards_page():
     with onglets[2]:
         st.subheader("Analyse des Ventes & Recouvrement")
         c_deb, c_fin = st.columns(2)
-        date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v")
-        date_fin = c_fin.date_input("Date de fin", datetime.date.today(), key="f_v")
+        date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v", on_change=_mark_dashboards_activity)
+        date_fin = c_fin.date_input("Date de fin", datetime.date.today(), key="f_v", on_change=_mark_dashboards_activity)
 
         if date_deb <= date_fin:
             ts_deb, ts_fin = pd.Timestamp(date_deb), pd.Timestamp(date_fin) + pd.Timedelta(days=1, seconds=-1)
@@ -103,8 +103,8 @@ def show_dashboards_page():
     with onglets[3]:
         st.subheader("Analyse des Achats & Fournisseurs")
         c_deb_a, c_fin_a = st.columns(2)
-        date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a")
-        date_fin_a = c_fin_a.date_input("Date de fin", datetime.date.today(), key="f_a")
+        date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a", on_change=_mark_dashboards_activity)
+        date_fin_a = c_fin_a.date_input("Date de fin", datetime.date.today(), key="f_a", on_change=_mark_dashboards_activity)
 
         if date_deb_a <= date_fin_a:
             ts_deb_a, ts_fin_a = pd.Timestamp(date_deb_a), pd.Timestamp(date_fin_a) + pd.Timedelta(days=1, seconds=-1)
@@ -131,7 +131,7 @@ def show_dashboards_page():
     # --- 5. STOCKS ---
     with onglets[4]:
         st.subheader("Analyse Financière des Stocks")
-        jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7)
+        jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7, on_change=_mark_dashboards_activity)
         kpis_s = get_kpis_stocks(jours_alerte_peremption=jours)
 
         cs1, cs2, cs3 = st.columns(3)
@@ -152,8 +152,8 @@ def show_dashboards_page():
     with onglets[5]:
         st.subheader("Performance de Production")
         c_deb_p, c_fin_p = st.columns(2)
-        date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p")
-        date_fin_p = c_fin_p.date_input("Date de fin", datetime.date.today(), key="f_p")
+        date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p", on_change=_mark_dashboards_activity)
+        date_fin_p = c_fin_p.date_input("Date de fin", datetime.date.today(), key="f_p", on_change=_mark_dashboards_activity)
 
         if date_deb_p <= date_fin_p:
             ts_deb_p, ts_fin_p = pd.Timestamp(date_deb_p), pd.Timestamp(date_fin_p) + pd.Timedelta(days=1, seconds=-1)
@@ -172,8 +172,8 @@ def show_dashboards_page():
     with onglets[6]:
         st.subheader("Performance Commerciale & Pipeline")
         c_deb_c, c_fin_c = st.columns(2)
-        date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c")
-        date_fin_c = c_fin_c.date_input("Date de fin", datetime.date.today(), key="f_c")
+        date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c", on_change=_mark_dashboards_activity)
+        date_fin_c = c_fin_c.date_input("Date de fin", datetime.date.today(), key="f_c", on_change=_mark_dashboards_activity)
 
         if date_deb_c <= date_fin_c:
             ts_deb_c, ts_fin_c = pd.Timestamp(date_deb_c), pd.Timestamp(date_fin_c) + pd.Timedelta(days=1, seconds=-1)
@@ -210,8 +210,8 @@ def show_dashboards_page():
     with onglets[8]:
         st.subheader("Flux de Trésorerie & Rapprochement")
         c_deb_f, c_fin_f = st.columns(2)
-        date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f")
-        date_fin_f = c_fin_f.date_input("Date de fin", datetime.date.today(), key="f_f")
+        date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f", on_change=_mark_dashboards_activity)
+        date_fin_f = c_fin_f.date_input("Date de fin", datetime.date.today(), key="f_f", on_change=_mark_dashboards_activity)
 
         if date_deb_f <= date_fin_f:
             ts_deb_f, ts_fin_f = pd.Timestamp(date_deb_f), pd.Timestamp(date_fin_f) + pd.Timedelta(days=1, seconds=-1)
