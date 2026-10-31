@@ -19,6 +19,8 @@ from modules.admin.exonerations_service import (
     lister_attestations_pour_manager, creer_brouillon_attestation,
     est_validateur_fiscal, transition_attestation,
 )
+from modules.admin.qualification_sku_service import lister_sku_a_qualifier
+from core.registre_qualification_sku import registre_qualification_sku
 from uuid import uuid4
 
 # --- FALLBACKS SÉCURISÉS (Directement alignés avec import_data.py) ---
@@ -473,6 +475,49 @@ def _revue_exonerations_tva_clients() -> None:
     _controle_exonerations_tva(dossiers)
 
 
+def _revue_qualification_fiscale_sku() -> None:
+    """Revue documentaire des SKU depuis Supabase, sans écriture fiscale."""
+    st.subheader("Qualification TVA des SKU actifs — revue documentaire")
+    if not is_security_manager():
+        st.info("Consultation réservée au SECURITY_MANAGER.")
+        return
+    st.caption("Version inventaire fiscal : SOF-ERP-20261031-SKU-REVUE-01")
+    try:
+        resultat = lister_sku_a_qualifier()
+    except Exception:
+        st.error("Inventaire TVA des SKU non vérifiable. Aucune qualification présumée.")
+        return
+    st.metric("SKU actifs", resultat["sku_actifs"])
+    st.metric("SKU sans dossier fiscal", resultat["sku_sans_dossier"])
+    st.warning(
+        "Cette revue n'homologue aucun taux ni exonération. "
+        "La TVA transactionnelle à 0 % reste désactivée."
+    )
+    if resultat["rows"]:
+        st.dataframe(
+            pd.DataFrame(resultat["rows"]),
+            hide_index=True, use_container_width=True,
+        )
+    if resultat["sku_avec_dossier"] == 0:
+        try:
+            registre = registre_qualification_sku([
+                {champ: row[champ] for champ in (
+                    "sku_id", "pf_id", "format", "unite_vente"
+                )}
+                for row in resultat["rows"]
+            ])
+        except ValueError:
+            st.error("Export documentaire indisponible : référentiel invalide.")
+        else:
+            st.download_button(
+                "Exporter le registre des SKU à qualifier (Markdown)",
+                data=registre, file_name="registre_qualification_sku.md",
+                mime="text/markdown", key="export_qualification_sku",
+            )
+    else:
+        st.info("Des dossiers fiscaux existent : vérifier leur portée et leurs preuves hors de ce registre.")
+
+
 def show_admin_page():
     st.title("⚙️ Administration & Référentiels")
 
@@ -491,10 +536,10 @@ def show_admin_page():
     cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
     hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
 
-    tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations, tab_fiscal_sku = st.tabs([
         "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
         "🛍️ Produits", "📦 SKU", "📝 Listes de choix",
-        "📑 Exonérations TVA (lecture)"
+        "📑 Exonérations TVA (lecture)", "📋 Qualification TVA SKU"
     ])
 
     # --- CLIENTS ---
@@ -745,6 +790,9 @@ def show_admin_page():
     # --- DOSSIERS EXONERATIONS ---
     with tab_exonerations:
         _revue_exonerations_tva_clients()
+
+    with tab_fiscal_sku:
+        _revue_qualification_fiscale_sku()
 
 
 # ==========================================
