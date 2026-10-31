@@ -1,3 +1,14 @@
+## 31 octobre 2026 — qualification documentaire des SKU, sans taux fictifs
+
+- **Contrôle PRODUCTION en lecture seule** : `public.sku_conditionnement` contient 7 SKU actifs (SKU-001 à SKU-007), `public.erp_sku_fiscalite` est vide (0 classification). Les formats et unités réels ont été transcrits dans `docs/QUALIFICATION_SKU_PRODUCTION_20261031.md`.
+- Nouveau service privé `modules/admin/qualification_sku_service.py` : deux lectures Supabase, garde `require_security_manager()`, contrôle de pagination et d'intégrité des données, inventaire par SKU. Aucune qualification, taux ou validation attribué automatiquement.
+- Onglet Administration `📋 Qualification TVA SKU` : affiche les références actives, le nombre de dossiers documentaires et permet d'exporter un registre Markdown lorsque le tableau fiscal est vide. Repère visuel `SOF-ERP-20261031-SKU-REVUE-01`. **L'hébergement Streamlit n'est toujours pas vérifié.**
+- Les tests `tests/test_qualification_sku_service.py` couvrent refus d'accès, catalogue incohérent, panne réseau et absence d'activation fiscale ; ajoutés à la CI du lot C.
+- **Aucune migration SQL ni écriture dans Supabase**, car le besoin est une revue du catalogue, pas une modification du droit fiscal. Les migrations 031/032 restent en production et la facturation 0 % non activée. Ne pas créer de pièces, taux ou validateurs fictifs.
+- Exploitation : GitHub `main` uniquement et Supabase PRODUCTION `wenydirqtmkywbxbxfal` uniquement. L'ancienne base TEST est inactivée mais non supprimée physiquement.
+
+---
+
 ## ⚠️ Politique opérationnelle prioritaire — 30 octobre 2026
 
 **État vérifié :** `Verwolfy/erp-mortier` ne conserve que la branche `main` après suppression de **31 branches secondaires**. Le nettoyage GitHub a réussi via un workflow ponctuel, immédiatement retiré du dépôt après exécution.
