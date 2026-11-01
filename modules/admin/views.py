@@ -20,7 +20,9 @@ from modules.admin.exonerations_service import (
     est_validateur_fiscal, transition_attestation,
 )
 from modules.admin.qualification_sku_service import lister_sku_a_qualifier
-from modules.admin.nextgen_readiness_service import lister_blocages_nextgen
+from modules.admin.nextgen_readiness_service import (
+    lister_blocages_nextgen, exporter_registre_nextgen_csv,
+)
 from core.registre_qualification_sku import registre_qualification_sku
 from uuid import uuid4
 
@@ -544,6 +546,18 @@ def _revue_nextgen_preparation() -> None:
     st.warning("Activation ERP ne signifie pas autorisation de facturation ou fabrication.")
     if result["rows"]:
         st.dataframe(pd.DataFrame(result["rows"]), hide_index=True, use_container_width=True)
+        try:
+            registre_csv = exporter_registre_nextgen_csv(result)
+        except (PermissionError, ValueError, RuntimeError):
+            st.error("Export de qualification NextGen indisponible : contrôle non validé.")
+        else:
+            st.download_button(
+                "Exporter le suivi des SKU NextGen (CSV à vérifier)",
+                data=registre_csv,
+                file_name="nextgen_sku_qualification_a_verifier.csv",
+                mime="text/csv; charset=utf-8",
+                key="export_nextgen_sku_readonly",
+            )
 
 
 def show_admin_page():

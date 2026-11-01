@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from collections import Counter
+import csv
+from io import StringIO
 from typing import Any
 from core.db_service import get_supabase_client
 from core.security_service import require_security_manager
@@ -124,3 +126,39 @@ def lister_blocages_nextgen() -> dict[str, Any]:
         "autorise_fabrication": False,
         "rows": rows,
     }
+
+
+def exporter_registre_nextgen_csv(result: dict[str, Any]) -> str:
+    """Export the already-authorized inventory without prices, PII, or approvals.
+
+    This function never reads the database or changes regulatory status.
+    It rechecks SECURITY_MANAGER and rejects malformed/unbounded snapshots.
+    """
+    require_security_manager()
+    columns = ("sku_id", "pf_id", "format", "unite_vente", "blocages")
+    if not isinstance(result, dict):
+        raise ValueError("Inventaire NextGen invalide")
+    rows = result.get("rows")
+    if not isinstance(rows, list) or len(rows) > LIMITS["sku_conditionnement"]:
+        raise ValueError("Inventaire NextGen incomplet")
+    if result.get("autorise_facturation") is not False or result.get("autorise_fabrication") is not False:
+        raise ValueError("Inventaire NextGen non verrouillé")
+
+    stream = StringIO(newline="")
+    stream.write("\ufeff")  # Excel-compatible UTF-8, not an approval mark.
+    writer = csv.writer(stream, delimiter=";", lineterminator="\r\n")
+    writer.writerow((*columns, "reference_preuve_a_completer", "statut_qualification"))
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != set(columns):
+            raise ValueError("Ligne NextGen invalide")
+        values = []
+        for column in columns:
+            value = row[column]
+            if not isinstance(value, str) or not value.strip() or len(value) > 4096:
+                raise ValueError("Champ NextGen invalide")
+            # Spreadsheet formula injection: text from the database is never a formula.
+            if value.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")):
+                value = "'" + value
+            values.append(value)
+        writer.writerow((*values, "", "NON_VERIFIE"))
+    return stream.getvalue()
