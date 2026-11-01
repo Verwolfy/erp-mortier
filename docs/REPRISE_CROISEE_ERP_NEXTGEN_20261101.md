@@ -69,3 +69,14 @@
 - Aucune modification des permissions, du schéma, des prix, des secrets ou du catalogue exporté. **Le site NextGen et ses formulaires restent inactifs** ; la CI ne démontre pas que Streamlit héberge la dernière version ni qu'une protection Cloudflare Access soit opérationnelle.
 - Limite connue : les quatre lectures successives ne constituent pas un snapshot transactionnel intertables.
 - Prochaine action : audit connecté de la version Streamlit réelle, puis qualification documentaire réelle des 142 SKU. Ne pas inventer pièces, prix, TVA, densités ou fournisseurs.
+
+## Addendum Lot 13 — 01/11/2026 : réconciliation de migrations sans SQL
+
+- ERP : PR [#38](https://github.com/Verwolfy/erp-mortier/pull/38) **fusionnée** sur `main` au commit `2f35e243fc410e49bcd8ca4c99d278c871b1b73d`. Deux CI de PR vertes : [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/41326198104) et [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/41326198126). Le statut des CI du merge doit rester distinct.
+- Nouveaux fichiers ERP : `docs/migration_evidence_20261101.json` (23 migrations nominales), `scripts/auditer_preuves_migrations.py` (SHA-256 local et vérification **hors ligne**), `tests/test_auditer_preuves_migrations.py`, `docs/LOT13_AUDIT_PREUVES_MIGRATIONS.md`, et ajout à `docs/ETAT_AVANCEMENT.md`.
+- Production Supabase `wenydirqtmkywbxbxfal` : **23** entrées dans `supabase_migrations.schema_migrations` (21 ERP + 2 site), **0** entrée dans `public.schema_migrations`. Les 4 premières versions ERP (012–015) ont des archives historiquement déclarées appliquées, la version 013 en six segments ; 016–018 ont des brouillons de thème similaire ; 019–032 ont des candidats ; les 2 scripts Site repérés dans le dépôt restent des **propositions non exécutées**. Aucun hash ne prouve le SQL réellement exécuté.
+- Conseils Supabase sécurité : **86 INFO `rls_enabled_no_policy`**. Une absence de politique est compatible avec une stratégie de refus direct, à vérifier au cas par cas. Les tables sensibles citées ont RLS et n'accordent pas SELECT à `anon`/`authenticated`. **Aucune modification RLS/GRANT.**
+- Les mises à jour du tableau de bord ERP survenues parallèlement ont été conservées lors de la fusion (pas de remplacement des fichiers métier concernés).
+- **Aucune écriture Supabase**, aucun remplissage de registre, aucun déploiement Cloudflare, aucune activation de collecte, aucun SKU/tarif/TVA fictif.
+- Limite Streamlit : accès HTTP externe/DNS indisponible depuis l'environnement ; ni le déploiement de la version réelle ni l'authentification n'ont pu être vérifiés.
+- Prochaine priorité : preuve du SHA Git hébergé après connexion Streamlit ; comparaison réellement documentée version par version des migrations SQL ; qualification NextGen sur pièces vérifiées. Ne pas exécuter les fichiers SQL sur la seule base de leur nom.
