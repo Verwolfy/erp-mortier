@@ -10,17 +10,62 @@ from core.security_service import require_security_manager
 
 PREFIXES = ("BOND-", "PROOF-", "FLOW-", "PAINT-")
 LIMITS = {"produits": 200, "sku_conditionnement": 500, "matieres_premieres": 300, "erp_sku_fiscalite": 2500}
+# Explicit ordering: the fiscal table has a composite primary key.
+READ_KEYS = {
+    "produits": ("pf_id",),
+    "sku_conditionnement": ("sku_id",),
+    "matieres_premieres": ("mp_id",),
+    "erp_sku_fiscalite": ("sku_id", "date_effet"),
+}
+PAGE_SIZE = 100
 LIQUIDS = frozenset(("BIDON", "FUT", "IBC"))
 
 
 def _read(db: Any, name: str, columns: str, *, active: bool = False) -> list[dict]:
-    query = db.table(name).select(columns)
-    if active:
-        query = query.eq("actif", "OUI")
-    data = query.range(0, LIMITS[name]).execute().data
-    if not isinstance(data, list) or len(data) > LIMITS[name] or any(not isinstance(x, dict) for x in data):
-        raise RuntimeError("Référentiel NextGen incomplet ou illisible")
-    return data
+    """Read every bounded row, or fail instead of silently accepting an API cap.
+
+    Exact count and ordered pages detect most incomplete reads. A concurrent
+    update preserving count is NOT an atomic database snapshot.
+    """
+    keys = READ_KEYS[name]
+    if not set(keys).issubset(columns.split(",")):
+        raise ValueError("Clé de lecture NextGen absente")
+    max_rows = LIMITS[name]
+    data: list[dict] = []
+    seen: set[tuple] = set()
+    expected: int | None = None
+    while True:
+        # The SECURITY_MANAGER grant is checked again before each request.
+        require_security_manager()
+        query = db.table(name).select(columns, count="exact")
+        if active:
+            query = query.eq("actif", "OUI")
+        for key in keys:
+            query = query.order(key)
+        request_size = min(PAGE_SIZE, max_rows + 1 - len(data))
+        response = query.range(len(data), len(data) + request_size - 1).execute()
+        batch, total = response.data, response.count
+        if (not isinstance(batch, list) or type(total) is not int or
+                total < 0 or total > max_rows):
+            raise RuntimeError("Référentiel NextGen incomplet ou illisible")
+        if expected is None:
+            expected = total
+        if (total != expected or len(batch) > request_size or
+                len(data) + len(batch) > total or
+                (not batch and len(data) < total)):
+            raise RuntimeError("Pagination NextGen incohérente ou interrompue")
+        for row in batch:
+            if not isinstance(row, dict):
+                raise RuntimeError("Ligne NextGen invalide")
+            identifier = tuple(row.get(key) for key in keys)
+            if (any(type(value) not in (str, int) or
+                    (isinstance(value, str) and not value.strip())
+                    for value in identifier) or identifier in seen):
+                raise RuntimeError("Identifiant NextGen absent ou répété")
+            seen.add(identifier)
+        data.extend(batch)
+        if len(data) == total:
+            return data
 
 
 def _id(row: dict, field: str) -> str:
@@ -39,7 +84,7 @@ def lister_blocages_nextgen() -> dict[str, Any]:
                  "sku_id,pf_id,format,unite_vente,poids_net,facteur_conversion,prix_vente_defaut,actif",
                  active=True)
     materials = _read(db, "matieres_premieres", "mp_id,actif,fournisseurs_ids")
-    fiscal = _read(db, "erp_sku_fiscalite", "sku_id,statut")
+    fiscal = _read(db, "erp_sku_fiscalite", "sku_id,date_effet,statut")
 
     product_ids: set[str] = set()
     for row in products:
