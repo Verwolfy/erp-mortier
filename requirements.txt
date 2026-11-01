@@ -9,6 +9,8 @@ google-auth==2.29.0
 
 # --- Traitement de données ---
 pandas==2.2.0
+# PyArrow 26 exige NumPy 2, incompatible avec pandas 2.2.0.
+pyarrow==25.0.1
 openpyxl==3.1.2
 python-dateutil==2.9.0
 

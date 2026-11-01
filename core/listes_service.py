@@ -5,9 +5,13 @@ import pandas as pd
 import streamlit as st
 from core.db_service import fetch_data
 
-def get_liste(liste_code: str, parent_code: str = None) -> list:
+def get_liste(liste_code: str, parent_code: str = None, *, strict: bool = False) -> list:
     """Récupère une liste de référence active."""
-    df = pd.DataFrame(fetch_data("listes_reference"))
+    reader = fetch_data
+    if strict:
+        from core.strict_reads import fetch_data_strict
+        reader = fetch_data_strict
+    df = pd.DataFrame(reader("listes_reference"))
     if df.empty or "liste_code" not in df.columns:
         return []
 

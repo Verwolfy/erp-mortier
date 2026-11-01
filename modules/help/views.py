@@ -125,10 +125,18 @@ ou égale à la date de fin. Comparer les indicateurs aux documents sources
 avant de prendre une décision. Le P&L est une synthèse de gestion, pas un
 compte de résultat réglementaire certifié. Un pipeline commercial n'est pas
 une vente ; un règlement n'est pas nécessairement intégralement lettré.
-Une absence de données ou une lecture refusée doit être examinée avant
-d'interpréter un indicateur à zéro.
+Les lectures des Dashboards sont paginées et contrôlées. En cas de panne,
+de refus d'accès, de réponse incohérente ou de dépassement de la limite de
+consultation (10 000 lignes par lecture), la rubrique affiche une indisponibilité
+au lieu d'un total partiel. Les autres rubriques peuvent rester consultables.
+Réduire la période peut aider pour les lectures filtrées ; certains référentiels
+restent lus dans leur ensemble. Le contrôle ne constitue pas un instantané
+transactionnel de toutes les tables ni une validation comptable des calculs.
 """,
     "🛠️ Incidents et reprise": """
+**CRM et Dashboards :** le repère de lecture est SOF-ERP-20261101-READ-01.
+Un message d'indisponibilité ne signifie pas que le registre est vide.
+
 **Lecture indisponible :** noter l'écran, l'heure et le message affiché,
 puis réessayer la consultation. Ne pas remplacer les données absentes par zéro.
 **Opération incertaine :** conserver la session et l'identifiant d'opération ;
@@ -181,7 +189,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 31 octobre 2026 — SOF-ERP-20261031-GUIDE-02")
+    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-03")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")

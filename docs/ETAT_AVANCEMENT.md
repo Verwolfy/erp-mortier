@@ -1,3 +1,65 @@
+## 1 novembre 2026 — lectures fiables CRM/Dashboards et rendu graphique
+
+### Problème corrigé
+Les lectures historiques retournaient une liste vide sur panne Supabase et
+pouvaient être tronquées par la limite de l'API. CRM affichait alors un registre
+vide ; les Dashboards pouvaient calculer un zéro ou un agrégat partiel.
+
+### Intervention
+- Nouveau `core/strict_reads.py` : SELECT uniquement, tri par clé, pagination,
+  total exact vérifié à chaque page, contrôle des doublons et des pages incomplètes.
+  Une limite API inférieure aux 500 lignes demandées ne coupe plus la lecture.
+  Borne de consultation par défaut : 10 000 lignes ; dépassement = indisponibilité,
+  jamais un total partiel. Les filtres de dates sont conservés sur chaque page.
+- Contrôle des permissions serveur à chaque page et projections privées inchangés.
+  Aucun cache partagé, aucun élargissement de droits, aucune donnée serveur brute
+  dans les messages d'erreur. La pagination ne garantit pas un snapshot atomique
+  de toutes les tables : les modifications concurrentes à cardinalité constante
+  restent une limite connue.
+- CRM : pipeline, historique, clients et liste de types d'interactions utilisent
+  les lectures contrôlées. La boîte NextGen ajoutée dans les commits intervenus
+  depuis le 31/10 est préservée, avec ses drapeaux et restrictions.
+- Dashboards : les neuf rubriques isolent les erreurs de lecture ; une rubrique
+  indisponible ne coupe plus les suivantes. Les calculs métier ne sont pas changés.
+  Repère visible CRM/Dashboards : `SOF-ERP-20261101-READ-01`.
+- Guide complété sur indisponibilité, limites et pagination ; repère
+  `SOF-ERP-20261101-GUIDE-03`.
+- Installation neuve : panne de rendu reproduite avec PyArrow 26.0.0 et
+  NumPy 1.26.4 imposé par pandas 2.2.0. `requirements.txt` fixe désormais
+  PyArrow 25.0.1 ; import et conversion DataFrame → Arrow vérifiés.
+  Aucun changement de version de pandas, Supabase ou NumPy dans le dépôt.
+
+### Preuves
+- Base de travail : `bed365faea612c773d134b3e20b422fef363b44d`, changements
+  distants conservés. Aucun fichier du poste Windows modifié.
+- **2 143 tests locaux réussis**, dont 36 nouveaux cas : 1 203 lignes avec une
+  limite API de 200, erreur sur deuxième page, total variable/absent, clés
+  dupliquées, permission retirée entre pages, projections privées et dates.
+- Deux tests de rendu avec le vrai moteur Streamlit AppTest : panne Ventes =
+  trois rubriques indisponibles sans faux CA à zéro ; RH/Stocks restent rendus.
+  Pannes CRM = messages explicites, aucun faux succès ni registre vide annoncé.
+  Aucun accès Supabase ou Sheets dans ces tests.
+- `pip check`, compilation et `git diff --check` réussis. Python 3.12 local ;
+  Python 3.11 de la CI reste à contrôler après publication.
+- Lecture SQL production : pipeline 0, interactions 0, factures 1 avec une clé
+  unique. PROD ACTIVE_HEALTHY ; TEST INACTIVE, non interrogé et non réactivé.
+- Navigateur : l'ERP affiche son écran de connexion ; la session du 31/10 n'est
+  plus disponible. Le nouveau code n'est pas encore attesté dans l'hébergement.
+
+### Suite et limites
+1. Vérifier les CI du commit puis le repère READ-01 dans une session ERP connectée.
+2. Étendre progressivement ces lectures aux autres modules ; les fonctions
+   historiques de db_service restent inchangées pour éviter une rupture globale.
+3. Auditer les statuts de factures, les coûts manquants et les agrégats P&L :
+   la fiabilité du transport ne constitue pas une validation comptable/fiscale.
+4. Les lectures bornées peuvent refuser un référentiel >10 000 lignes ; prévoir
+   des agrégats SQL autorisés ou des filtres supplémentaires si le volume l'exige.
+
+**Aucune écriture métier, migration SQL, suppression ou modification de permissions.
+TEST reste en pause.**
+
+---
+
 ## 31 octobre 2026 — parcours hébergé après connexion sécurisée
 
 Cette entrée complète l'audit ci-dessous : le blocage de connexion a été levé

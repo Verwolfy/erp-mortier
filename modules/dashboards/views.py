@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import datetime
 from config.roles import has_permission
+from core.strict_reads import read_section
 from modules.dashboards.service import (
     get_kpis_direction, get_kpis_pnl, get_kpis_ventes, get_kpis_achats,
     get_kpis_stocks, get_kpis_production, get_kpis_crm,
@@ -19,6 +20,7 @@ def _mark_dashboards_activity() -> None:
 
 def show_dashboards_page():
     st.title("📊 Tableaux de bord & KPIs")
+    st.caption("Version lectures Dashboards : SOF-ERP-20261101-READ-01")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_read = has_permission(user_role, "Dashboards", "lecture")
@@ -34,7 +36,7 @@ def show_dashboards_page():
     ])
 
     # --- 1. VUE DIRECTION ---
-    with onglets[0]:
+    with onglets[0], read_section("Direction"):
         st.subheader("Santé de l'entreprise (Temps Réel)")
         kpis = get_kpis_direction()
 
@@ -46,7 +48,7 @@ def show_dashboards_page():
         st.divider()
 
     # --- 2. RENTABILITÉ (P&L) ---
-    with onglets[1]:
+    with onglets[1], read_section("Rentabilité"):
         st.subheader("Compte de Résultat Simplifié (P&L)")
         c_deb_pnl, c_fin_pnl = st.columns(2)
         date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
@@ -72,7 +74,7 @@ def show_dashboards_page():
             st.info("💡 Astuce : Pour que vos frais généraux (électricité, loyer) apparaissent ici, créez vos fournisseurs dans le module Administration avec une catégorie contenant le mot 'OPEX', puis enregistrez leurs paiements dans la Trésorerie.")
 
     # --- 3. VENTES & FACTURATION ---
-    with onglets[2]:
+    with onglets[2], read_section("Ventes"):
         st.subheader("Analyse des Ventes & Recouvrement")
         c_deb, c_fin = st.columns(2)
         date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v", on_change=_mark_dashboards_activity)
@@ -100,7 +102,7 @@ def show_dashboards_page():
                     st.dataframe(kpis_v["top_clients"], use_container_width=True, hide_index=True)
 
     # --- 4. ACHATS ---
-    with onglets[3]:
+    with onglets[3], read_section("Achats"):
         st.subheader("Analyse des Achats & Fournisseurs")
         c_deb_a, c_fin_a = st.columns(2)
         date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a", on_change=_mark_dashboards_activity)
@@ -129,7 +131,7 @@ def show_dashboards_page():
                     st.line_chart(df_evo[df_evo["mp_id"] == mp_choisie].sort_values(by="date_obj").set_index("date_obj")["prix_unitaire"])
 
     # --- 5. STOCKS ---
-    with onglets[4]:
+    with onglets[4], read_section("Stocks"):
         st.subheader("Analyse Financière des Stocks")
         jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7, on_change=_mark_dashboards_activity)
         kpis_s = get_kpis_stocks(jours_alerte_peremption=jours)
@@ -149,7 +151,7 @@ def show_dashboards_page():
             st.dataframe(kpis_s["lots_expirants"], use_container_width=True, hide_index=True) if not kpis_s["lots_expirants"].empty else st.success("Aucun risque.")
 
     # --- 6. PRODUCTION ---
-    with onglets[5]:
+    with onglets[5], read_section("Production"):
         st.subheader("Performance de Production")
         c_deb_p, c_fin_p = st.columns(2)
         date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p", on_change=_mark_dashboards_activity)
@@ -169,7 +171,7 @@ def show_dashboards_page():
                 st.bar_chart(kpis_p["repartition_statut"].set_index("Statut"))
 
     # --- 7. CRM ---
-    with onglets[6]:
+    with onglets[6], read_section("CRM"):
         st.subheader("Performance Commerciale & Pipeline")
         c_deb_c, c_fin_c = st.columns(2)
         date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c", on_change=_mark_dashboards_activity)
@@ -191,7 +193,7 @@ def show_dashboards_page():
                 st.info("Aucune opportunité gagnée sur cette période.")
 
     # --- 8. RH ---
-    with onglets[7]:
+    with onglets[7], read_section("RH"):
         st.subheader("Ressources Humaines")
         kpis_r = get_kpis_rh(pd.Timestamp("2000-01-01"), pd.Timestamp("2100-01-01"))
 
@@ -207,7 +209,7 @@ def show_dashboards_page():
             st.info("Aucune donnée d'employés.")
 
     # --- 9. FINANCE ---
-    with onglets[8]:
+    with onglets[8], read_section("Finance"):
         st.subheader("Flux de Trésorerie & Rapprochement")
         c_deb_f, c_fin_f = st.columns(2)
         date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f", on_change=_mark_dashboards_activity)

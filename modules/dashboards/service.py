@@ -5,7 +5,8 @@ Interroge directement Supabase (SQL) via des filtres de dates pour des performan
 """
 import pandas as pd
 from datetime import timedelta
-from core.db_service import fetch_data, fetch_data_by_date_range
+from core.strict_reads import (fetch_data_strict as fetch_data,
+                               fetch_data_by_date_range_strict as fetch_data_by_date_range)
 from core.utils import get_local_now
 
 def charger_donnees(table_name: str) -> pd.DataFrame:

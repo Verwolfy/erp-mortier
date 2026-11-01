@@ -4,7 +4,7 @@ Interface utilisateur du module CRM.
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
-from core.db_service import fetch_data
+from core.strict_reads import fetch_data_strict as fetch_data, read_section
 from core.listes_service import get_liste, liste_to_dict
 from modules.crm.service import create_opportunite, create_interaction, get_pipeline, get_interactions
 from modules.crm.site_requests import inbox_enabled, list_requests_readonly, MAX_ROWS
@@ -20,13 +20,14 @@ def get_clients_actifs():
 
 def show_crm_page():
     st.title("🤝 CRM & Relation Client")
+    st.caption("Version lectures CRM : SOF-ERP-20261101-READ-01")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_write = has_permission(user_role, "CRM", "ecriture")
 
     tab1, tab2, tab3, tab4 = st.tabs(["🎯 Pipeline (Opportunités)", "📞 Consigner une interaction", "📋 Historique des échanges", "🌐 Demandes NextGen"])
 
-    with tab1:
+    with tab1, read_section("Pipeline"):
         st.subheader("Gestion du Pipeline")
         if can_write:
             with st.expander("➕ Nouvelle Opportunité"):
@@ -55,7 +56,7 @@ def show_crm_page():
         else:
             st.info("Aucune opportunité en cours.")
 
-    with tab2:
+    with tab2, read_section("Clients CRM"):
         st.subheader("Consigner une Interaction")
         df_clients = get_clients_actifs()
 
@@ -70,7 +71,7 @@ def show_crm_page():
                 client_choisi = c_cli.selectbox("Client concerné", options=list(liste_clients.keys()), format_func=lambda x: liste_clients[x])
 
                 # Utilisation du format PascalCase
-                dict_types = liste_to_dict(get_liste("TypeInteractionCRM"))
+                dict_types = liste_to_dict(get_liste("TypeInteractionCRM", strict=True))
                 if not dict_types:
                     dict_types = {"Appel": "Appel", "Email": "Email", "Visite": "Visite", "Relance": "Relance"}
                 type_action = c_type.selectbox("Type d'action", options=list(dict_types.keys()), format_func=lambda x: dict_types.get(x, x))
@@ -85,7 +86,7 @@ def show_crm_page():
                     st.success("Interaction enregistrée !")
                     st.rerun()
 
-    with tab3:
+    with tab3, read_section("Historique CRM"):
         st.subheader("Historique des Interactions")
         df_int = get_interactions()
         if not df_int.empty:

@@ -5,7 +5,8 @@ Conforme au schéma docs/schema_reference.md.
 Lecture Supabase, Écriture hybride (Supabase + Google Sheets).
 """
 import pandas as pd
-from core.db_service import fetch_data, insert_hybrid
+from core.db_service import insert_hybrid
+from core.strict_reads import fetch_data_strict as fetch_data
 from core.utils import generate_unique_id, generate_technical_id, get_local_now
 
 def get_pipeline() -> pd.DataFrame:
