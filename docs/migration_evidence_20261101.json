@@ -1,0 +1,286 @@
+{
+  "project_ref": "wenydirqtmkywbxbxfal",
+  "captured_on": "2026-11-01",
+  "source": "supabase_migrations.schema_migrations (version, name) — lecture seule",
+  "warning": "Une version enregistrée et un candidat portant le même numéro ne prouvent jamais une correspondance SQL identique.",
+  "migrations": [
+    {
+      "version": "20261027200803",
+      "name": "erp_012_harden_principale_grants",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027200803_erp_012_harden_principale_grants.sql",
+          "category": "declared_archive"
+        }
+      ]
+    },
+    {
+      "version": "20261027201418",
+      "name": "erp_013_security_tables_and_rpc",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201418_00_tables.sql",
+          "category": "declared_archive"
+        },
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201418_01_erp_auth_begin.sql",
+          "category": "declared_archive"
+        },
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201418_02_erp_auth_finish.sql",
+          "category": "declared_archive"
+        },
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201418_03_erp_security_add_permission.sql",
+          "category": "declared_archive"
+        },
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201418_04_erp_security_create_user.sql",
+          "category": "declared_archive"
+        },
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201418_05_erp_security_is_manager.sql",
+          "category": "declared_archive"
+        }
+      ]
+    },
+    {
+      "version": "20261027201513",
+      "name": "erp_014_sales_order_security_fix",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201513_erp_014_sales_order_security_fix.sql",
+          "category": "declared_archive"
+        }
+      ]
+    },
+    {
+      "version": "20261027201607",
+      "name": "erp_015_auto_rls_trigger",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/supabase_applied/20261027201607_erp_015_auto_rls_trigger.sql",
+          "category": "declared_archive"
+        }
+      ]
+    },
+    {
+      "version": "20261028203753",
+      "name": "erp_016_registre_reglementaire_20261028",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/012_reglementation_registre.sql",
+          "category": "thematic_draft"
+        }
+      ]
+    },
+    {
+      "version": "20261028203801",
+      "name": "erp_017_scf_journal_private_20261028",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/014_scf_journal.sql",
+          "category": "thematic_draft"
+        }
+      ]
+    },
+    {
+      "version": "20261028203807",
+      "name": "erp_018_paie_privee_20261028",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/015_paie_privee.sql",
+          "category": "thematic_draft"
+        }
+      ]
+    },
+    {
+      "version": "20261028204352",
+      "name": "erp_019_indexes_scf_paie_20261028",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/019_indexes_scf_paie.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029085429",
+      "name": "erp_020_recus_internes_20261029",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/020_recus_internes.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029101828",
+      "name": "erp_021_referentiels_officiels_dgi_scf_20261029",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/021_referentiels_2026_officiels.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029112102",
+      "name": "erp_022_qualification_tva_sku_20261029",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/022_qualification_tva_sku.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029112232",
+      "name": "erp_023_tva_sku_acl_lecture_20261029",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/023_tva_sku_acl_lecture.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029131913",
+      "name": "erp_024_cnas_references_documentaires_20261029",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/024_references_cnas_generales_2026.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029200156",
+      "name": "erp_025_attestations_exoneration_client",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/025_attestations_exoneration_client.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029201625",
+      "name": "erp_026_cycle_validation_exoneration_client",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/026_cycle_validation_exoneration_client.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029202954",
+      "name": "erp_027_circuit_admin_exonerations",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/027_circuit_admin_exonerations.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029204104",
+      "name": "erp_028_statut_habilitation_fiscale",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/028_statut_habilitation_fiscale.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029210253",
+      "name": "erp_029_recontrole_client_skus_validation",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/029_recontrole_client_skus_validation.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261029210305",
+      "name": "erp_030_journal_acteur_metier_exoneration",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/030_journal_acteur_metier_exoneration.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261030155229",
+      "name": "erp_031_precontrole_exoneration_vente",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/031_precontrole_exoneration_vente.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261030164230",
+      "name": "erp_032_factures_garde_exonerations_historique",
+      "files": [
+        {
+          "repo": "erp",
+          "path": "sql/032_factures_garde_exonerations_historique.sql",
+          "category": "candidate_unverified"
+        }
+      ]
+    },
+    {
+      "version": "20261031204336",
+      "name": "nextgen_site_publication_private_20261031",
+      "files": [
+        {
+          "repo": "site",
+          "path": "sql/001_site_publication_PROPOSITION_NON_EXECUTEE.sql",
+          "category": "proposal_not_executed"
+        }
+      ]
+    },
+    {
+      "version": "20261031220121",
+      "name": "nextgen_site_demandes_private_20261031",
+      "files": [
+        {
+          "repo": "site",
+          "path": "sql/003_site_demandes_PROPOSITION_NON_EXECUTEE.sql",
+          "category": "proposal_not_executed"
+        }
+      ]
+    }
+  ]
+}
