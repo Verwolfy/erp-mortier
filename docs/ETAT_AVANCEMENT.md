@@ -12,7 +12,9 @@
 - **2 271 tests locaux réussis**, dont 19 nouveaux cas ciblés ; un avertissement gotrue préexistant. Aucun accès serveur depuis ces tests.
 - Streamlit AppTest : Dashboards vides et pannes isolées, 12 rubriques du guide sans exception. Compilation et `git diff --check` réussis.
 - Références métier : création/réception des commandes dans SQL 004 ; comptes Banque/Caisse et flux validés dans SQL 006. Aucun barème ou traitement fiscal inventé.
-- CI à vérifier après publication. Déploiement Streamlit interne non attesté : dernière observation sur l’écran de connexion.
+- Commit `a88d3643642db4215bc82b23ff6bf5f2ccd2a450` : [audit GitHub réussi](https://github.com/Verwolfy/erp-mortier/actions/runs/41327161225) et [tests facturation/suite complète réussis](https://github.com/Verwolfy/erp-mortier/actions/runs/41327161202).
+- AppTest supplémentaire avec jeu non vide fictif : trésorerie Direction et rendu Finance sans exception, solde attendu vérifié.
+- Déploiement Streamlit interne non attesté : dernière observation sur l’écran de connexion.
 - Aucune écriture Supabase, migration, suppression, transaction métier ou modification de permissions. TEST non sollicité, conservé en pause.
 
 ### Suite
