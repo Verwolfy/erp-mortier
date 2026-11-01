@@ -34,7 +34,9 @@
 - **2 237 tests locaux réussis**, dont 29 nouveaux cas : changement d'année, février bissextile, périodes partielles, montants absents, fournisseur inconnu/doublonné, paiements annulés, intégration au P&L. Un avertissement gotrue préexistant.
 - Rendu Streamlit AppTest du Dashboard vide et des pannes de lecture réussi ; compilation et `git diff --check` réussis.
 - Tests exclusivement locaux, aucun accès de test à Supabase. Aucune transaction métier, migration, suppression ou modification des droits. TEST non sollicité, reste en pause.
-- CI à contrôler après publication. Dernier constat hébergé : écran de connexion ; version interne non attestée.
+- Commit `6461fe7679c4406bf5ce76d05e8cba02c4fbf103` : [audit GitHub réussi](https://github.com/Verwolfy/erp-mortier/actions/runs/41326237528). [Workflow facturation](https://github.com/Verwolfy/erp-mortier/actions/runs/41326237661) marqué cancelled après une mise à jour concurrente de main, mais toutes ses étapes (socle fiscal, suite complète, compilation et post-traitements) sont success. Les relances suivantes ont aussi été annulées par des mises à jour concurrentes : ne pas présenter ces runs comme verts.
+- AppTest supplémentaire : mois partiel = P&L indisponible sans bloquer RH ; mois complet = calcul attendu. Les 12 rubriques du guide rendent sans exception.
+- Dernier constat hébergé : écran de connexion ; version interne non attestée.
 
 ### Prochaines actions
 1. Contrôler les Actions et vérifier KPI-03 après authentification dans l'ERP.
