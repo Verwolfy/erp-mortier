@@ -1,3 +1,26 @@
+## 1 novembre 2026 — Lot 12 : inventaire NextGen paginé sans faux complet
+
+### Résultat
+- **Défaut réel corrigé** : le diagnostic des SKU reposait sur une seule requête PostgREST `range(0,limite)` et pouvait accepter une réponse plafonnée par l'API comme inventaire complet.
+- PR [#37](https://github.com/Verwolfy/erp-mortier/pull/37) fusionnée sur `main` : commit `6dfbf7005bb2f4196f9ccfe20950706a587eb6f6`.
+- `modules/admin/nextgen_readiness_service.py` : pages ordonnées de 100 lignes demandées, `count=exact`, offsets progressifs sur les lignes effectivement reçues, comparaison des totaux entre pages, contrôle des doublons et limites des quatre tables, révérification `SECURITY_MANAGER` avant toute page.
+- Clés SQL respectées : `pf_id`, `sku_id`, `mp_id` et, pour `erp_sku_fiscalite`, la clé **composée `sku_id, date_effet`**.
+- `tests/test_nextgen_readiness.py` : nouvelles vérifications des plafonds API (142 SKU, pages limitées à 17), compte exact absent ou variable, page intermédiaire vide, dates fiscales distinctes, doublons, révocation de permission. Documentation `docs/LOT12_NEXTGEN_LECTURES_EXHAUSTIVES.md` et guide actualisés.
+- GitHub CI vérifiées **sur la PR et sur `main` fusionné** : [audit complet réussi](https://github.com/Verwolfy/erp-mortier/actions/runs/41325282927), [tests lot C réussis](https://github.com/Verwolfy/erp-mortier/actions/runs/41325283076). Aucun échec sur ces deux runs.
+
+### Lecture Supabase PRODUCTION
+- Contrôles inoffensifs du 01/11/2026 : 50 produits actifs, 142 SKU actifs, 119 matières premières, zéro dossier `erp_sku_fiscalite` ; clés primaires vérifiées dans `pg_constraint`.
+- Aucun SQL de modification, aucun RLS/GRANT, aucune création de données, aucun déploiement Cloudflare.
+- Les volumes inférieurs aux limites du service ne garantissent pas la disponibilité du réseau ni un snapshot transactionnel intertables.
+
+### Suite
+1. Vérifier après authentification que l'ERP Streamlit hébergé utilise bien un commit contenant ce correctif ; sans accès à la session, la CI ne prouve pas le déploiement.
+2. Recueillir les preuves réelles (tarifs, documents fiscaux, densités, compositions de kits) pour les SKU NextGen ; ne jamais convertir `NON_VERIFIE` en homologation automatique.
+3. Continuer l'audit de correspondance des 23 migrations natives Supabase, sans rejeu ni modification des ACL.
+4. Préproduction du site toujours NO-GO sans protection Cloudflare Access et validation juridique.
+
+---
+
 ## 1 novembre 2026 — Lot 11 : export contrôlé du suivi NextGen et audit migrations
 
 ### Réalisé
