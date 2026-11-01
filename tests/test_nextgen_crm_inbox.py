@@ -16,7 +16,7 @@ UID = "00000000-0000-4000-8000-000000000001"
 @pytest.fixture
 def env(monkeypatch):
     st = types.ModuleType("streamlit")
-    st.secrets = {"nextgen": {"crm_inbox_read_enabled": True}}
+    st.secrets = {"nextgen": {"crm_inbox_read_enabled": True, "privacy_review_approved": True}}
     st.session_state = {"authenticated": True, "user": {"user_id": "U1", "role": "ADMIN"}}
     roles = types.ModuleType("config.roles")
     roles.has_permission = Mock(return_value=True)
@@ -146,3 +146,22 @@ def test_ui_is_read_only_and_tab_present():
     assert "create_interaction(" not in segment
     assert ".insert(" not in segment and ".update(" not in segment
     assert "form_submit_button(" not in segment
+
+
+@pytest.mark.parametrize("approval", [None, False, "true", 1])
+def test_privacy_review_approval_is_distinct_required_gate(env, approval):
+    env.st.secrets = {"nextgen": {"crm_inbox_read_enabled": True}}
+    if approval is not None:
+        env.st.secrets["nextgen"]["privacy_review_approved"] = approval
+    assert env.m.inbox_enabled() is False
+    with pytest.raises(PermissionError):
+        env.m.list_requests_readonly()
+    env.db.get_supabase_client.assert_not_called()
+
+
+def test_mapping_compatible_with_streamlit_secret_wrappers(env):
+    from types import MappingProxyType
+    env.st.secrets = {"nextgen": MappingProxyType({
+        "crm_inbox_read_enabled": True, "privacy_review_approved": True
+    })}
+    assert env.m.inbox_enabled() is True
