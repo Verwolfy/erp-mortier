@@ -24,3 +24,7 @@ Date : 2026-11-01.
 2. Audit de la gestion de la clé \`service_role\` et restriction des privilèges d'écriture préalablement à une éventuelle consultation nominative.
 3. Consultation détaillée et qualification humaine : V2, non implémentée.
 4. Activer le drapeau serveur uniquement avec la validation adaptée ; ne jamais exposer les secrets à Astro ou aux journaux.
+
+## Lot 6 — Verrou additionnel (2026-11-01)
+
+Le drapeau d'activation exige maintenant **deux booléens serveur strictement vrais** : `nextgen.crm_inbox_read_enabled = true` ET `nextgen.privacy_review_approved = true`. Les chaînes `'true'` ne sont pas acceptées. Aucun de ces drapeaux n'a été activé en production. La revue de confidentialité n'est pas encore approuvée ; la clé `privacy_review_approved` ne doit PAS être configurée tant que cette revue n'a pas été signée. Ce contrôle applicatif n'équivaut pas à une conformité légale.

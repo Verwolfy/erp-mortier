@@ -6,6 +6,7 @@ ni d'accès à la table tant qu'un drapeau serveur n'est pas activé.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 
 import streamlit as st
 from config.roles import has_permission
@@ -22,7 +23,9 @@ def inbox_enabled() -> bool:
     """Doit être explicitement true dans les secrets serveur Streamlit."""
     try:
         cfg = st.secrets.get("nextgen", {})
-        return isinstance(cfg, dict) and cfg.get("crm_inbox_read_enabled") is True
+        return (isinstance(cfg, Mapping) and
+                cfg.get("crm_inbox_read_enabled") is True and
+                cfg.get("privacy_review_approved") is True)
     except Exception:
         return False
 
