@@ -13,7 +13,8 @@
 - **2 208 tests locaux réussis**, dont 29 nouveaux cas de calcul/rendu ; un avertissement de dépréciation gotrue préexistant.
 - Tests Streamlit AppTest réels en processus isolés : panne de lecture sans faux chiffre et jeu vide sans exception. Données fictives exclusivement locales ; aucun accès serveur pendant les tests.
 - `pip check`, compilation des modules modifiés et `git diff --check` réussis.
-- CI du nouveau commit à contrôler après publication. Le dernier constat navigateur reste l'écran de connexion : déploiement hébergé non attesté.
+- Commit publié : `9914b0dcf78da302ebe1f11f090b12c950ef46df`. Actions réussies : [tests facturation et suite ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/41325741166), [audit de réconciliation et suite ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/41325741288).
+- Les 12 rubriques du guide rendent sans exception sous Streamlit AppTest. Nouvelle ouverture du site hébergé : écran de connexion ERP, déploiement des écrans internes non attesté.
 - Aucune écriture Supabase, transaction métier, migration, suppression ou modification de permissions. Projet TEST non sollicité, conservé en pause.
 
 ### Suite
