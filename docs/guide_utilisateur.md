@@ -149,3 +149,11 @@ FOIRE AUX QUESTIONS (Dépannage)
 - Pas d'attribution d'ADMIN/SUPERADMIN ou de droits Administration via les formulaires.
 - Pour corriger/reprendre une opération incertaine, vérifier l'état SQL avant toute nouvelle tentative.
 - Ne jamais copier les secrets ou la clé service_role du projet TEST dans la production.
+
+## Export du suivi NextGen — réservé au SECURITY_MANAGER (lot 11)
+- Ouvrir **Administration → Qualification TVA SKU → NextGen — préparation des SKU et matières**.
+- Consulter les blocages ; le registre CSV devient téléchargeable **uniquement après lecture complète et autorisée** du référentiel privé.
+- Le CSV indique les références, formats et blocages constatés ; sa colonne `reference_preuve_a_completer` est vide et son statut reste **NON_VERIFIE**. Ne jamais diffuser ce fichier de travail publiquement.
+- Rassembler les documents justificatifs par référence (preuve fournisseur, fiche de densité, composition des kits, conditions tarifaires, fondement fiscal), puis faire examiner les pièces par les responsables habilités. Aucun prix, taux ou statut n'est mis à jour par cet export.
+- Si le diagnostic ou l'export échoue, **ne pas interpréter une absence d'affichage comme une conformité** et signaler l'indisponibilité au responsable de sécurité.
+- Ce registre ne donne aucun droit de publier un produit sur le site, de fabriquer, de facturer ou d'activer la collecte NextGen.
