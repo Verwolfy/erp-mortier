@@ -21,6 +21,7 @@ jobs:
           python - <<'PY'
           import os
           import urllib.request
+          import urllib.error
           from urllib.parse import urlsplit
 
           url = 'https://nextgent-erp.streamlit.app/'
@@ -38,6 +39,9 @@ jobs:
                   else:
                       result = 'Non confirmé'
                       reason = f'HTTP {status} ; hôte final conforme : {host == "nextgent-erp.streamlit.app"}'
+          except urllib.error.HTTPError as exc:
+              result = 'Non confirmé'
+              reason = f'HTTP {exc.code} (sans authentification)'
           except Exception as exc:
               result = 'Non confirmé'
               reason = f'Échec réseau : {type(exc).__name__}'
