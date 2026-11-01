@@ -1,3 +1,25 @@
+## 1 novembre 2026 — Lot 11 : export contrôlé du suivi NextGen et audit migrations
+
+### Réalisé
+- PR [#36](https://github.com/Verwolfy/erp-mortier/pull/36) fusionnée sur `main` par merge non destructif ; commit `81a0ebc68ebb220ed75b45635381d28919cfce68`.
+- Ajout du générateur CSV `exporter_registre_nextgen_csv` et du bouton réservé au `SECURITY_MANAGER`. Le service revalide l'habilitation ; liste à cinq champs métier, deux colonnes de suivi sans preuve préremplie et statut `NON_VERIFIE`. Rejet des lignes invalides, des autorisations implicites et des formules de tableur.
+- Tests NextGen étendus et `docs/LOT11_NEXTGEN_EXPORT_SUIVI.md` + `docs/guide_utilisateur.md` actualisés. Aucun CSV privé ni tarif n'a été committé.
+- GitHub Actions **sur la branche PR** : [suite complète + réconciliation réussies](https://github.com/Verwolfy/erp-mortier/pull/36). Les deux vérifications du merge `81a0ebc` restent à contrôler séparément au moment de cette entrée.
+
+### Audit Supabase en lecture seule
+- PRODUCTION : 23 versions dans `supabase_migrations.schema_migrations` (**21 ERP + 2 site**), tandis que `public.schema_migrations` contient 0 ligne. L'historique SQL natif n'est pas vide.
+- Racine `sql/` de l'ERP : 48 entrées dont scripts de préflight, rollback, brouillons et répertoires. `sql/supabase_applied/` contient des sources historiques ; il faut prouver correspondances de contenu et empreintes avant toute régularisation.
+- Catalogue privé site : 50 produits ; vue publiable : zéro ; demandes : zéro. Qualification NextGen : 142 SKU actifs, 142 sans tarif et dossier fiscal, 7 kits, 48 liquides sans conversion, `PROOF-PU-SEAL` sans SKU.
+- **Aucune DDL ou écriture de données**, aucune RLS/GRANT modifiée, aucun secret, aucune publication de produit ou collecte activée. Projet TEST inactif.
+
+### Suite
+1. Confirmer les CI du merge puis observer le commit réellement déployé dans Streamlit après connexion.
+2. Qualifier les SKU sur pièces source dans le circuit interne ; le CSV ne donne aucun droit de fabriquer/facturer/publier.
+3. Reconstituer le catalogue de migrations par preuve de contenu et comportement, sans rejouer les brouillons.
+4. Site Cloudflare : aucune activation avant protection Access et revue juridique distinctes.
+
+---
+
 ## 1 novembre 2026 — lectures fiables CRM/Dashboards et rendu graphique
 
 ### Problème corrigé
