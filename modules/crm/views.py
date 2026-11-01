@@ -7,6 +7,7 @@ from config.roles import has_permission
 from core.db_service import fetch_data
 from core.listes_service import get_liste, liste_to_dict
 from modules.crm.service import create_opportunite, create_interaction, get_pipeline, get_interactions
+from modules.crm.site_requests import inbox_enabled, list_requests_readonly, MAX_ROWS
 
 def _mark_crm_activity() -> None:
     """Signale une interaction sans renouvellement direct."""
@@ -23,7 +24,7 @@ def show_crm_page():
     user_role = st.session_state.get("user", {}).get("role", "")
     can_write = has_permission(user_role, "CRM", "ecriture")
 
-    tab1, tab2, tab3 = st.tabs(["🎯 Pipeline (Opportunités)", "📞 Consigner une interaction", "📋 Historique des échanges"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Pipeline (Opportunités)", "📞 Consigner une interaction", "📋 Historique des échanges", "🌐 Demandes NextGen"])
 
     with tab1:
         st.subheader("Gestion du Pipeline")
@@ -91,3 +92,33 @@ def show_crm_page():
             st.dataframe(df_int.sort_values(by="date_creation", ascending=False), use_container_width=True)
         else:
             st.info("Aucun historique disponible.")
+
+    with tab4:
+        st.subheader("Demandes reçues du site NextGen")
+        st.caption("Consultation technique non nominative. Aucune conversion client automatique.")
+        if not inbox_enabled():
+            st.info("Fonction préparée, en attente de validation confidentialité et d'activation par l'administrateur.")
+        else:
+            try:
+                demandes, suite = list_requests_readonly()
+            except PermissionError:
+                st.error("Accès aux demandes refusé. Vérifiez votre habilitation CRM.")
+            except Exception:
+                # Ne jamais inclure la réponse Supabase, une clé ou des données personnelles.
+                st.error("Lecture des demandes indisponible. Aucune donnée affichée.")
+            else:
+                if not demandes:
+                    st.info("Aucune demande NextGen enregistrée.")
+                else:
+                    affichage = pd.DataFrame(demandes).rename(columns={
+                        "demande_id": "Identifiant technique",
+                        "type_demande": "Type",
+                        "statut": "Statut",
+                        "cree_le": "Créée le",
+                    })
+                    st.dataframe(affichage, use_container_width=True, hide_index=True)
+                    if suite:
+                        st.warning(
+                            f"Affichage limité aux {MAX_ROWS} demandes les plus récentes. "
+                            "L'ensemble de l'historique n'est pas affiché."
+                        )
