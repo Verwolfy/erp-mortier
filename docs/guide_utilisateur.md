@@ -166,3 +166,7 @@ FOIRE AUX QUESTIONS (Dépannage)
 - Si la base renvoie un total incertain, si un enregistrement est incohérent ou si les droits sont retirés durant la lecture, le tableau et l'export sont indisponibles ; cela ne signifie **jamais** qu'il n'existe aucun blocage.
 - Le contrôleur doit relancer la consultation une fois les données disponibles. L'inventaire n'est pas une photographie transactionnelle de plusieurs tables ; éviter de modifier simultanément les références pendant la revue.
 - Aucune création de SKU, statut fiscal ou autorisation de publication n'est déclenchée.
+
+## Indicateurs KPI-04
+- Retards Achats globaux conservés sur période vide ; échéance du jour non en retard.
+- Trésorerie indicative : Banque/Caisse uniquement, soldes initiaux + règlements VALIDE jusqu’à aujourd’hui. Indépendante du filtre des flux ; hors autres écritures, sans rapprochement bancaire. Soldes initiaux non datés dans le référentiel.

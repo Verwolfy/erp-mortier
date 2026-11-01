@@ -9,8 +9,9 @@ from core.strict_reads import (fetch_data_strict as fetch_data,
                                fetch_data_by_date_range_strict as fetch_data_by_date_range)
 from core.utils import get_local_now
 from core.indicateurs_factures import (validated_documents, in_period, client_invoices,
-                                      open_receivables, ageing_balance, numeric_values)
+                                      open_receivables, ageing_balance, numeric_values, dates)
 from core.strict_reads import DataReadError
+from core.indicateurs_tresorerie import validated_payments, cash_balances
 from core.indicateurs_charges import payroll_net_for_period, supplier_operating_payments
 
 def charger_donnees(table_name: str) -> pd.DataFrame:
@@ -28,15 +29,7 @@ def get_kpis_direction() -> dict:
     # 2. Trésorerie
     df_cpt = charger_donnees("comptes")
     df_reg = charger_donnees("reglements")
-    treso_dispo = 0.0
-
-    if not df_cpt.empty and "solde_initial" in df_cpt.columns:
-        treso_dispo += pd.to_numeric(df_cpt["solde_initial"], errors="coerce").fillna(0).sum()
-
-    if not df_reg.empty and "montant_total" in df_reg.columns and "type_flux" in df_reg.columns:
-        df_reg["montant_total"] = pd.to_numeric(df_reg["montant_total"], errors="coerce").fillna(0)
-        treso_dispo += df_reg[df_reg["type_flux"] == "ENCAISSEMENT"]["montant_total"].sum()
-        treso_dispo -= df_reg[df_reg["type_flux"] == "DECAISSEMENT"]["montant_total"].sum()
+    treso_dispo = cash_balances(df_cpt, validated_payments(df_reg), now)['solde'].sum()
 
     # 3. Alertes Stock (Matières Premières sous seuil)
     df_stock_mp = charger_donnees("stock_actuel")
@@ -136,30 +129,27 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_periode = pd.DataFrame(fetch_data_by_date_range("commandes_achats", "date_commande", start_str, end_str))
     df_lignes = charger_donnees("lignes_achats")
 
-    if df_periode.empty:
-        return {"montant_total": 0.0, "commandes_retard": 0, "repartition_fournisseurs": pd.DataFrame(), "evolution_prix": pd.DataFrame()}
-
+    montant_total = 0.0
     col_montant = "montant_total_local" if "montant_total_local" in df_periode.columns else "montant_total"
-    if col_montant in df_periode.columns:
-        df_periode[col_montant] = pd.to_numeric(df_periode[col_montant], errors="coerce").fillna(0)
-
-    montant_total = df_periode[col_montant].sum()
+    if not df_periode.empty:
+        df_periode[col_montant] = numeric_values(df_periode, col_montant)
+        montant_total = df_periode[col_montant].sum()
 
     # Retards globaux
-    now = pd.Timestamp(get_local_now()).tz_localize(None)
-    if not df_cmd.empty and "date_voulue" in df_cmd.columns:
-        df_cmd["date_voulue_obj"] = pd.to_datetime(df_cmd["date_voulue"], errors="coerce").dt.tz_localize(None)
-        mask_retard = (df_cmd["date_voulue_obj"] < now)
-        if "statut" in df_cmd.columns:
-            mask_retard = mask_retard & (~df_cmd["statut"].isin(["RECEPTIONNE", "TERMINE", "ANNULE"]))
-        commandes_retard = len(df_cmd[mask_retard])
-    else:
-        commandes_retard = 0
+    now = pd.Timestamp(get_local_now()).tz_localize(None).normalize()
+    commandes_retard = 0
+    if not df_cmd.empty:
+        if 'statut' not in df_cmd or not df_cmd['statut'].isin([
+                'EN_ATTENTE','PARTIELLEMENT_RECEPTIONNE','RECEPTIONNE','TERMINE','ANNULE']).all():
+            raise DataReadError('Statut de commande non reconnu')
+        pending = df_cmd.loc[df_cmd['statut'].isin(['EN_ATTENTE','PARTIELLEMENT_RECEPTIONNE'])]
+        if not pending.empty:
+            commandes_retard = int((dates(pending, 'date_voulue') < now).sum())
 
     repartition = df_periode.groupby("fournisseur_id")[col_montant].sum().reset_index().sort_values(by=col_montant, ascending=False) if not df_periode.empty and "fournisseur_id" in df_periode.columns else pd.DataFrame()
 
     evolution_prix = pd.DataFrame()
-    if not df_lignes.empty and "commande_achat_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
+    if not df_periode.empty and not df_lignes.empty and "commande_achat_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
         df_lignes["prix_unitaire"] = pd.to_numeric(df_lignes["prix_unitaire"], errors="coerce").fillna(0)
         df_periode["date_obj"] = pd.to_datetime(df_periode["date_commande"], errors="coerce").dt.tz_localize(None)
         df_merge = pd.merge(df_lignes, df_periode[["commande_achat_id", "date_obj"]], on="commande_achat_id", how="inner")
@@ -312,47 +302,17 @@ def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     return {"effectif_actif": effectif_actif, "repartition_service": repart_service, "conges_attente": conges_attente}
 
 def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    start_str = date_debut.strftime("%Y-%m-%d")
-    end_str = date_fin.strftime("%Y-%m-%d")
-
-    df_cpt = charger_donnees("comptes")
-    df_periode = pd.DataFrame(fetch_data_by_date_range("reglements", "date_reglement", start_str, end_str))
-
-    repartition_comptes = pd.DataFrame()
-    if not df_cpt.empty:
-        if "solde_initial" in df_cpt.columns:
-            df_cpt["solde"] = pd.to_numeric(df_cpt["solde_initial"], errors="coerce").fillna(0)
-        else:
-            df_cpt["solde"] = 0.0
-
-        if "nom_compte" in df_cpt.columns and "type_compte" in df_cpt.columns:
-            repartition_comptes = df_cpt[["nom_compte", "solde", "type_compte"]].copy()
-
-    flux_entrants = 0.0
-    flux_sortants = 0.0
-    taux_lettrage = 0.0
-
-    if not df_periode.empty:
-        for col in ["montant_total", "montant_alloue"]:
-            if col in df_periode.columns:
-                df_periode[col] = pd.to_numeric(df_periode[col], errors="coerce").fillna(0)
-            else:
-                df_periode[col] = 0.0
-
-        if "type_flux" in df_periode.columns:
-            flux_entrants = df_periode[df_periode["type_flux"] == "ENCAISSEMENT"]["montant_total"].sum()
-            flux_sortants = df_periode[df_periode["type_flux"] == "DECAISSEMENT"]["montant_total"].sum()
-
-            encaiss_periode = df_periode[df_periode["type_flux"] == "ENCAISSEMENT"]
-            montant_encaiss = encaiss_periode["montant_total"].sum()
-            montant_lettre = encaiss_periode["montant_alloue"].sum()
-
-            if montant_encaiss > 0:
-                taux_lettrage = (montant_lettre / montant_encaiss) * 100
-
+    accounts = charger_donnees("comptes")
+    payments = validated_payments(charger_donnees("reglements"))
+    balances = cash_balances(accounts, payments, get_local_now())
+    period = payments.loc[payments['date_obj'].between(
+        pd.Timestamp(date_debut).tz_localize(None).normalize(),
+        pd.Timestamp(date_fin).tz_localize(None).normalize())]
+    incoming = period.loc[period['type_flux'] == 'ENCAISSEMENT']
+    total_in = incoming['montant_total'].sum()
+    total_out = period.loc[period['type_flux'] == 'DECAISSEMENT', 'montant_total'].sum()
     return {
-        "repartition_comptes": repartition_comptes,
-        "flux_entrants": flux_entrants,
-        "flux_sortants": flux_sortants,
-        "taux_lettrage": taux_lettrage
+        "repartition_comptes": balances, "flux_entrants": total_in,
+        "flux_sortants": total_out,
+        "taux_lettrage": incoming['montant_alloue'].sum() / total_in * 100 if total_in else 0.0,
     }

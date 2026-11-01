@@ -20,7 +20,7 @@ def _mark_dashboards_activity() -> None:
 
 def show_dashboards_page():
     st.title("📊 Tableaux de bord & KPIs")
-    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261101-KPI-03")
+    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261101-KPI-04")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_read = has_permission(user_role, "Dashboards", "lecture")
@@ -39,11 +39,12 @@ def show_dashboards_page():
     with onglets[0], read_section("Direction"):
         st.subheader("Santé de l'entreprise (Temps Réel)")
         st.caption("Facturation brute : factures clients validées, hors avoirs, brouillons et annulations.")
+        st.caption("Trésorerie : Banque/Caisse, soldes initiaux + règlements validés jusqu’à aujourd’hui ; hors autres écritures et rapprochement bancaire.")
         kpis = get_kpis_direction()
 
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Facturation brute HT du mois", f"{kpis['ca_mois']:,.2f} DZD")
-        col2.metric("Trésorerie Disponible", f"{kpis['tresorerie']:,.2f} DZD")
+        col2.metric("Trésorerie indicative", f"{kpis['tresorerie']:,.2f} DZD")
         col3.metric("Impayés (> 30 jours)", f"{kpis['impayes_30j']:,.2f} DZD", delta="À recouvrer", delta_color="inverse")
         col4.metric("Alertes Stock", str(kpis['alertes_stock']), delta="Critique" if kpis['alertes_stock'] > 0 else "Normal", delta_color="inverse")
         st.divider()
@@ -107,6 +108,7 @@ def show_dashboards_page():
     # --- 4. ACHATS ---
     with onglets[3], read_section("Achats"):
         st.subheader("Analyse des Achats & Fournisseurs")
+        st.caption("Retards globaux, indépendants de la période : commandes en attente ou partiellement réceptionnées, échéance antérieure à aujourd’hui.")
         c_deb_a, c_fin_a = st.columns(2)
         date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a", on_change=_mark_dashboards_activity)
         date_fin_a = c_fin_a.date_input("Date de fin", datetime.date.today(), key="f_a", on_change=_mark_dashboards_activity)
@@ -228,9 +230,10 @@ def show_dashboards_page():
             cf3.metric("Taux de Lettrage", f"{kpis_f['taux_lettrage']:.1f} %", help="% des encaissements rattachés à des factures.")
             st.divider()
 
-            st.markdown("**Répartition de la Trésorerie par Compte (Solde Initial)**")
+            st.markdown("**Soldes indicatifs Banque/Caisse à ce jour**")
+            st.caption("Soldes initiaux + règlements VALIDE jusqu’à aujourd’hui, indépendants du filtre des flux. Comptes tiers exclus ; hors autres écritures et rapprochement bancaire. Les soldes initiaux ne sont pas datés dans le référentiel.")
             if not kpis_f["repartition_comptes"].empty:
-                df_pie = kpis_f["repartition_comptes"].set_index("nom_compte")["solde"]
+                df_pie = kpis_f["repartition_comptes"].assign(compte=lambda df: df["compte_id"].astype(str) + " — " + df["nom_compte"].astype(str)).set_index("compte")["solde"]
                 st.bar_chart(df_pie)
             else:
                 st.info("Aucun compte financier configuré.")

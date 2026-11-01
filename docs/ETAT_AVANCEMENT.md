@@ -1,3 +1,27 @@
+## 1 novembre 2026 — trésorerie indicative et retards Achats (KPI-04)
+
+### Réalisé
+- Reprise sur `237cc9a7cb0d4bad7df3341d12d8026b66459a43`, incluant le lot 13 migrations ; travaux concurrents conservés.
+- Achats : suppression du retour anticipé qui ramenait tous les retards à zéro quand la période sélectionnée ne contenait aucune commande. Retards globaux sur EN_ATTENTE/PARTIELLEMENT_RECEPTIONNE, échéance strictement antérieure au jour courant ; réceptions complètes et annulations exclues. Date manquante ou statut inconnu = rubrique indisponible. Graphiques vides gérés sans jointure sur colonnes absentes.
+- Finance/Direction : même calcul de trésorerie **indicative**, limité à Banque/Caisse : solde initial + encaissements VALIDE − décaissements VALIDE jusqu’au jour courant. Comptes tiers et règlements futurs exclus de ce solde ; aucun mouvement généré.
+- Finance : flux et taux de lettrage restent filtrés par la période choisie, sur les règlements validés. Montants absents, allocations négatives/supérieures au total, dates invalides et comptes de règlement inconnus provoquent une indisponibilité. Les soldes restent globaux même si la période des flux est vide.
+- Graphique identifié par ID + nom du compte pour distinguer les homonymes. Guide et légendes explicitent les limites : soldes initiaux non datés, autres écritures non prises en compte, pas de rapprochement bancaire ni de solde comptable historique.
+- Repères : `SOF-ERP-20261101-KPI-04`, `SOF-ERP-20261101-GUIDE-06`.
+
+### Preuves
+- **2 271 tests locaux réussis**, dont 19 nouveaux cas ciblés ; un avertissement gotrue préexistant. Aucun accès serveur depuis ces tests.
+- Streamlit AppTest : Dashboards vides et pannes isolées, 12 rubriques du guide sans exception. Compilation et `git diff --check` réussis.
+- Références métier : création/réception des commandes dans SQL 004 ; comptes Banque/Caisse et flux validés dans SQL 006. Aucun barème ou traitement fiscal inventé.
+- CI à vérifier après publication. Déploiement Streamlit interne non attesté : dernière observation sur l’écran de connexion.
+- Aucune écriture Supabase, migration, suppression, transaction métier ou modification de permissions. TEST non sollicité, conservé en pause.
+
+### Suite
+1. Contrôler les Actions puis les repères dans une session ERP autorisée.
+2. Auditer les valeurs de stock manquantes et les agrégats CRM/RH ; étendre les lectures contrôlées aux modules historiques.
+3. Poursuivre le rapprochement des migrations sur preuves, sans réexécuter les candidats ni modifier les habilitations.
+
+---
+
 ## 1 novembre 2026 — Lot 13 : dossier de rapprochement des migrations Supabase (sans mutation)
 
 ### Réalisé

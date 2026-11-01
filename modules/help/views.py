@@ -142,7 +142,13 @@ si des fiches existent : aucun prorata journalier n’est inventé.
 Les OPEX sont les décaissements VALIDE vers les fournisseurs classés OPEX.
 Un fournisseur absent, une catégorie vide ou un montant invalide rend la rubrique
 indisponible. Le solde mélange facturation et décaissements, sans calculer un
-résultat comptable. Repère des calculs : SOF-ERP-20261101-KPI-03.
+résultat comptable. Repère des calculs : SOF-ERP-20261101-KPI-04.
+Les retards Achats restent globaux même sur une période vide. Une commande
+échue aujourd’hui n’est pas encore en retard ; dates manquantes signalées.
+La trésorerie indicative porte sur Banque/Caisse : soldes initiaux plus
+règlements VALIDE jusqu’à aujourd’hui, indépendamment du filtre des flux.
+Elle exclut les comptes tiers et les autres écritures ; les soldes initiaux
+ne sont pas datés. Elle ne constitue pas un rapprochement bancaire.
 Le contrôle ne constitue pas un instantané
 transactionnel de toutes les tables ni une validation comptable des calculs.
 """,
@@ -202,7 +208,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-05")
+    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-06")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")
