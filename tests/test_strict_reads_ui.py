@@ -36,7 +36,7 @@ with patch('modules.dashboards.views.has_permission', return_value=True), \\
 assert not app.exception, app.exception
 assert len(app.error) == 3, [e.value for e in app.error]
 assert all('private-data-sentinel' not in e.value for e in app.error)
-assert not [m for m in app.metric if m.label.startswith(('CA ', 'Chiffre'))]
+assert not [m for m in app.metric if m.label.startswith(('CA ', 'Chiffre', 'Facturation brute'))]
 assert any(m.label == 'Effectif Actif' for m in app.metric)
 ''')
 
@@ -63,4 +63,24 @@ assert not app.success
 assert all('private-data-sentinel' not in e.value for e in app.error)
 assert not any('Aucune opportunité' in e.value or 'Aucun historique' in e.value for e in app.info)
 assert any('confidentialité' in e.value for e in app.info)
+''')
+
+
+def test_dashboard_empty_sales_renders_zero_without_exception():
+    _run('''
+from streamlit.testing.v1 import AppTest
+app = AppTest.from_string("""
+from unittest.mock import patch
+import streamlit as st
+from modules.dashboards.views import show_dashboards_page
+st.session_state['user'] = {'role':'ADMIN'}
+with patch('modules.dashboards.views.has_permission', return_value=True), \\
+     patch('modules.dashboards.service.fetch_data', return_value=[]), \\
+     patch('modules.dashboards.service.fetch_data_by_date_range', return_value=[]):
+    show_dashboards_page()
+""").run(timeout=20)
+assert not app.exception, app.exception
+assert not app.error, app.error
+assert any(m.label == 'Facturation brute TTC' and m.value == '0.00 DZD' for m in app.metric)
+assert any('KPI-02' in c.value for c in app.caption)
 ''')

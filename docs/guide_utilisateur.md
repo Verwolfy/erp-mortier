@@ -130,6 +130,8 @@ Retrouvez dans l'onglet Grand Livre toutes les écritures comptables (Débits/Cr
 Ce module est le centre de pilotage de l'entreprise. Il regroupe les KPIs (Indicateurs Clés de Performance) en temps réel calculés à partir de vos données SQL.
 
 - Vue Direction : Résumé global (CA, Trésorerie, Impayés, Alertes Stock).
+- Facturation brute : uniquement les factures clients VALIDE, hors avoirs, brouillons et annulations ; avoirs validés suivis séparément. P&L estimatif aux coûts actuels, salaires non filtrés par période ; coût manquant = indisponibilité.
+- La balance âgée reste globale même si la période sélectionnée ne contient aucune vente.
 - Ventes : Balance âgée (qui vous doit quoi et depuis quand), Top Clients, Panier moyen.
 - Achats : Dépendance fournisseurs, suivi de l'évolution du prix d'achat des matières premières.
 - Stocks : Valeur financière immobilisée, liste des lots qui périment bientôt.
@@ -141,7 +143,7 @@ FOIRE AUX QUESTIONS (Dépannage)
 - Je n'arrive pas à valider une réception d'achat : Vérifiez que vous avez bien les droits d'écriture sur les modules Achats ET Stocks (car la réception impacte les deux).
 - Je n'arrive pas à clôturer un Ordre de Fabrication (OF) : Le système vérifie s'il y a assez de Vrac (chimique) ET assez d'Emballages en stock pour produire la quantité saisie. Si le stock MP est insuffisant, l'OF sera bloqué.
 - Le PDF de ma facture ne se génère pas : Assurez-vous d'avoir bien renseigné les coordonnées complètes du client (Adresse, NIF, RC) dans le module Administration.
-- Ma facture reste au statut PARTIELLE dans la finance : Cela signifie que la somme lettrée (affectée) est inférieure au montant TTC de la facture. Ajoutez un nouveau règlement et lettrez la différence.
+- Une facture validée reste VALIDE après lettrage. Consultez le montant payé et le reste à payer pour distinguer paiement partiel et règlement complet ; ne créez pas de règlement sans encaissement réel.
 ## Migration 010-A-02D-01 — gestion des habilitations (TEST)
 - SECURITY_MANAGER est une habilitation nominative indépendante du rôle ADMIN.
 - Administration/écriture ne suffit pas pour créer des comptes ou gérer les permissions.

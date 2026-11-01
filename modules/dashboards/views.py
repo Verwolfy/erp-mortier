@@ -20,7 +20,7 @@ def _mark_dashboards_activity() -> None:
 
 def show_dashboards_page():
     st.title("📊 Tableaux de bord & KPIs")
-    st.caption("Version lectures Dashboards : SOF-ERP-20261101-READ-01")
+    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261101-KPI-02")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_read = has_permission(user_role, "Dashboards", "lecture")
@@ -38,10 +38,11 @@ def show_dashboards_page():
     # --- 1. VUE DIRECTION ---
     with onglets[0], read_section("Direction"):
         st.subheader("Santé de l'entreprise (Temps Réel)")
+        st.caption("Facturation brute : factures clients validées, hors avoirs, brouillons et annulations.")
         kpis = get_kpis_direction()
 
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("CA HT du mois", f"{kpis['ca_mois']:,.2f} DZD")
+        col1.metric("Facturation brute HT du mois", f"{kpis['ca_mois']:,.2f} DZD")
         col2.metric("Trésorerie Disponible", f"{kpis['tresorerie']:,.2f} DZD")
         col3.metric("Impayés (> 30 jours)", f"{kpis['impayes_30j']:,.2f} DZD", delta="À recouvrer", delta_color="inverse")
         col4.metric("Alertes Stock", str(kpis['alertes_stock']), delta="Critique" if kpis['alertes_stock'] > 0 else "Normal", delta_color="inverse")
@@ -49,7 +50,8 @@ def show_dashboards_page():
 
     # --- 2. RENTABILITÉ (P&L) ---
     with onglets[1], read_section("Rentabilité"):
-        st.subheader("Compte de Résultat Simplifié (P&L)")
+        st.subheader("Estimation de gestion (P&L)")
+        st.caption("Facturation brute validée hors avoirs. Coûts produits actuels, non historiques ; salaires non filtrés par période. Cette estimation ne constitue pas un résultat comptable.")
         c_deb_pnl, c_fin_pnl = st.columns(2)
         date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
         date_fin_pnl = c_fin_pnl.date_input("Date de fin", datetime.date.today(), key="f_pnl", on_change=_mark_dashboards_activity)
@@ -59,15 +61,15 @@ def show_dashboards_page():
             pnl = get_kpis_pnl(ts_deb_pnl, ts_fin_pnl)
 
             col_pnl1, col_pnl2, col_pnl3 = st.columns(3)
-            col_pnl1.metric("Chiffre d'Affaires (CA HT)", f"{pnl['ca_ht']:,.2f} DZD")
+            col_pnl1.metric("Facturation brute HT", f"{pnl['ca_ht']:,.2f} DZD")
             col_pnl2.metric("Marge Brute", f"{pnl['marge_brute']:,.2f} DZD", f"{pnl['taux_marge_brute']:.1f} %")
-            col_pnl3.metric("EBITDA (Résultat d'Exploitation)", f"{pnl['ebitda']:,.2f} DZD", f"{pnl['taux_ebitda']:.1f} %")
+            col_pnl3.metric("Solde de gestion estimatif", f"{pnl['ebitda']:,.2f} DZD", f"{pnl['taux_ebitda']:.1f} %")
 
             st.divider()
             st.markdown("### Détail de la cascade des coûts")
 
             df_cascade = pd.DataFrame({
-                "Catégorie": ["1. Revenus (CA HT)", "2. Coût des Marchandises (COGS)", "3. OPEX (Services & Loyer)", "4. OPEX (Salaires)", "5. EBITDA"],
+                "Catégorie": ["1. Facturation brute HT", "2. Coût des Marchandises (COGS)", "3. OPEX (Services & Loyer)", "4. OPEX (Salaires)", "5. Solde estimatif"],
                 "Montant (DZD)": [pnl['ca_ht'], -pnl['cogs'], -pnl['opex_fournisseurs'], -pnl['opex_salaires'], pnl['ebitda']]
             })
             st.dataframe(df_cascade, use_container_width=True, hide_index=True)
@@ -76,6 +78,7 @@ def show_dashboards_page():
     # --- 3. VENTES & FACTURATION ---
     with onglets[2], read_section("Ventes"):
         st.subheader("Analyse des Ventes & Recouvrement")
+        st.caption("Factures validées uniquement. Facturation brute hors avoirs ; ratio des avoirs validés suivi séparément. Créances globales, indépendantes de la période sélectionnée.")
         c_deb, c_fin = st.columns(2)
         date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v", on_change=_mark_dashboards_activity)
         date_fin = c_fin.date_input("Date de fin", datetime.date.today(), key="f_v", on_change=_mark_dashboards_activity)
@@ -85,8 +88,8 @@ def show_dashboards_page():
             kpis_v = get_kpis_ventes(ts_deb, ts_fin)
 
             cv1, cv2, cv3, cv4 = st.columns(4)
-            cv1.metric("CA Période (HT)", f"{kpis_v['ca_ht']:,.2f} DZD")
-            cv2.metric("CA Période (TTC)", f"{kpis_v['ca_ttc']:,.2f} DZD")
+            cv1.metric("Facturation brute HT", f"{kpis_v['ca_ht']:,.2f} DZD")
+            cv2.metric("Facturation brute TTC", f"{kpis_v['ca_ttc']:,.2f} DZD")
             cv3.metric("Panier Moyen (TTC)", f"{kpis_v['panier_moyen']:,.2f} DZD")
             cv4.metric("Taux d'Avoirs", f"{kpis_v['taux_avoirs']:.1f} %", delta="Retours/Annulations", delta_color="inverse")
             st.divider()

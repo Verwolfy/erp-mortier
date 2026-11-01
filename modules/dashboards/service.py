@@ -8,6 +8,9 @@ from datetime import timedelta
 from core.strict_reads import (fetch_data_strict as fetch_data,
                                fetch_data_by_date_range_strict as fetch_data_by_date_range)
 from core.utils import get_local_now
+from core.indicateurs_factures import (validated_documents, in_period, client_invoices,
+                                      open_receivables, ageing_balance, numeric_values)
+from core.strict_reads import DataReadError
 
 def charger_donnees(table_name: str) -> pd.DataFrame:
     """Charge une table entière (réservé aux petites tables type référentiels ou stocks actuels)."""
@@ -15,36 +18,11 @@ def charger_donnees(table_name: str) -> pd.DataFrame:
 
 def get_kpis_direction() -> dict:
     now = get_local_now()
-    start_mois = now.replace(day=1).strftime("%Y-%m-%d")
-    end_mois = now.strftime("%Y-%m-%d")
-
-    # 1. CA & Impayés (Filtré SQL)
-    # On récupère toutes les factures car on a besoin des impayés (qui peuvent dater d'avant ce mois)
-    df_fac = charger_donnees("factures")
-    ca_mois = 0.0
-    impayes_30j = 0.0
-
-    if not df_fac.empty and "facture_id" in df_fac.columns:
-        for col in ["montant_ht", "montant_ttc", "montant_paye"]:
-            if col in df_fac.columns:
-                df_fac[col] = pd.to_numeric(df_fac[col], errors="coerce").fillna(0)
-
-        col_date = "date" if "date" in df_fac.columns else df_fac.columns[3]
-        df_fac["date_obj"] = pd.to_datetime(df_fac[col_date], errors="coerce")
-
-        mask_mois = (df_fac["date_obj"].dt.month == now.month) & (df_fac["date_obj"].dt.year == now.year)
-        if "type_document" in df_fac.columns:
-            mask_mois = mask_mois & (df_fac["type_document"] == "FactureClient")
-        elif "type_facture" in df_fac.columns:
-            mask_mois = mask_mois & (df_fac["type_facture"] == "FactureClient")
-
-        ca_mois = df_fac[mask_mois]["montant_ht"].sum()
-
-        limite_30j = pd.Timestamp(now - timedelta(days=30)).tz_localize(None)
-        if "date_echeance" in df_fac.columns and "statut" in df_fac.columns:
-            df_fac["date_echeance_obj"] = pd.to_datetime(df_fac["date_echeance"], errors="coerce").dt.tz_localize(None)
-            mask_impayes = (df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE", "VALIDE", "BROUILLON"])) & (df_fac["date_echeance_obj"] < limite_30j)
-            impayes_30j = (df_fac[mask_impayes]["montant_ttc"] - df_fac[mask_impayes]["montant_paye"]).sum()
+    documents = validated_documents(charger_donnees("factures"))
+    invoices = client_invoices(in_period(documents, now.replace(day=1), now))
+    ca_mois = invoices["montant_ht"].sum()
+    receivables = open_receivables(documents, now)
+    impayes_30j = receivables.loc[receivables["retard_jours"] > 30, "reste_a_payer"].sum()
 
     # 2. Trésorerie
     df_cpt = charger_donnees("comptes")
@@ -87,23 +65,28 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_frn = charger_donnees("fournisseurs")
     df_paie = charger_donnees("fiches_de_paie") # La table paie pourrait aussi être filtrée
 
-    # 1. CHIFFRE D'AFFAIRES (CA HT)
-    ca_ht = 0.0
-    if not df_fac_periode.empty and "date" in df_fac_periode.columns:
-        type_col = "type_document" if "type_document" in df_fac_periode.columns else "type_facture"
-        mask_clients = df_fac_periode.get(type_col, "FactureClient") == "FactureClient"
-        df_fac_clients = df_fac_periode[mask_clients]
-        ca_ht = pd.to_numeric(df_fac_clients["montant_ht"], errors="coerce").fillna(0).sum()
-
-    # 2. COGS (Coût des marchandises vendues)
+    # Même périmètre de factures validées pour le CA et les lignes de coût.
+    documents = validated_documents(df_fac_periode)
+    invoices = client_invoices(documents)
+    ca_ht = invoices["montant_ht"].sum()
     cogs = 0.0
-    if not df_fac_periode.empty and not df_lignes_fac.empty and not df_pf.empty:
-        lignes_periode = df_lignes_fac[df_lignes_fac["facture_id"].isin(df_fac_periode["facture_id"])]
-        if not lignes_periode.empty:
-            merged = pd.merge(lignes_periode, df_pf, on="sku_id", how="left")
-            merged["qte"] = pd.to_numeric(merged["quantite"], errors="coerce").fillna(0)
-            merged["cout_unitaire"] = pd.to_numeric(merged.get("cout_revient", 0), errors="coerce").fillna(0)
-            cogs = (merged["qte"] * merged["cout_unitaire"]).sum()
+    if not invoices.empty:
+        if df_lignes_fac.empty or not {"facture_id", "sku_id", "quantite"}.issubset(df_lignes_fac):
+            raise DataReadError("Lignes de facture indisponibles pour le coût")
+        lignes_periode = df_lignes_fac[df_lignes_fac["facture_id"].isin(invoices["facture_id"])].copy()
+        if set(invoices["facture_id"]) != set(lignes_periode["facture_id"]):
+            raise DataReadError("Facture sans lignes de coût")
+        if df_pf.empty or not {"sku_id", "cout_revient"}.issubset(df_pf):
+            raise DataReadError("Coûts des produits indisponibles")
+        costs = df_pf[df_pf["sku_id"].isin(lignes_periode["sku_id"])]
+        if costs["sku_id"].duplicated().any():
+            raise DataReadError("Coût produit ambigu")
+        merged = lignes_periode.merge(costs[["sku_id", "cout_revient"]], on="sku_id", how="left")
+        quantities = numeric_values(merged, "quantite")
+        unit_costs = numeric_values(merged, "cout_revient")
+        if (quantities <= 0).any() or (unit_costs < 0).any():
+            raise DataReadError("Quantité ou coût non exploitable")
+        cogs = (quantities * unit_costs).sum()
 
     marge_brute = ca_ht - cogs
 
@@ -139,62 +122,22 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     }
 
 def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    start_str = date_debut.strftime("%Y-%m-%d")
-    end_str = date_fin.strftime("%Y-%m-%d")
-
-    # On récupère toutes les factures pour la balance âgée, et les filtrées pour les ventes
-    df_fac = charger_donnees("factures")
-    df_periode = pd.DataFrame(fetch_data_by_date_range("factures", "date", start_str, end_str))
-
-    if df_periode.empty or "facture_id" not in df_periode.columns:
-        return {"ca_ht": 0.0, "ca_ttc": 0.0, "timbre_fiscal": 0.0, "panier_moyen": 0.0, "taux_avoirs": 0.0, "nb_factures": 0, "balance_agee": {}, "top_clients": pd.DataFrame()}
-
-    for col in ["montant_ht", "montant_ttc", "montant_paye", "montant_timbre"]:
-        if col in df_periode.columns:
-            df_periode[col] = pd.to_numeric(df_periode[col], errors="coerce").fillna(0)
-        if col in df_fac.columns:
-            df_fac[col] = pd.to_numeric(df_fac[col], errors="coerce").fillna(0)
-
-    type_col = "type_document" if "type_document" in df_periode.columns else "type_facture"
-    if type_col not in df_periode.columns:
-        df_periode[type_col] = "FactureClient"
-
-    df_clients_purs = df_periode[df_periode[type_col] == "FactureClient"]
-    df_avoirs = df_periode[df_periode[type_col] == "FactureAvoir"]
-
-    ca_ttc = df_clients_purs["montant_ttc"].sum()
-    nb_factures = len(df_clients_purs)
-
-    # Balance âgée sur l'ensemble du portefeuille ouvert
-    if "date" in df_fac.columns:
-        df_fac["date_obj"] = pd.to_datetime(df_fac["date"], errors="coerce").dt.tz_localize(None)
-    df_fac["date_echeance_obj"] = pd.to_datetime(df_fac.get("date_echeance", df_fac.get("date_obj")), errors="coerce").dt.tz_localize(None)
-
-    if "statut" in df_fac.columns:
-        mask_ouvertes = df_fac["statut"].isin(["EN_ATTENTE", "PARTIELLE", "VALIDE", "BROUILLON"])
-    else:
-        mask_ouvertes = pd.Series([False] * len(df_fac))
-
-    df_ouvertes = df_fac[mask_ouvertes].copy()
-    now = pd.Timestamp(get_local_now()).tz_localize(None)
-    df_ouvertes["retard_jours"] = (now - df_ouvertes["date_echeance_obj"]).dt.days
-    df_ouvertes["reste_a_payer"] = df_ouvertes["montant_ttc"] - df_ouvertes["montant_paye"]
-
-    balance_agee = {
-        "Non échu": df_ouvertes[df_ouvertes["retard_jours"] <= 0]["reste_a_payer"].sum(),
-        "1 à 30 jours": df_ouvertes[(df_ouvertes["retard_jours"] > 0) & (df_ouvertes["retard_jours"] <= 30)]["reste_a_payer"].sum(),
-        "31 à 60 jours": df_ouvertes[(df_ouvertes["retard_jours"] > 30) & (df_ouvertes["retard_jours"] <= 60)]["reste_a_payer"].sum(),
-        "+ de 60 jrs": df_ouvertes[df_ouvertes["retard_jours"] > 60]["reste_a_payer"].sum(),
-    }
-
-    top_clients = df_clients_purs.groupby("client_id")["montant_ttc"].sum().reset_index().sort_values(by="montant_ttc", ascending=False).head(10) if not df_clients_purs.empty and "client_id" in df_clients_purs.columns else pd.DataFrame()
-
+    # Une seule lecture : la balance reste globale même sans ventes sur la période.
+    documents = validated_documents(charger_donnees("factures"))
+    period = in_period(documents, date_debut, date_fin)
+    invoices = client_invoices(period)
+    credits = period.loc[period["type_facture"] == "FactureAvoir"]
+    ca_ttc = invoices["montant_ttc"].sum()
+    count = len(invoices)
+    balance = ageing_balance(open_receivables(documents, get_local_now()))
+    top_clients = (invoices.groupby("client_id")["montant_ttc"].sum().reset_index()
+                   .sort_values(by="montant_ttc", ascending=False).head(10))
     return {
-        "ca_ht": df_clients_purs["montant_ht"].sum(), "ca_ttc": ca_ttc,
-        "timbre_fiscal": df_clients_purs["montant_timbre"].sum() if "montant_timbre" in df_clients_purs.columns else 0.0,
-        "panier_moyen": ca_ttc / nb_factures if nb_factures > 0 else 0.0,
-        "taux_avoirs": (df_avoirs["montant_ttc"].abs().sum() / ca_ttc * 100) if ca_ttc > 0 else 0.0,
-        "nb_factures": nb_factures, "balance_agee": balance_agee, "top_clients": top_clients
+        "ca_ht": invoices["montant_ht"].sum(), "ca_ttc": ca_ttc,
+        "timbre_fiscal": invoices["montant_timbre"].sum(),
+        "panier_moyen": ca_ttc / count if count else 0.0,
+        "taux_avoirs": credits["montant_ttc"].abs().sum() / ca_ttc * 100 if ca_ttc > 0 else 0.0,
+        "nb_factures": count, "balance_agee": balance, "top_clients": top_clients,
     }
 
 def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:

@@ -1,3 +1,28 @@
+## 1 novembre 2026 — indicateurs de facturation et créances (KPI-02)
+
+### Réalisé
+- Reprise sur `2fce4e1407fe97b872347b81f1c043421b827b4f` ; lots NextGen 10–12 et leur documentation conservés.
+- Direction, Ventes et P&L : facturation brute des seules `FactureClient` au statut `VALIDE`. Brouillons/annulations exclus ; avoirs validés suivis séparément. Les libellés disent explicitement « facturation brute », sans prétendre calculer un CA net comptable.
+- Balance âgée globale conservée quand la période de vente est vide. Paiements partiels déduits ; factures soldées exclues. Retards calculés en jours calendaires (bornes 30/31 et 60/61 testées).
+- Statuts inconnus, montants invalides/non finis et échéances manquantes des créances ouvertes provoquent une indisponibilité, jamais un faux zéro. Règles documentaires fondées sur les RPC Ventes/Finance existantes, sans nouvelle règle fiscale.
+- P&L : mêmes factures pour revenus et lignes de coûts ; coût manquant/ambigu et facture sans lignes refusés. Le solde est renommé « solde de gestion estimatif » et les limites sont affichées : coûts actuels non historiques, salaires non filtrés par période. OPEX et paie restent à auditer.
+- Guide intégré et guide Markdown complétés ; correction de l'ancienne FAQ PARTIELLE : le lettrage conserve `VALIDE`, le solde distingue paiement partiel/complet.
+- Repères : `SOF-ERP-20261101-KPI-02` et `SOF-ERP-20261101-GUIDE-04`.
+
+### Preuves
+- **2 208 tests locaux réussis**, dont 29 nouveaux cas de calcul/rendu ; un avertissement de dépréciation gotrue préexistant.
+- Tests Streamlit AppTest réels en processus isolés : panne de lecture sans faux chiffre et jeu vide sans exception. Données fictives exclusivement locales ; aucun accès serveur pendant les tests.
+- `pip check`, compilation des modules modifiés et `git diff --check` réussis.
+- CI du nouveau commit à contrôler après publication. Le dernier constat navigateur reste l'écran de connexion : déploiement hébergé non attesté.
+- Aucune écriture Supabase, transaction métier, migration, suppression ou modification de permissions. Projet TEST non sollicité, conservé en pause.
+
+### Suite
+1. Vérifier les Actions du commit puis le repère KPI-02 dans une session ERP authentifiée.
+2. Auditer séparément les périodes de paie, les OPEX, les avoirs/compensations et les coûts historiques avant toute interprétation comptable du P&L.
+3. Étendre les lectures contrôlées aux modules historiques et poursuivre l'inventaire des migrations sans rejeu automatique.
+
+---
+
 ## 1 novembre 2026 — Lot 12 : inventaire NextGen paginé sans faux complet
 
 ### Résultat

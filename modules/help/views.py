@@ -130,7 +130,14 @@ de refus d'accès, de réponse incohérente ou de dépassement de la limite de
 consultation (10 000 lignes par lecture), la rubrique affiche une indisponibilité
 au lieu d'un total partiel. Les autres rubriques peuvent rester consultables.
 Réduire la période peut aider pour les lectures filtrées ; certains référentiels
-restent lus dans leur ensemble. Le contrôle ne constitue pas un instantané
+restent lus dans leur ensemble. Les indicateurs de facturation brute retiennent les factures clients VALIDE,
+hors avoirs, brouillons et annulations. Le ratio des avoirs validés est séparé.
+La balance âgée conserve toutes les créances ouvertes, même sans vente dans
+la période choisie ; les paiements partiels diminuent le reste à recouvrer.
+Les coûts produits manquants rendent le P&L indisponible. Ses coûts actuels
+et ses salaires non filtrés par période restent des limites : le solde affiché
+est estimatif. Repère des calculs : SOF-ERP-20261101-KPI-02.
+Le contrôle ne constitue pas un instantané
 transactionnel de toutes les tables ni une validation comptable des calculs.
 """,
     "🛠️ Incidents et reprise": """
@@ -189,7 +196,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-03")
+    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-04")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")
