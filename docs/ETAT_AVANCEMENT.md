@@ -1,3 +1,25 @@
+## 1 novembre 2026 — Lot 13 : dossier de rapprochement des migrations Supabase (sans mutation)
+
+### Réalisé
+- PR [#38](https://github.com/Verwolfy/erp-mortier/pull/38) fusionnée dans `main` au commit `2f35e243fc410e49bcd8ca4c99d278c871b1b73d`. Les deux CI de PR réussies : [audit complet](https://github.com/Verwolfy/erp-mortier/actions/runs/41326198104), [facturation](https://github.com/Verwolfy/erp-mortier/actions/runs/41326198126). Les CI du merge ont été déclenchées et sont à confirmer séparément.
+- Nouveau `docs/migration_evidence_20261101.json` : 23 versions natives observées (21 ERP et 2 NextGen) et leurs sources locales **possibles** ; classement archives déclarées / candidats non vérifiés / brouillons thématiques / propositions non exécutées.
+- Nouveau `scripts/auditer_preuves_migrations.py` : vérification hors ligne des fichiers candidats et calcul de leurs SHA-256 **locaux uniquement**, sans client réseau ni accès SQL ; rejet des chemins dangereux et des métadonnées invalides.
+- Tests `tests/test_auditer_preuves_migrations.py` ; note d'exploitation `docs/LOT13_AUDIT_PREUVES_MIGRATIONS.md`.
+
+### Supabase production, lecture seule
+- `supabase_migrations.schema_migrations` : **23** versions ; `public.schema_migrations` : **0** entrée. Ne pas combler ce registre avec les empreintes de scripts seulement *candidats*.
+- Conseil sécurité Supabase : **86 alertes INFO `rls_enabled_no_policy`**, aucune autre famille dans la réponse reçue. RLS activée et droits SELECT refusés aux rôles `anon`/`authenticated` sur `produits`, `erp_sku_fiscalite`, `site_produits`, `site_demandes`. Pas de changement de permission.
+- Archives SQL du 27/10 historiquement déclarées appliquées, sans preuve de correspondance du SHA-256 aux instructions réellement transmises ; les versions 016–032 n'ont que des candidats documentaires, les deux SQL site sont des **propositions non exécutées**.
+- **Aucune modification SQL**, aucune clé copiée, aucun script rejoué, aucune activation web ou collecte.
+
+### Suite
+1. Confirmer les CI du commit de fusion puis la version effectivement déployée sur Streamlit via un compte autorisé (vérification anonyme impossible depuis cette session réseau).
+2. Pour chaque version native, demander une preuve indépendamment vérifiable du contenu SQL réellement exécuté / des objets ; ne jamais conclure sur une similitude de nom.
+3. Sécuriser et réunir les pièces techniques, prix et dossiers fiscaux NextGen avant toute qualification, sans valeurs fictives.
+4. Conserver le lancement Cloudflare et la collecte au statut NO-GO jusqu'aux validations d'accès et juridiques.
+
+---
+
 ## 1 novembre 2026 — périodes de paie et décaissements OPEX (KPI-03)
 
 ### Correction réalisée
