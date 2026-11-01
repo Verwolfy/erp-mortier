@@ -24,12 +24,16 @@ def material(mid="NG-MP-001", **extra):
     return row
 
 
-def prepare(monkeypatch, products=None, skus=None, materials=None, fiscal=None, manager=True):
+_MISSING = object()
+
+
+def prepare(monkeypatch, products=_MISSING, skus=_MISSING,
+            materials=_MISSING, fiscal=_MISSING, manager=True):
     sources = {
-        "produits": [product()] if products is None else products,
-        "sku_conditionnement": [sku()] if skus is None else skus,
-        "matieres_premieres": [material()] if materials is None else materials,
-        "erp_sku_fiscalite": [] if fiscal is None else fiscal,
+        "produits": [product()] if products is _MISSING else products,
+        "sku_conditionnement": [sku()] if skus is _MISSING else skus,
+        "matieres_premieres": [material()] if materials is _MISSING else materials,
+        "erp_sku_fiscalite": [] if fiscal is _MISSING else fiscal,
     }
     gate = MagicMock(return_value="USR-ADMIN")
     if not manager:
