@@ -20,6 +20,7 @@ from modules.admin.exonerations_service import (
     est_validateur_fiscal, transition_attestation,
 )
 from modules.admin.qualification_sku_service import lister_sku_a_qualifier
+from modules.admin.nextgen_readiness_service import lister_blocages_nextgen
 from core.registre_qualification_sku import registre_qualification_sku
 from uuid import uuid4
 
@@ -518,6 +519,33 @@ def _revue_qualification_fiscale_sku() -> None:
         st.info("Des dossiers fiscaux existent : vérifier leur portée et leurs preuves hors de ce registre.")
 
 
+def _revue_nextgen_preparation() -> None:
+    """Diagnostic uniquement; aucune habilitation fiscale conférée."""
+    st.divider()
+    st.subheader("NextGen — préparation des SKU et matières")
+    if not is_security_manager():
+        st.info("Consultation réservée au SECURITY_MANAGER.")
+        return
+    try:
+        result = lister_blocages_nextgen()
+    except Exception:
+        st.error("Inventaire NextGen non vérifiable. Aucune disponibilité présumée.")
+        return
+    st.caption("Suivi ERP : ni validation fiscale, ni certification laboratoire.")
+    st.metric("Produits NextGen", result["produits_actifs"])
+    st.metric("SKU actifs", result["sku_nextgen_actifs"])
+    st.metric("SKU sans tarif", result["sans_tarif"])
+    st.metric("SKU sans dossier fiscal", result["sans_dossier_fiscal"])
+    st.metric("Kits incomplets", result["kits_incomplets"])
+    st.metric("Liquides sans conversion", result["liquides_sans_conversion"])
+    st.metric("Matières sans fournisseur", result["matieres_sans_fournisseur"])
+    if result["produits_sans_sku"]:
+        st.warning("Produits sans SKU : " + ", ".join(result["produits_sans_sku"]))
+    st.warning("Activation ERP ne signifie pas autorisation de facturation ou fabrication.")
+    if result["rows"]:
+        st.dataframe(pd.DataFrame(result["rows"]), hide_index=True, use_container_width=True)
+
+
 def show_admin_page():
     st.title("⚙️ Administration & Référentiels")
 
@@ -793,6 +821,7 @@ def show_admin_page():
 
     with tab_fiscal_sku:
         _revue_qualification_fiscale_sku()
+        _revue_nextgen_preparation()
 
 
 # ==========================================
