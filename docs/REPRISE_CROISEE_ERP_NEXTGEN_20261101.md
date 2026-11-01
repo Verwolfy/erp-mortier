@@ -42,3 +42,9 @@
 - Source officielle Cloudflare : https://developers.cloudflare.com/pages/configuration/preview-deployments/ et https://developers.cloudflare.com/pages/platform/known-issues/.
 
 **Dernière décision : CONTINUER les validations non destructives ; ARRÊT avant tout déploiement/activation ou modification des privilèges.**
+
+## Addendum — revue des branches et qualification SQL du 01/11/2026
+
+- **Revue sémantique des huit branches NextGen** : tous les fichiers touchés existent sur `main`. Les branches ERP « crm-ui-fingerprint » et « sku-qualification » correspondent exactement à `main` sur leurs fichiers. Les autres écarts sont des renforcements postérieurs déjà présents sur `main` (double verrou confidentialité CRM, lectures strictes du CRM, tests supplémentaires, contrôles CI Pages) ; la différence documentaire du runbook Cloudflare correspond à de l'échappement Markdown. **Décision : ne pas réintégrer les anciens états par merge**, préserver les branches comme archive jusqu'à décision de retrait.
+- **Contrôle SQL de qualification NextGen PROD (lecture seule, direct)** : 50 produits actifs ; 142 SKU actifs ; **1 produit sans SKU : `PROOF-PU-SEAL`** ; 142/142 SKU sans tarif et 142/142 sans dossier fiscal ; 7 kits sans quantité nette ; 48 conditionnements liquides sans conversion ; 97 matières candidates actives. Il s'agit de manques opérationnels réels, **pas d'autorisation d'inventer les données**.
+- Cette qualification confirme le choix de **ne rien activer côté vente, facturation ni publication catalogue**.
