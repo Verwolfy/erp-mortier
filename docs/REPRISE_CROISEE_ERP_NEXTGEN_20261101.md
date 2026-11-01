@@ -57,3 +57,15 @@
 - **Migration SQL** : 23 migrations réellement inscrites dans `supabase_migrations.schema_migrations` (21 ERP et 2 site), zéro dans le registre applicatif distinct `public.schema_migrations`. Les 48 entrées de `erp-mortier/sql/` comprennent des brouillons, préflights et rollbacks, **ne pas les appliquer en bloc**. Aucun schéma modifié.
 - **Blocages** : 142 SKU sans tarif ni dossier fiscal ; 7 kits incomplets, 48 liquides sans conversion, un produit `PROOF-PU-SEAL` sans SKU, 97 matières candidates ; catalogue web exportable vide. Aucune activation commerciale, fiscale, collectes leads ou publication Cloudflare.
 - **Prochaine action** : confirmer le déploiement Streamlit **après authentification et inspection de la version**, recueillir les preuves réelles des SKU hors du dépôt public et établir les correspondances exactes des scripts SQL avec l'historique natif. La protection Cloudflare Access + approbations juridiques restent une condition avant préproduction.
+
+## Addendum lot 12 — 01/11/2026 : exhaustivité des lectures ERP NextGen
+
+- PR [ERP #37](https://github.com/Verwolfy/erp-mortier/pull/37) fusionnée sur `main` : SHA `6dfbf7005bb2f4196f9ccfe20950706a587eb6f6`.
+- Les inventaires NextGen `produits`, `sku_conditionnement`, `matieres_premieres`, `erp_sku_fiscalite` sont lus par pages contrôlées avec `count=exact`, ordre des clés primaires et `SECURITY_MANAGER` à chaque page ; pas d'export s'il manque des lignes ou si un résultat est incohérent.
+- `erp_sku_fiscalite` est identifié par `(sku_id,date_effet)` (clé composite SQL confirmée). Aucune version fiscale n'est interprétée comme validation implicite.
+- Les tests couvrent une limite backend à 17 lignes sur 142 SKU, des variations de total, une page vide, des doublons et le retrait des droits entre pages.
+- **Preuves CI** du commit fusionné : [suite complète ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/41325282927) `success`, [tests facturation](https://github.com/Verwolfy/erp-mortier/actions/runs/41325283076) `success`.
+- SQL de production lu sans écriture : **50 produits actifs, 142 SKU actifs, 119 matières premières, zéro dossier fiscal SKU**. Les blocages documentaires du lot 10 restent ouverts.
+- Aucune modification des permissions, du schéma, des prix, des secrets ou du catalogue exporté. **Le site NextGen et ses formulaires restent inactifs** ; la CI ne démontre pas que Streamlit héberge la dernière version ni qu'une protection Cloudflare Access soit opérationnelle.
+- Limite connue : les quatre lectures successives ne constituent pas un snapshot transactionnel intertables.
+- Prochaine action : audit connecté de la version Streamlit réelle, puis qualification documentaire réelle des 142 SKU. Ne pas inventer pièces, prix, TVA, densités ou fournisseurs.
