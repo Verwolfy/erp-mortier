@@ -130,7 +130,8 @@ Retrouvez dans l'onglet Grand Livre toutes les écritures comptables (Débits/Cr
 Ce module est le centre de pilotage de l'entreprise. Il regroupe les KPIs (Indicateurs Clés de Performance) en temps réel calculés à partir de vos données SQL.
 
 - Vue Direction : Résumé global (CA, Trésorerie, Impayés, Alertes Stock).
-- Facturation brute : uniquement les factures clients VALIDE, hors avoirs, brouillons et annulations ; avoirs validés suivis séparément. P&L estimatif aux coûts actuels, salaires non filtrés par période ; coût manquant = indisponibilité.
+- Facturation brute : uniquement les factures clients VALIDE, hors avoirs, brouillons et annulations ; avoirs validés suivis séparément. P&L estimatif aux coûts actuels, nets enregistrés filtrés par mois/année (tous statuts de paiement, sans coût employeur) ; coût manquant = indisponibilité.
+- P&L : choisir des mois complets si des fiches de paie existent ; aucun prorata journalier. OPEX = décaissements VALIDE vers des fournisseurs classés OPEX ; référence/catégorie manquante = indisponibilité. Ce solde mélange facturation et décaissements et ne constitue pas un résultat comptable.
 - La balance âgée reste globale même si la période sélectionnée ne contient aucune vente.
 - Ventes : Balance âgée (qui vous doit quoi et depuis quand), Top Clients, Panier moyen.
 - Achats : Dépendance fournisseurs, suivi de l'évolution du prix d'achat des matières premières.

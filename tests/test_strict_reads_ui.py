@@ -82,5 +82,5 @@ with patch('modules.dashboards.views.has_permission', return_value=True), \\
 assert not app.exception, app.exception
 assert not app.error, app.error
 assert any(m.label == 'Facturation brute TTC' and m.value == '0.00 DZD' for m in app.metric)
-assert any('KPI-02' in c.value for c in app.caption)
+assert any('KPI-03' in c.value for c in app.caption)
 ''')

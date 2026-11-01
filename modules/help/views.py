@@ -135,8 +135,14 @@ hors avoirs, brouillons et annulations. Le ratio des avoirs validés est sépar�
 La balance âgée conserve toutes les créances ouvertes, même sans vente dans
 la période choisie ; les paiements partiels diminuent le reste à recouvrer.
 Les coûts produits manquants rendent le P&L indisponible. Ses coûts actuels
-et ses salaires non filtrés par période restent des limites : le solde affiché
-est estimatif. Repère des calculs : SOF-ERP-20261101-KPI-02.
+restent une limite : le solde affiché est estimatif. Les nets de paie enregistrés
+sont filtrés par mois/année, tous statuts de paiement ; ils ne prouvent ni une
+paie validée, ni un paiement, ni le coût employeur. Choisir des mois complets
+si des fiches existent : aucun prorata journalier n’est inventé.
+Les OPEX sont les décaissements VALIDE vers les fournisseurs classés OPEX.
+Un fournisseur absent, une catégorie vide ou un montant invalide rend la rubrique
+indisponible. Le solde mélange facturation et décaissements, sans calculer un
+résultat comptable. Repère des calculs : SOF-ERP-20261101-KPI-03.
 Le contrôle ne constitue pas un instantané
 transactionnel de toutes les tables ni une validation comptable des calculs.
 """,
@@ -196,7 +202,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-04")
+    st.caption("Guide révisé le 1 novembre 2026 — SOF-ERP-20261101-GUIDE-05")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")

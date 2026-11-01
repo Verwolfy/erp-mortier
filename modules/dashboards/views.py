@@ -20,7 +20,7 @@ def _mark_dashboards_activity() -> None:
 
 def show_dashboards_page():
     st.title("📊 Tableaux de bord & KPIs")
-    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261101-KPI-02")
+    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261101-KPI-03")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_read = has_permission(user_role, "Dashboards", "lecture")
@@ -51,7 +51,7 @@ def show_dashboards_page():
     # --- 2. RENTABILITÉ (P&L) ---
     with onglets[1], read_section("Rentabilité"):
         st.subheader("Estimation de gestion (P&L)")
-        st.caption("Facturation brute validée hors avoirs. Coûts produits actuels, non historiques ; salaires non filtrés par période. Cette estimation ne constitue pas un résultat comptable.")
+        st.caption("Facturation brute validée hors avoirs et coûts produits actuels, non historiques. OPEX = décaissements validés classés OPEX. Paie = nets enregistrés des mois sélectionnés, tous statuts de paiement, sans cotisations employeur ni preuve de validation. Choisir des mois complets si des fiches existent ; aucun prorata journalier. Ce solde mélange facturation et décaissements : il ne constitue pas un résultat comptable.")
         c_deb_pnl, c_fin_pnl = st.columns(2)
         date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
         date_fin_pnl = c_fin_pnl.date_input("Date de fin", datetime.date.today(), key="f_pnl", on_change=_mark_dashboards_activity)
@@ -69,7 +69,7 @@ def show_dashboards_page():
             st.markdown("### Détail de la cascade des coûts")
 
             df_cascade = pd.DataFrame({
-                "Catégorie": ["1. Facturation brute HT", "2. Coût des Marchandises (COGS)", "3. OPEX (Services & Loyer)", "4. OPEX (Salaires)", "5. Solde estimatif"],
+                "Catégorie": ["1. Facturation brute HT", "2. Coût des Marchandises (COGS)", "3. Décaissements fournisseurs OPEX", "4. Nets mensuels enregistrés", "5. Solde estimatif"],
                 "Montant (DZD)": [pnl['ca_ht'], -pnl['cogs'], -pnl['opex_fournisseurs'], -pnl['opex_salaires'], pnl['ebitda']]
             })
             st.dataframe(df_cascade, use_container_width=True, hide_index=True)

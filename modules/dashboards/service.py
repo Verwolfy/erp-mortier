@@ -11,6 +11,7 @@ from core.utils import get_local_now
 from core.indicateurs_factures import (validated_documents, in_period, client_invoices,
                                       open_receivables, ageing_balance, numeric_values)
 from core.strict_reads import DataReadError
+from core.indicateurs_charges import payroll_net_for_period, supplier_operating_payments
 
 def charger_donnees(table_name: str) -> pd.DataFrame:
     """Charge une table entière (réservé aux petites tables type référentiels ou stocks actuels)."""
@@ -63,7 +64,7 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_lignes_fac = charger_donnees("lignes_facture")
     df_pf = charger_donnees("stock_actuel_pf")
     df_frn = charger_donnees("fournisseurs")
-    df_paie = charger_donnees("fiches_de_paie") # La table paie pourrait aussi être filtrée
+    df_paie = charger_donnees("fiches_de_paie") # Filtrage mensuel contrôlé ci-dessous
 
     # Même périmètre de factures validées pour le CA et les lignes de coût.
     documents = validated_documents(df_fac_periode)
@@ -90,22 +91,9 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
 
     marge_brute = ca_ht - cogs
 
-    # 3. OPEX (Fournisseurs d'exploitation)
-    opex_fournisseurs = 0.0
-    if not df_reg_periode.empty and not df_frn.empty:
-        df_decaissements = df_reg_periode[df_reg_periode["type_flux"] == "DECAISSEMENT"]
-        if not df_decaissements.empty:
-            merged_opex = pd.merge(df_decaissements, df_frn, left_on="partenaire_id", right_on="fournisseur_id", how="inner")
-            if "categorie" in merged_opex.columns:
-                mask_cat = merged_opex["categorie"].astype(str).str.upper().str.contains("OPEX", na=False)
-                merged_opex["montant"] = pd.to_numeric(merged_opex["montant_total"], errors="coerce").fillna(0)
-                opex_fournisseurs = merged_opex[mask_cat]["montant"].sum()
-
-    # 4. OPEX (Salaires)
-    opex_salaires = 0.0
-    if not df_paie.empty:
-        df_paie["net"] = pd.to_numeric(df_paie.get("net_a_payer", 0), errors="coerce").fillna(0)
-        opex_salaires = df_paie["net"].sum()
+    # Décaissements et nets enregistrés : indicateurs de gestion, pas charges SCF.
+    opex_fournisseurs = supplier_operating_payments(df_reg_periode, df_frn)
+    opex_salaires = payroll_net_for_period(df_paie, date_debut, date_fin)
 
     total_opex = opex_fournisseurs + opex_salaires
     ebitda = marge_brute - total_opex

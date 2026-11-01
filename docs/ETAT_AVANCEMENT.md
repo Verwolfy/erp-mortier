@@ -1,3 +1,26 @@
+## 1 novembre 2026 — périodes de paie et décaissements OPEX (KPI-03)
+
+### Correction réalisée
+- Base `5778fbe8773b316156c8f843a51a54f1cf9dc839`, suites NextGen et KPI-02 conservées.
+- Le P&L additionnait les fiches de paie de toutes les périodes : filtrage désormais par `mois` ET `annee`. Des fiches dans une sélection de mois partiels rendent la rubrique indisponible ; aucun prorata journalier n'est déduit de données mensuelles.
+- Le montant reste explicitement un **net enregistré, tous statuts de paiement**, pas un coût employeur, une preuve de validation ni un paiement confirmé. Aucune règle fiscale, sociale ou de validation de paie ajoutée.
+- OPEX : seuls les décaissements `VALIDE` classés via la catégorie fournisseur contenant OPEX sont retenus (convention existante). Brouillons/annulations exclus. La jointure ne masque plus un fournisseur absent ; catégorie vide, référence ambiguë, montant invalide/négatif et statut inconnu sont signalés comme indisponibles.
+- Guide et cascade de coûts précisent que le solde mélange facturation et décaissements. Les limites des coûts historiques, avoirs, cotisations employeur et validation de paie restent ouvertes.
+- Repères visibles : `SOF-ERP-20261101-KPI-03`, `SOF-ERP-20261101-GUIDE-05`.
+
+### Preuves
+- **2 237 tests locaux réussis**, dont 29 nouveaux cas : changement d'année, février bissextile, périodes partielles, montants absents, fournisseur inconnu/doublonné, paiements annulés, intégration au P&L. Un avertissement gotrue préexistant.
+- Rendu Streamlit AppTest du Dashboard vide et des pannes de lecture réussi ; compilation et `git diff --check` réussis.
+- Tests exclusivement locaux, aucun accès de test à Supabase. Aucune transaction métier, migration, suppression ou modification des droits. TEST non sollicité, reste en pause.
+- CI à contrôler après publication. Dernier constat hébergé : écran de connexion ; version interne non attestée.
+
+### Prochaines actions
+1. Contrôler les Actions et vérifier KPI-03 après authentification dans l'ERP.
+2. Auditer les soldes par compte dans Finance (le graphique actuel ne montre que les soldes initiaux) et les retards Achats sur période vide.
+3. Poursuivre l'inventaire des migrations en lecture seule ; aucune régularisation automatique sans preuve de correspondance.
+
+---
+
 ## 1 novembre 2026 — indicateurs de facturation et créances (KPI-02)
 
 ### Réalisé
