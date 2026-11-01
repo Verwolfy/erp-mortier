@@ -30,7 +30,7 @@ _MISSING = object()
 
 
 def prepare(monkeypatch, products=_MISSING, skus=_MISSING,
-            materials=_MISSING, fiscal=_MISSING, manager=True):
+            materials=_MISSING, fiscal=_MISSING, manager=True, cap=None):
     sources = {
         "produits": [product()] if products is _MISSING else products,
         "sku_conditionnement": [sku()] if skus is _MISSING else skus,
@@ -48,9 +48,33 @@ def prepare(monkeypatch, products=_MISSING, skus=_MISSING,
     def table(name):
         q = MagicMock()
         q.select.return_value = q
-        q.eq.return_value = q
-        q.range.return_value = q
-        q.execute.return_value = SimpleNamespace(data=sources[name])
+        filters, order_keys = {}, []
+        def eq(field, value):
+            filters[field] = value
+            return q
+        def order(key):
+            order_keys.append(key)
+            return q
+        def page(start, end):
+            all_rows = sources[name]
+            if not isinstance(all_rows, list):
+                q.execute.return_value = SimpleNamespace(data=all_rows, count=None)
+                return q
+            # Keep malformed entries so the service, not the fixture, rejects them.
+            filtered = [row for row in all_rows if not filters or (
+                isinstance(row, dict) and
+                all(row.get(field) == value for field, value in filters.items()))]
+            data = sorted(filtered, key=lambda row: tuple(
+                str(row.get(key, "")) if isinstance(row, dict) else "" for key in order_keys
+            ))
+            batch = data[start:end + 1]
+            if cap is not None:
+                batch = batch[:cap]  # simulate PostgREST lower server-side row cap
+            q.execute.return_value = SimpleNamespace(data=batch, count=len(data))
+            return q
+        q.eq.side_effect = eq
+        q.order.side_effect = order
+        q.range.side_effect = page
         return q
 
     db.table.side_effect = table
@@ -67,7 +91,7 @@ def test_missing_tariff_tax_and_supplier(monkeypatch):
     assert r["matieres_sans_fournisseur"] == 1
     assert r["autorise_facturation"] is False
     assert r["autorise_fabrication"] is False
-    gate.assert_called_once_with()
+    assert gate.call_count == 5  # initial gate + one gate per table/page
     assert db.table.call_count == 4
 
 
@@ -83,7 +107,7 @@ def test_missing_product_and_measurements(monkeypatch):
 
 
 def test_fiscal_row_not_automatic_approval(monkeypatch):
-    prepare(monkeypatch, fiscal=[{"sku_id": "NG-SKU-BOND-C1T-SAC5", "statut": "VALIDEE"}])
+    prepare(monkeypatch, fiscal=[{"sku_id": "NG-SKU-BOND-C1T-SAC5", "date_effet": "2026-01-01", "statut": "VALIDEE"}])
     r = svc.lister_blocages_nextgen()
     assert r["sans_dossier_fiscal"] == 0
     assert r["autorise_facturation"] is False
@@ -154,7 +178,7 @@ def test_export_nextgen_register_csv(monkeypatch):
     assert rows[1][-2:] == ["", "NON_VERIFIE"]
     assert len(rows) == 2
     assert "telephone" not in export and "prix_vente_defaut" not in export
-    assert gate.call_count == 2  # inventory and export independently authorize
+    assert gate.call_count == 6  # initial + each of four pages + export
 
 
 def test_export_escapes_spreadsheet_formula(monkeypatch):
@@ -198,3 +222,127 @@ def test_ui_export_is_readonly_and_gated():
     assert "exporter_registre_nextgen_csv(result)" in block
     assert "st.download_button(" in block
     assert not any(word in block for word in (".insert(", ".update(", ".delete(", "insert_hybrid(", "update_hybrid("))
+
+
+def test_all_skus_loaded_with_backend_cap(monkeypatch):
+    records = [sku(f"NG-SKU-{i:04d}") for i in range(142)]
+    gate, _, db = prepare(monkeypatch, skus=records, cap=17)
+    result = svc.lister_blocages_nextgen()
+    assert result["sku_nextgen_actifs"] == 142
+    assert result["sans_tarif"] == 142
+    assert len(result["rows"]) == 142
+    assert len({row["sku_id"] for row in result["rows"]}) == 142
+    # 1 product + 9 SKU pages + 1 material + 1 empty fiscal page
+    assert db.table.call_count == 12
+    assert gate.call_count == 13
+
+
+def test_composite_fiscal_key_accepts_successive_dates(monkeypatch):
+    two_versions = [
+        {"sku_id": "NG-SKU-BOND-C1T-SAC5", "date_effet": "2025-01-01", "statut": "A_CONFIRMER"},
+        {"sku_id": "NG-SKU-BOND-C1T-SAC5", "date_effet": "2026-01-01", "statut": "VALIDEE"},
+    ]
+    prepare(monkeypatch, fiscal=two_versions, cap=1)
+    result = svc.lister_blocages_nextgen()
+    assert result["sans_dossier_fiscal"] == 0
+    assert result["autorise_facturation"] is False
+    assert result["autorise_fabrication"] is False
+
+
+def test_duplicate_composite_fiscal_key_rejected(monkeypatch):
+    record = {"sku_id": "NG-SKU-BOND-C1T-SAC5", "date_effet": "2026-01-01", "statut": "A_CONFIRMER"}
+    prepare(monkeypatch, fiscal=[record, dict(record)], cap=1)
+    with pytest.raises(RuntimeError, match="répété"):
+        svc.lister_blocages_nextgen()
+
+
+def test_missing_exact_count_rejected(monkeypatch):
+    _, _, db = prepare(monkeypatch)
+    original = db.table.side_effect
+
+    def table_without_count(name):
+        q = original(name)
+        if name == "sku_conditionnement":
+            page = q.range.side_effect
+            def no_count(start, end):
+                page(start, end)
+                q.execute.return_value.count = None
+                return q
+            q.range.side_effect = no_count
+        return q
+
+    db.table.side_effect = table_without_count
+    with pytest.raises(RuntimeError, match="incomplet"):
+        svc.lister_blocages_nextgen()
+
+
+def test_count_drift_across_pages_rejected(monkeypatch):
+    records = [sku(f"NG-SKU-{i:04d}") for i in range(108)]
+    _, _, db = prepare(monkeypatch, skus=records)
+    original = db.table.side_effect
+
+    def table_with_drift(name):
+        q = original(name)
+        if name == "sku_conditionnement":
+            page = q.range.side_effect
+            def drift(start, end):
+                page(start, end)
+                if start:
+                    q.execute.return_value.count += 1
+                return q
+            q.range.side_effect = drift
+        return q
+
+    db.table.side_effect = table_with_drift
+    with pytest.raises(RuntimeError, match="incohérente"):
+        svc.lister_blocages_nextgen()
+
+
+def test_empty_intermediate_page_rejected(monkeypatch):
+    records = [sku(f"NG-SKU-{i:04d}") for i in range(105)]
+    _, _, db = prepare(monkeypatch, skus=records)
+    original = db.table.side_effect
+
+    def table_with_gap(name):
+        q = original(name)
+        if name == "sku_conditionnement":
+            page = q.range.side_effect
+            def gap(start, end):
+                page(start, end)
+                if start:
+                    q.execute.return_value.data = []
+                return q
+            q.range.side_effect = gap
+        return q
+
+    db.table.side_effect = table_with_gap
+    with pytest.raises(RuntimeError, match="interrompue"):
+        svc.lister_blocages_nextgen()
+
+
+def test_security_permission_revoked_before_next_page(monkeypatch):
+    records = [sku(f"NG-SKU-{i:04d}") for i in range(105)]
+    gate, _, db = prepare(monkeypatch, skus=records)
+    def check_access():
+        if gate.call_count >= 4:
+            raise PermissionError("revoked")
+    gate.side_effect = check_access
+    with pytest.raises(PermissionError, match="revoked"):
+        svc.lister_blocages_nextgen()
+    # product and first SKU page were queried, but the second was not.
+    assert db.table.call_count == 2
+
+
+def test_all_exact_count_reads_use_stable_keys(monkeypatch):
+    _, _, db = prepare(monkeypatch)
+    queries = []
+    factory = db.table.side_effect
+    def tracked_table(name):
+        q = factory(name)
+        queries.append((name, q))
+        return q
+    db.table.side_effect = tracked_table
+    svc.lister_blocages_nextgen()
+    for name, q in queries:
+        assert q.select.call_args.kwargs["count"] == "exact"
+        assert [call.args[0] for call in q.order.call_args_list] == list(svc.READ_KEYS[name])

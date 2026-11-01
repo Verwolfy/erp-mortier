@@ -157,3 +157,9 @@ FOIRE AUX QUESTIONS (Dépannage)
 - Rassembler les documents justificatifs par référence (preuve fournisseur, fiche de densité, composition des kits, conditions tarifaires, fondement fiscal), puis faire examiner les pièces par les responsables habilités. Aucun prix, taux ou statut n'est mis à jour par cet export.
 - Si le diagnostic ou l'export échoue, **ne pas interpréter une absence d'affichage comme une conformité** et signaler l'indisponibilité au responsable de sécurité.
 - Ce registre ne donne aucun droit de publier un produit sur le site, de fabriquer, de facturer ou d'activer la collecte NextGen.
+
+## Qualification NextGen — fiabilité de l'inventaire (lot 12)
+- Le système parcourt maintenant toutes les pages de références et vérifie le total SQL exact avant d'afficher les anomalies ou de permettre l'export CSV. Une limitation automatique des pages par Supabase ne doit plus masquer des références.
+- Si la base renvoie un total incertain, si un enregistrement est incohérent ou si les droits sont retirés durant la lecture, le tableau et l'export sont indisponibles ; cela ne signifie **jamais** qu'il n'existe aucun blocage.
+- Le contrôleur doit relancer la consultation une fois les données disponibles. L'inventaire n'est pas une photographie transactionnelle de plusieurs tables ; éviter de modifier simultanément les références pendant la revue.
+- Aucune création de SKU, statut fiscal ou autorisation de publication n'est déclenchée.
