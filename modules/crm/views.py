@@ -96,6 +96,8 @@ def show_crm_page():
 
     with tab4:
         st.subheader("Demandes reçues du site NextGen")
+        # Fixed UI fingerprint allows an authenticated operator to confirm deployed UI version.
+        st.caption("Version interface NextGen CRM : SOF-NEXTGEN-CRM-20261101-L9")
         st.caption("Consultation technique non nominative. Aucune conversion client automatique.")
         if not inbox_enabled():
             st.info("Fonction préparée, en attente de validation confidentialité et d'activation par l'administrateur.")

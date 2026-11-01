@@ -165,3 +165,11 @@ def test_mapping_compatible_with_streamlit_secret_wrappers(env):
         "crm_inbox_read_enabled": True, "privacy_review_approved": True
     })}
     assert env.m.inbox_enabled() is True
+
+
+def test_nextgen_inbox_has_version_fingerprint_for_operator_readonly_checks():
+    source = VIEWS.read_text(encoding="utf-8")
+    segment = source.split("with tab4:", 1)[1]
+    assert "SOF-NEXTGEN-CRM-20261101-L9" in segment
+    assert "st.caption(" in segment
+    assert "if not inbox_enabled():" in segment
