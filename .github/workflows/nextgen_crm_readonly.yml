@@ -1,0 +1,43 @@
+name: NextGen ERP CRM inbox -- read-only checks
+
+on:
+  push:
+    branches:
+      - "feat/nextgen-crm-inbox-readonly-20261101"
+    paths:
+      - "modules/crm/views.py"
+      - "modules/crm/site_requests.py"
+      - "tests/test_nextgen_crm_inbox.py"
+      - ".github/workflows/nextgen_crm_readonly.yml"
+  pull_request:
+    paths:
+      - "modules/crm/views.py"
+      - "modules/crm/site_requests.py"
+      - "tests/test_nextgen_crm_inbox.py"
+      - ".github/workflows/nextgen_crm_readonly.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install ERP test requirements
+        run: |
+          python -m pip install -r requirements.txt pytest==8.4.2
+          python -m pip install 'pglast>=7,<8'
+      - name: Compile CRM module
+        run: python -m py_compile modules/crm/site_requests.py modules/crm/views.py
+      - name: NextGen read-only unit and regression tests
+        run: python -m pytest -q tests/test_nextgen_crm_inbox.py tests/test_010A_02D_02_ventes_crm_activity.py
+      - name: Run complete ERP regression suite
+        run: python -m pytest -q
