@@ -1,3 +1,29 @@
+## 2 novembre 2026 — Stocks, CRM et effectif RH (KPI-05)
+
+### Réalisé
+- Base `81fabbf1029d02acfbb363ebd27856904bfabe97`, historique et lot migrations préservés.
+- Stocks : coûts requis pour les quantités positives ; coût/seuil/quantité invalide ou négatif = indisponibilité, jamais remplacement silencieux par zéro. Une quantité nulle reste valorisée à zéro sans inventer de coût. Seuils contrôlés par jointure conservant les lignes de stock ; référence absente ou ambiguë détectée. Même contrôle de seuils en Direction.
+- Péremption : les lots déjà périmés et ceux expirant aujourd’hui restent visibles, quantité restante utilisée exclusivement. Lots détenus sans date signalés « risque non évalué » ; suppression du message global « Aucun risque ». Une date renseignée mais invalide bloque le calcul.
+- CRM : les statuts réellement écrits par le formulaire (Nouveau, Contacté, En Négociation, Gagné, Perdu) sont reconnus, ainsi que les codes historiques du Dashboard. Probabilités hors 0–100 et valeurs invalides refusées. Une seule lecture du pipeline pour agrégats globaux et période.
+- Le filtre CRM porte sur la date de création et le statut actuel : libellés explicités, « CA généré » remplacé par « valeur estimée des opportunités gagnées ». Pas de date de clôture inventée. Opportunités gagnées sans commercial conservées dans « Non attribué ».
+- RH : utilisation du vrai champ `actif` (OUI/NON), au lieu de compter tous les employés faute de colonne `statut`. Services non renseignés visibles ; indicateur actif inconnu = indisponibilité.
+- Guide intégré/Markdown actualisés ; repères `SOF-ERP-20261102-KPI-05` et `SOF-ERP-20261102-GUIDE-07`.
+
+### Preuves
+- **2 300 tests locaux réussis**, dont 29 nouveaux cas : statuts du formulaire/anciens codes, coût manquant, seuil inconnu, bornes de péremption, employé inactif, service manquant. Un avertissement gotrue préexistant.
+- AppTest réel non vide Stocks/CRM/RH : effectif actif, pipeline pondéré et avertissement de date absente conformes aux données fictives locales ; aucune exception. Tests de panne/jeu vide existants réussis.
+- Compilation et `git diff --check` réussis. Aucune donnée de production utilisée comme fixture.
+- CI à contrôler après publication ; déploiement hébergé interne toujours non attesté faute de session connectée.
+- Aucune transaction métier, migration, écriture Supabase, suppression ni modification de permissions. TEST non sollicité et conservé en pause.
+
+### Limites et suite
+1. Les seuils portent sur les lignes de stock présentes ; une référence sans ligne de stock n’est pas automatiquement assimilée à zéro. Une date de péremption absente n’est pas une preuve d’absence de péremption.
+2. Vérifier les Actions et le repère KPI-05 dans une session autorisée.
+3. Auditer le taux de rejet Production (retour anticipé sur période sans OF) puis les lectures historiques des modules métier, sans créer de transaction test réelle.
+4. Poursuivre le rapprochement des migrations sur preuves, sans rejouer les candidats.
+
+---
+
 ## 1 novembre 2026 — trésorerie indicative et retards Achats (KPI-04)
 
 ### Réalisé

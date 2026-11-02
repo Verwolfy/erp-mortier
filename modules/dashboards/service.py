@@ -11,6 +11,7 @@ from core.utils import get_local_now
 from core.indicateurs_factures import (validated_documents, in_period, client_invoices,
                                       open_receivables, ageing_balance, numeric_values, dates)
 from core.strict_reads import DataReadError
+from core.indicateurs_stocks import stock_value, below_threshold, expiry_alerts
 from core.indicateurs_tresorerie import validated_payments, cash_balances
 from core.indicateurs_charges import payroll_net_for_period, supplier_operating_payments
 
@@ -34,14 +35,7 @@ def get_kpis_direction() -> dict:
     # 3. Alertes Stock (Matières Premières sous seuil)
     df_stock_mp = charger_donnees("stock_actuel")
     df_ref_mp = charger_donnees("matieres_premieres")
-    alertes_stock = 0
-
-    if not df_stock_mp.empty and not df_ref_mp.empty and "mp_id" in df_stock_mp.columns:
-        merged = pd.merge(df_stock_mp, df_ref_mp, on="mp_id", how="inner")
-        if "quantite_disponible" in merged.columns and "stock_mini" in merged.columns:
-            merged["qte"] = pd.to_numeric(merged["quantite_disponible"], errors="coerce").fillna(0)
-            merged["mini"] = pd.to_numeric(merged["stock_mini"], errors="coerce").fillna(0)
-            alertes_stock = len(merged[merged["qte"] < merged["mini"]])
+    alertes_stock = below_threshold(df_stock_mp, df_ref_mp)
 
     return {"ca_mois": ca_mois, "tresorerie": treso_dispo, "impayes_30j": impayes_30j, "alertes_stock": alertes_stock}
 
@@ -165,46 +159,13 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
     df_lots = charger_donnees("lots")
     df_ref_mp = charger_donnees("matieres_premieres")
 
-    valeur_mp, valeur_pf, sous_seuil = 0.0, 0.0, 0
-    lots_expirants = pd.DataFrame()
-
-    if not df_stock_mp.empty and "quantite_disponible" in df_stock_mp.columns:
-        df_stock_mp["qte"] = pd.to_numeric(df_stock_mp["quantite_disponible"], errors="coerce").fillna(0)
-        df_stock_mp["cmp"] = pd.to_numeric(df_stock_mp.get("cmp_actuel", 0), errors="coerce").fillna(0)
-        valeur_mp = (df_stock_mp["qte"] * df_stock_mp["cmp"]).sum()
-
-        if not df_ref_mp.empty and "mp_id" in df_ref_mp.columns:
-            merged = pd.merge(df_stock_mp, df_ref_mp, on="mp_id", how="inner")
-            if "stock_mini" in merged.columns:
-                merged["mini"] = pd.to_numeric(merged["stock_mini"], errors="coerce").fillna(0)
-                sous_seuil = len(merged[merged["qte"] < merged["mini"]])
-
-    if not df_stock_pf.empty and "quantite_disponible" in df_stock_pf.columns:
-        df_stock_pf["qte"] = pd.to_numeric(df_stock_pf["quantite_disponible"], errors="coerce").fillna(0)
-        df_stock_pf["cout"] = pd.to_numeric(df_stock_pf.get("cout_revient", 0), errors="coerce").fillna(0)
-        valeur_pf = (df_stock_pf["qte"] * df_stock_pf["cout"]).sum()
-
-    if not df_lots.empty and "date_peremption" in df_lots.columns:
-        now = pd.Timestamp(get_local_now()).tz_localize(None)
-        limite = now + timedelta(days=jours_alerte_peremption)
-        df_lots["date_peremption_obj"] = pd.to_datetime(df_lots["date_peremption"], errors="coerce").dt.tz_localize(None)
-
-        col_qte = "quantite_restante" if "quantite_restante" in df_lots.columns else "quantite_initiale"
-        df_lots["qte_lot"] = pd.to_numeric(df_lots.get(col_qte, 0), errors="coerce").fillna(0)
-
-        mask_lots = (df_lots["qte_lot"] > 0) & (df_lots["date_peremption_obj"] >= now) & (df_lots["date_peremption_obj"] <= limite)
-
-        colonnes_ideales = ["lot_id", "item_id", "date_peremption", col_qte]
-        cols_to_select = [col for col in colonnes_ideales if col in df_lots.columns]
-        lots_expirants = df_lots[mask_lots][cols_to_select].copy()
-
-    return {
-        "valeur_mp": valeur_mp,
-        "valeur_pf": valeur_pf,
-        "valeur_totale": valeur_mp + valeur_pf,
-        "sous_seuil": sous_seuil,
-        "lots_expirants": lots_expirants
-    }
+    valeur_mp = stock_value(df_stock_mp, "cmp_actuel")
+    valeur_pf = stock_value(df_stock_pf, "cout_revient")
+    sous_seuil = below_threshold(df_stock_mp, df_ref_mp)
+    lots_expirants, lots_sans_date = expiry_alerts(df_lots, get_local_now(), jours_alerte_peremption)
+    return {"valeur_mp": valeur_mp, "valeur_pf": valeur_pf,
+            "valeur_totale": valeur_mp + valeur_pf, "sous_seuil": sous_seuil,
+            "lots_expirants": lots_expirants, "lots_sans_date": lots_sans_date}
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     start_str = date_debut.strftime("%Y-%m-%d")
@@ -230,51 +191,39 @@ def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dic
     return {"total_ofs": total_ofs, "repartition_statut": repartition, "taux_rejet": taux_rejet}
 
 def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
-    start_str = date_debut.strftime("%Y-%m-%d")
-    end_str = date_fin.strftime("%Y-%m-%d")
-
-    df_opp = charger_donnees("pipeline") # Besoin de toutes pour le pipeline en cours
-    df_periode = pd.DataFrame(fetch_data_by_date_range("pipeline", "date_creation", start_str, end_str))
-
-    if df_opp.empty:
-        return {"pipeline_pondere": 0.0, "taux_conversion": 0.0, "performance_commerciaux": pd.DataFrame()}
-
-    for col in ["valeur_estimee", "probabilite_pct"]:
-        if col in df_opp.columns:
-            df_opp[col] = pd.to_numeric(df_opp[col], errors="coerce").fillna(0)
-        if not df_periode.empty and col in df_periode.columns:
-            df_periode[col] = pd.to_numeric(df_periode[col], errors="coerce").fillna(0)
-
-    # Pipeline en cours sur TOUTE la base
-    if "statut" in df_opp.columns:
-        mask_ouvert = df_opp["statut"].isin(["NOUVELLE", "EN_COURS", "QUALIFICATION", "PROPOSITION"])
-    else:
-        mask_ouvert = pd.Series([False] * len(df_opp))
-
-    df_ouvertes = df_opp[mask_ouvert].copy()
-    if not df_ouvertes.empty and "valeur_estimee" in df_ouvertes.columns and "probabilite_pct" in df_ouvertes.columns:
-        df_ouvertes["valeur_ponderee"] = df_ouvertes["valeur_estimee"] * (df_ouvertes["probabilite_pct"] / 100)
-        pipeline_pondere = df_ouvertes["valeur_ponderee"].sum()
-    else:
-        pipeline_pondere = 0.0
-
-    taux_conversion = 0.0
+    frame = charger_donnees("pipeline")
+    empty = {"pipeline_pondere": 0.0, "taux_conversion": 0.0, "performance_commerciaux": pd.DataFrame()}
+    if frame.empty:
+        return empty
+    # Les libellés du formulaire sont conservés en base ; anciens codes acceptés.
+    aliases = {"Nouveau":"OPEN", "Contacté":"OPEN", "En Négociation":"OPEN",
+               "Gagné":"WON", "Perdu":"LOST", "NOUVELLE":"OPEN", "EN_COURS":"OPEN",
+               "QUALIFICATION":"OPEN", "PROPOSITION":"OPEN", "GAGNEE":"WON", "PERDUE":"LOST"}
+    if 'statut' not in frame or not frame['statut'].isin(aliases).all():
+        raise DataReadError('Statut CRM non reconnu')
+    frame = frame.copy()
+    frame['state'] = frame['statut'].map(aliases)
+    frame['value'] = numeric_values(frame, 'valeur_estimee')
+    frame['probability'] = numeric_values(frame, 'probabilite_pct')
+    if (frame['value'] < 0).any() or not frame['probability'].between(0,100).all():
+        raise DataReadError('Valeur ou probabilité CRM invalide')
+    created = dates(frame, 'date_creation')
+    period = frame.loc[created.between(pd.Timestamp(date_debut).tz_localize(None).normalize(),
+                                       pd.Timestamp(date_fin).tz_localize(None).normalize())]
+    opened = frame.loc[frame['state']=='OPEN']
+    closed = period.loc[period['state'].isin(['WON','LOST'])]
+    won = closed.loc[closed['state']=='WON'].copy()
     perf = pd.DataFrame()
-
-    if not df_periode.empty and "statut" in df_periode.columns:
-        df_cloturees = df_periode[df_periode["statut"].isin(["GAGNEE", "PERDUE"])]
-        if len(df_cloturees) > 0:
-            nb_gagnees = len(df_cloturees[df_cloturees["statut"] == "GAGNEE"])
-            taux_conversion = (nb_gagnees / len(df_cloturees)) * 100
-
-        if "commercial_id" in df_periode.columns:
-            df_gagnees = df_periode[df_periode["statut"] == "GAGNEE"]
-            if not df_gagnees.empty and "valeur_estimee" in df_gagnees.columns:
-                perf = df_gagnees.groupby("commercial_id")["valeur_estimee"].sum().reset_index()
-                perf.columns = ["Commercial", "CA Généré"]
-                perf = perf.sort_values(by="CA Généré", ascending=False)
-
-    return {"pipeline_pondere": pipeline_pondere, "taux_conversion": taux_conversion, "performance_commerciaux": perf}
+    if not won.empty:
+        if 'commercial_id' not in won:
+            raise DataReadError('Commercial absent')
+        won['commercial_id'] = won['commercial_id'].fillna('').astype(str).str.strip().replace('', 'Non attribué')
+        perf = won.groupby('commercial_id')['value'].sum().reset_index()
+        perf.columns = ['Commercial', 'Valeur estimée gagnée']
+        perf = perf.sort_values('Valeur estimée gagnée', ascending=False)
+    return {"pipeline_pondere": (opened['value'] * opened['probability'] / 100).sum(),
+            "taux_conversion": len(won) / len(closed) * 100 if len(closed) else 0.0,
+            "performance_commerciaux": perf}
 
 def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_emp = charger_donnees("employes")
@@ -284,19 +233,20 @@ def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     repart_service = pd.DataFrame()
 
     if not df_emp.empty:
-        if "statut" in df_emp.columns:
-            df_actifs = df_emp[df_emp["statut"] == "ACTIF"]
-        else:
-            df_actifs = df_emp
-
+        if 'actif' not in df_emp or not df_emp['actif'].isin(['OUI','NON']).all():
+            raise DataReadError('Indicateur actif RH absent ou invalide')
+        df_actifs = df_emp.loc[df_emp['actif']=='OUI'].copy()
         effectif_actif = len(df_actifs)
-        col_service = "departement" if "departement" in df_actifs.columns else ("service" if "service" in df_actifs.columns else None)
-        if col_service:
-            repart_service = df_actifs[col_service].value_counts().reset_index()
-            repart_service.columns = ["Service", "Effectif"]
+        if not df_actifs.empty:
+            if 'service' not in df_actifs:
+                raise DataReadError('Champ service absent')
+            labels = df_actifs['service'].fillna('').astype(str).str.strip().replace('', 'Non renseigné')
+            repart_service = labels.value_counts().rename_axis('Service').reset_index(name='Effectif')
 
     conges_attente = 0
-    if not df_conges.empty and "statut" in df_conges.columns:
+    if not df_conges.empty:
+        if "statut" not in df_conges or df_conges["statut"].isna().any():
+            raise DataReadError("Statut de congé absent")
         conges_attente = len(df_conges[df_conges["statut"] == "EN_ATTENTE"])
 
     return {"effectif_actif": effectif_actif, "repartition_service": repart_service, "conges_attente": conges_attente}

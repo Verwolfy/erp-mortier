@@ -20,7 +20,7 @@ def _mark_dashboards_activity() -> None:
 
 def show_dashboards_page():
     st.title("📊 Tableaux de bord & KPIs")
-    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261101-KPI-04")
+    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261102-KPI-05")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_read = has_permission(user_role, "Dashboards", "lecture")
@@ -141,10 +141,12 @@ def show_dashboards_page():
         jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7, on_change=_mark_dashboards_activity)
         kpis_s = get_kpis_stocks(jours_alerte_peremption=jours)
 
+        if kpis_s.get("lots_sans_date", 0):
+            st.warning(f"{kpis_s['lots_sans_date']} lot(s) avec stock sans date de péremption : risque non évalué.")
         cs1, cs2, cs3 = st.columns(3)
         cs1.metric("Valeur Totale Immobilisée", f"{kpis_s['valeur_totale']:,.2f} DZD")
         cs2.metric("Mat. Premières (Sous seuil)", str(kpis_s['sous_seuil']), delta="Rupture imminente" if kpis_s['sous_seuil']>0 else "OK", delta_color="inverse")
-        cs3.metric(f"Lots expirant d'ici {jours}j", str(len(kpis_s['lots_expirants'])), delta="Urgent" if len(kpis_s['lots_expirants'])>0 else "OK", delta_color="inverse")
+        cs3.metric(f"Lots périmés ou échéance ≤ {jours}j", str(len(kpis_s['lots_expirants'])), delta="Urgent" if len(kpis_s['lots_expirants'])>0 else "OK", delta_color="inverse")
         st.divider()
 
         c_st1, c_st2 = st.columns(2)
@@ -153,7 +155,7 @@ def show_dashboards_page():
             st.bar_chart(pd.DataFrame([{"Catégorie": "MP", "Valeur": kpis_s['valeur_mp']}, {"Catégorie": "PF", "Valeur": kpis_s['valeur_pf']}]).set_index("Catégorie"))
         with c_st2:
             st.markdown("**Détail des lots à risque**")
-            st.dataframe(kpis_s["lots_expirants"], use_container_width=True, hide_index=True) if not kpis_s["lots_expirants"].empty else st.success("Aucun risque.")
+            st.dataframe(kpis_s["lots_expirants"], use_container_width=True, hide_index=True) if not kpis_s["lots_expirants"].empty else st.info("Aucun lot daté dans la fenêtre d’alerte.")
 
     # --- 6. PRODUCTION ---
     with onglets[5], read_section("Production"):
@@ -178,6 +180,7 @@ def show_dashboards_page():
     # --- 7. CRM ---
     with onglets[6], read_section("CRM"):
         st.subheader("Performance Commerciale & Pipeline")
+        st.caption("Pipeline ouvert global. Conversion et valeurs gagnées : opportunités créées dans la période, selon leur statut actuel ; ce ne sont pas des ventes facturées ni des clôtures datées.")
         c_deb_c, c_fin_c = st.columns(2)
         date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c", on_change=_mark_dashboards_activity)
         date_fin_c = c_fin_c.date_input("Date de fin", datetime.date.today(), key="f_c", on_change=_mark_dashboards_activity)
@@ -188,18 +191,19 @@ def show_dashboards_page():
 
             cc1, cc2 = st.columns(2)
             cc1.metric("Pipeline Pondéré (En cours)", f"{kpis_c['pipeline_pondere']:,.2f} DZD", help="Valeur estimée * Probabilité des opportunités non clôturées.")
-            cc2.metric("Taux de Conversion (Période)", f"{kpis_c['taux_conversion']:.1f} %", help="Opportunités gagnées / Opportunités clôturées")
+            cc2.metric("Taux de Conversion (Période)", f"{kpis_c['taux_conversion']:.1f} %", help="Gagnées / (gagnées + perdues), parmi les opportunités créées dans la période.")
             st.divider()
 
-            st.markdown("**Top Commerciaux (CA Généré)**")
+            st.markdown("**Valeur estimée des opportunités gagnées par commercial**")
             if not kpis_c["performance_commerciaux"].empty:
                 st.bar_chart(kpis_c["performance_commerciaux"].set_index("Commercial"))
             else:
-                st.info("Aucune opportunité gagnée sur cette période.")
+                st.info("Aucune opportunité actuellement gagnée parmi celles créées dans la période.")
 
     # --- 8. RH ---
     with onglets[7], read_section("RH"):
         st.subheader("Ressources Humaines")
+        st.caption("Effectif actuel : employés marqués actif = OUI. Services non renseignés affichés séparément.")
         kpis_r = get_kpis_rh(pd.Timestamp("2000-01-01"), pd.Timestamp("2100-01-01"))
 
         cr1, cr2 = st.columns(2)

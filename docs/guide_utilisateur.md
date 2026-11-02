@@ -170,3 +170,8 @@ FOIRE AUX QUESTIONS (Dépannage)
 ## Indicateurs KPI-04
 - Retards Achats globaux conservés sur période vide ; échéance du jour non en retard.
 - Trésorerie indicative : Banque/Caisse uniquement, soldes initiaux + règlements VALIDE jusqu’à aujourd’hui. Indépendante du filtre des flux ; hors autres écritures, sans rapprochement bancaire. Soldes initiaux non datés dans le référentiel.
+
+## Indicateurs KPI-05
+- Stocks : coûts manquants sur quantités positives et seuils inconnus = indisponibilité. Lots périmés inclus, lots sans échéance signalés comme non évalués. Seuils contrôlés sur les lignes de stock présentes uniquement.
+- CRM : période de création des opportunités, statut actuel ; valeurs estimées gagnées distinctes du CA facturé. Pipeline ouvert global.
+- RH : effectif actuel marqué actif=OUI ; services manquants visibles séparément.
