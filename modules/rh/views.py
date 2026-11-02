@@ -84,6 +84,10 @@ def show_rh_page():
                             st.error("Le nom est obligatoire.")
 
         df_emp = get_employes()
+        if not df_emp.empty and "employe_id" in df_emp:
+            fictifs = df_emp["employe_id"].astype(str).str.startswith("SIM-RH-").sum()
+            if fictifs:
+                st.warning(f"{fictifs} fiche(s) SIM-RH fictive(s) dans ce registre. Elles servent aux tests et figurent dans les compteurs ; ne pas les utiliser pour une paie ou une déclaration réelle.")
         if not df_emp.empty:
             st.dataframe(df_emp, use_container_width=True)
         else:
@@ -92,13 +96,15 @@ def show_rh_page():
     with tab2:
         st.subheader("Demandes de Congés")
         if can_write:
+            liste_employes = {row["employe_id"]: f"{row['employe_id']} - {row['nom']}"
+                              for _, row in df_emp.iterrows() if str(row.get("actif", "")) == "OUI"}
             if df_emp.empty:
                 st.warning("Veuillez d'abord ajouter des employés pour saisir des congés.")
+            elif not liste_employes:
+                st.warning("Aucun employé actif : aucune demande de congé ne peut être saisie.")
             else:
                 with st.form("form_conges"):
                     c_emp, c_dates = st.columns(2)
-                    liste_employes = {row["employe_id"]: f"{row['employe_id']} - {row['nom']}" for _, row in
-                                      df_emp.iterrows() if str(row.get("actif", "")) == "OUI"}
                     emp_choisi = c_emp.selectbox("Employé", options=list(liste_employes.keys()),
                                                  format_func=lambda x: liste_employes[x])
 

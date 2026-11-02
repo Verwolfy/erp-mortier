@@ -184,6 +184,10 @@ Après mise à jour, contrôler les repères de version visibles et les écrans
 sans créer de transaction métier de test.
 """,
     "🔐 Environnements et sécurité (010-A)": """
+**Simulations RH autorisées :** les fiches SIM-RH-001 à SIM-RH-010 sont fictives,
+avec 8 actifs et 2 inactifs. Elles apparaissent dans les compteurs RH.
+Réutiliser ces identifiants ; ne pas générer de paiement ou déclaration réelle.
+
 **Consigne actuelle :** exploitation sur main et Supabase PRODUCTION.
 Le projet TEST est conservé en pause : ne pas le réveiller ni le supprimer.
 Les anciens protocoles utilisant TEST décrivent un contexte historique.

@@ -1,0 +1,92 @@
+[
+  {
+    "employe_id": "SIM-RH-001",
+    "nom": "[FICTIF] Employé simulation 001",
+    "poste": "Responsable de simulation",
+    "service": "Direction",
+    "manager_id": null,
+    "date_embauche": "2020-01-15",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-002",
+    "nom": "[FICTIF] Employé simulation 002",
+    "poste": "Gestionnaire RH",
+    "service": "RH",
+    "manager_id": "SIM-RH-001",
+    "date_embauche": "2021-03-01",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-003",
+    "nom": "[FICTIF] Employé simulation 003",
+    "poste": "Chef de production",
+    "service": "Production",
+    "manager_id": "SIM-RH-001",
+    "date_embauche": "2022-06-01",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-004",
+    "nom": "[FICTIF] Employé simulation 004",
+    "poste": "Opérateur fabrication",
+    "service": "Production",
+    "manager_id": "SIM-RH-003",
+    "date_embauche": "2026-10-01",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-005",
+    "nom": "[FICTIF] Employé simulation 005",
+    "poste": "Opératrice conditionnement",
+    "service": "Production",
+    "manager_id": "SIM-RH-003",
+    "date_embauche": "2026-11-02",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-006",
+    "nom": "[FICTIF] Employé simulation 006",
+    "poste": "Commercial simulation",
+    "service": "Ventes",
+    "manager_id": "SIM-RH-001",
+    "date_embauche": "2023-04-15",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-007",
+    "nom": "[FICTIF] Employé simulation 007",
+    "poste": "Magasinier simulation",
+    "service": "Logistique",
+    "manager_id": "SIM-RH-001",
+    "date_embauche": "2024-02-01",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-008",
+    "nom": "[FICTIF] Employé simulation 008",
+    "poste": "Technicien simulation",
+    "service": "Maintenance",
+    "manager_id": "SIM-RH-003",
+    "date_embauche": "2025-09-01",
+    "actif": "OUI"
+  },
+  {
+    "employe_id": "SIM-RH-009",
+    "nom": "[FICTIF] Employé simulation 009",
+    "poste": "Ancien opérateur simulation",
+    "service": "Production",
+    "manager_id": "SIM-RH-003",
+    "date_embauche": "2021-05-01",
+    "actif": "NON"
+  },
+  {
+    "employe_id": "SIM-RH-010",
+    "nom": "[FICTIF] Employé simulation 010",
+    "poste": "Ancienne commerciale simulation",
+    "service": "Ventes",
+    "manager_id": "SIM-RH-001",
+    "date_embauche": "2022-08-15",
+    "actif": "NON"
+  }
+]

@@ -1,3 +1,28 @@
+## 2 novembre 2026 — priorité RH et employés fictifs en production
+
+### Autorisation et réalisation
+- L’utilisateur demande explicitement de commencer par RH et d’ajouter des employés fictifs dans la base principale pour toutes les simulations du module. Cette autorisation porte sur ces fiches fictives, pas sur des transactions réelles, paiements, déclarations ou changements de droits.
+- Schéma `public.employes` contrôlé : 8 colonnes texte, clé primaire employe_id, pas de trigger applicatif ; références entrantes demandes_conges et paie_bulletins_v2. Registre vide avant intervention.
+- **10 employés fictifs insérés et relus en PRODUCTION** `wenydirqtmkywbxbxfal` : `SIM-RH-001` à `SIM-RH-010`, noms `[FICTIF]`, 8 actifs et 2 inactifs, six services, hiérarchie de managers valide. Une seule insertion, aucun écrasement de ligne existante.
+- 0 congé et 0 bulletin v2 liés au jeu après insertion. Aucun compte utilisateur, salaire, transaction financière ou pièce juridique créé. Pas de synchronisation Sheets.
+- PROD ACTIVE_HEALTHY ; TEST INACTIVE, non réveillé. RLS employes active après insertion ; aucun schéma ou droit changé.
+- Fixture durable `tests/fixtures/rh_simulation_employes.json` et dossier `docs/RH_SIMULATIONS.md` : ID, scénarios, limites et priorités de finalisation. Le Dashboard inclut les 8 actifs fictifs ; avertissement ajouté au registre et guide complété.
+- Correction RH : quand tous les employés sont inactifs, le formulaire de congé vide est remplacé par un message explicite ; aucun envoi possible depuis cette vue sans employé actif.
+
+### Preuves
+- **2 302 tests locaux réussis**. Tests du jeu : 10 identifiants uniques, 8 actifs, six services, managers valides, séquence réelle EMP inchangée.
+- Streamlit AppTest réel : affichage de l’avertissement, seulement 8 employés sélectionnables, 009/010 exclus, zéro sélecteur/bouton de congé lorsque tous sont inactifs ; écritures interdites par doubles de test.
+- Compilation et `git diff --check` réussis. CI à contrôler après publication.
+- Vérification SQL réelle limitée aux dix fiches et aux compteurs associés. Rendu hébergé toujours non attesté faute de session ERP connectée.
+
+### Suite centrée sur RH
+1. Lectures RH fiables et messages de panne ; contrôles des dates, employés actifs et références manager côté service.
+2. Cycle complet des congés, reprises et permissions, avec ces mêmes identifiants de simulation.
+3. Préparation paie uniquement sur paramètres vérifiés : aucune règle fiscale/sociale inventée ni paiement réel.
+4. Ne pas annoncer le module finalisé avant ces contrôles ; ne pas supprimer/réinitialiser le jeu sans autorisation explicite.
+
+---
+
 ## 2 novembre 2026 — Stocks, CRM et effectif RH (KPI-05)
 
 ### Réalisé
