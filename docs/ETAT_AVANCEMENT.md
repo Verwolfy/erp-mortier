@@ -3,7 +3,7 @@
 - Atelier paie mis en pause à la demande ; reprise du module Achats. Les trois onglets hébergés ont été consultés en ADMIN sans validation : fournisseur et article visibles, interface indiquant aucune commande ni réception ; aucune transaction créée.
 - Correction : lectures paginées contrôlées des fournisseurs, matières, commandes, lignes et réceptions, filtrage serveur paginé par document, contrôles de permission maintenus. Une erreur ou un volume supérieur à 10 000 lignes bloque la rubrique au lieu de simuler un registre vide ; les sections et référentiels sont isolés. Les lectures paginées ne forment pas un instantané transactionnel.
 - Quantité de commande affichée à trois décimales, correspondant au minimum 0,001 ; Guide Achats complété sur réception partielle, conformité, taux historique et erreur de lecture. Aucun schéma ni donnée Supabase modifié ; TEST non sollicité.
-- Tests hors réseau : 172 ciblés et 2 327 sur la suite complète réussis. Déploiement et CI à vérifier après publication ; parcours de réception réelle non exécuté faute de commande de test autorisée.
+- Tests hors réseau : 172 ciblés et 2 327 sur la suite complète réussis. Commit c24c93c : [tests GitHub](https://github.com/Verwolfy/erp-mortier/actions/runs/41523831919) et [audit GitHub](https://github.com/Verwolfy/erp-mortier/actions/runs/41523831898) réussis. Déploiement hébergé confirmé : quantité 0,001 et les trois onglets visibles. Parcours de réception réelle non exécuté faute de commande de test autorisée.
 
 ---
 
