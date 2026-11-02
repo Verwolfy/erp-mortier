@@ -43,7 +43,8 @@ distinct du créateur. Ne jamais inventer de pièce ni de validateur.
 
 Les quantités sont saisies en unités de stock avec trois décimales. Le prix
 d’une réception provient de la commande et son taux historique ; une réception
-partielle conserve le solde à recevoir. Les réceptions non conformes ou avec
+partielle conserve le solde à recevoir. La date de péremption est facultative :
+la renseigner uniquement si elle est connue pour le lot reçu. Les réceptions non conformes ou avec
 réserve sont bloquées : la quarantaine n’est pas disponible.
 
 Si une lecture est indisponible ou incomplète, l’écran signale l’erreur et

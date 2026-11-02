@@ -1,3 +1,12 @@
+## 2 novembre 2026 — Achats : réception partielle et péremption
+
+- Relecture de la réception partielle : le solde est calculé par matière, la valorisation utilise le prix moyen pondéré et le taux historique de la commande, et la RPC SQL contrôle à nouveau les quantités sous verrou. Les réceptions avec réserve ou non conformes restent bloquées.
+- Correction : la date de péremption est facultative et ne prend plus automatiquement la date du jour ; si elle est omise, aucune date n’est transmise. La quantité restante est affichée avec suffisamment de décimales pour les petits soldes. Guide Achats actualisé.
+- Tests : 138 ciblés et 2 331 sur la suite complète réussis ; date absente ou explicitement choisie, soldes 0,001 et 0,0001, scénarios de réception et contrôles existants ; aucune commande, réception ni entrée stock créée. Aucun changement de schéma ou de données Supabase ; TEST non sollicité.
+- Vérification hébergée limitée : le registre ne contient pas de commande réceptionnable, donc le formulaire de réception ne peut pas être ouvert sur des données réelles sans création métier. CI et déploiement à vérifier après publication.
+
+---
+
 ## 2 novembre 2026 — Achats : lectures et parcours sécurisés
 
 - Atelier paie mis en pause à la demande ; reprise du module Achats. Les trois onglets hébergés ont été consultés en ADMIN sans validation : fournisseur et article visibles, interface indiquant aucune commande ni réception ; aucune transaction créée.

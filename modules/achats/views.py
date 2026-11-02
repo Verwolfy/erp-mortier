@@ -388,15 +388,18 @@ def show_achats_page():
                                                           horizontal=True)
                                     c3, c4 = st.columns(2)
                                     remarques = c3.text_input("Remarques / Observation")
-                                    peremption = c4.date_input("Date de péremption")
+                                    peremption = c4.date_input("Date de péremption (facultative)", value=None)
                                     st.divider()
                                     for row in balances:
                                         remaining = row["remaining"]
+                                        # Préserver les petits soldes sans les afficher comme zéro.
+                                        precision = max(3, -Decimal(str(remaining)).normalize().as_tuple().exponent)
                                         qte = st.number_input(
                                             f"{row['mp_id']} (commandé {row['ordered']}, déjà reçu "
                                             f"{row['received']}, solde {remaining})",
                                             min_value=0.0, max_value=remaining,
-                                            value=remaining, step=1.0,
+                                            value=remaining, step=float(Decimal(1).scaleb(-precision)),
+                                            format=f"%.{precision}f",
                                             key=f"ach_rec_{selected}_{row['mp_id']}")
                                         if qte > 0:
                                             stock_unit_cost = (Decimal(str(row["prix_unitaire"])) * order_exchange)
@@ -418,7 +421,7 @@ def show_achats_page():
                                             "controle_conformite": "OUI",
                                             "remarques": remarques,
                                             "items_recus": deepcopy(items_recus),
-                                            "date_peremption": str(peremption),
+                                            "date_peremption": str(peremption) if peremption else "",
                                         })
 
     # --- HISTORIQUE ---

@@ -16,6 +16,7 @@ VIEW_PATH = Path(__file__).resolve().parents[1] / "modules" / "achats" / "views.
 def _mk_col(st):
     col = MagicMock()
     col.radio.side_effect = lambda *args, **kwargs: st.radio(*args, **kwargs)
+    col.date_input.side_effect = lambda label, **kwargs: None if "péremption" in label else "2026-10-21"
     return col
 
 
@@ -442,4 +443,39 @@ def test_indisponibilite_receptions_bloque_formulaire(ui):
     ui.mod.show_achats_page()
     assert any("Réception" in str(c) for c in ui.st.error.call_args_list)
     ui.st.form_submit_button.assert_not_called()
+    ui.achats.creer_bon_reception.assert_not_called()
+
+
+def test_receipt_expiry_absent_without_explicit_selection(ui):
+    _configure_received(ui)
+    ui.st.form_submit_button.return_value = True
+    ui.mod.show_achats_page()
+    assert ui.achats.creer_bon_reception.call_args.kwargs['date_peremption'] == ''
+
+
+def test_receipt_expiry_retains_explicit_selection(ui):
+    _configure_received(ui)
+    ui.st.columns.side_effect = lambda count: [
+        _mk_col(ui.st) for _ in range(count if isinstance(count, int) else len(count))]
+    original = ui.st.columns.side_effect
+    def columns(count):
+        result = original(count)
+        for col in result:
+            col.date_input.side_effect = lambda label, **kwargs: '2027-03-01' if 'péremption' in label else '2026-10-21'
+        return result
+    ui.st.columns.side_effect = columns
+    ui.st.form_submit_button.return_value = True
+    ui.mod.show_achats_page()
+    assert ui.achats.creer_bon_reception.call_args.kwargs['date_peremption'] == '2027-03-01'
+
+
+@pytest.mark.parametrize(('ordered', 'received', 'fmt'), [(0.002, 0.001, '%.3f'), (0.0002, 0.0001, '%.4f')])
+def test_receipt_small_remaining_quantity_is_visible(ui, ordered, received, fmt):
+    _configure_received(ui, qty=received)
+    ui.achats.get_lignes_achats.return_value = pd.DataFrame([
+        {'mp_id': 'MP-1', 'qte_totale': ordered, 'prix_unitaire': 12}])
+    ui.mod.show_achats_page()
+    call = next(c for c in ui.st.number_input.call_args_list if 'ach_rec_' in c.kwargs.get('key', ''))
+    assert call.kwargs['format'] == fmt
+    assert float(call.kwargs['format'] % call.kwargs['value']) > 0
     ui.achats.creer_bon_reception.assert_not_called()
