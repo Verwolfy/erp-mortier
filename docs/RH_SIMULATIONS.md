@@ -66,3 +66,25 @@ Le registre des congés signale désormais le nombre de demandes `SIM-CNG-`. Si 
 Onglet RH « Atelier paie fictive » réservé aux personnes disposant de Paie/lecture ; seules les huit fiches actives SIM-RH-001 à 008 avec marqueur [FICTIF] sont proposées. Calcul en mémoire : base fictive 40 000 + 1 000 × numéro, retenue de test 5 %, contribution de test 10 % et retenue de test 1 000 DA. Ces paramètres sont arbitraires, non juridiques et sans correspondance CNAS/IRG. Aucun bulletin, montant, paiement ou déclaration n'est enregistré. Le contrôle d'accès est revérifié au clic.
 
 Les références réglementaires et les bulletins officiels restent bloqués tant que les règles, assiettes, dates et arrondis ne sont pas qualifiés. Le rendu hébergé dépend du déploiement effectif de Streamlit.
+
+
+## Comparaison DGI 2022 sur les huit salaires de l’atelier
+
+Sur demande utilisateur, comparaison documentaire préparée le 2 novembre 2026, **simulation hors ERP, non enregistrée en base et non validée pour la paie réelle**. Les salaires bruts fictifs correspondent aux bases de l’atelier existant. Hypothèses de test : base entièrement soumise à la cotisation de 9 %, aucune prime de rendement/panier ni autre retenue, et l’assiette IRG = brut fictif − cotisation salariale. Ces hypothèses ne qualifient pas une assiette individuelle réelle.
+
+Les valeurs IRG proviennent des lignes cas général de la [table DGI 2022](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf) correspondant aux assiettes ci-dessous, toutes multiples de 10 DA. La colonne patronale est une comparaison à 25 % de l’assiette fictive selon le tableau du [décret 15-236, JO n°49/2015 p.7](https://www.joradp.dz/FTP/jo-francais/2015/F2015049.pdf) ; elle n’inclut ni ne prouve toutes les autres charges employeur. Aucun montant n'est un taux ou une règle juridique créée en base.
+
+| Employé fictif | Brut hypothétique DA | Cotisation salariale hypothétique DA | Assiette IRG hypothétique DA | IRG table DGI 2022 DA | Net arithmétique hypothétique DA | Quote-part patronale 25 % hypothétique DA |
+|---|---:|---:|---:|---:|---:|---:|
+| SIM-RH-001 | 41000.00 | 3690.00 | 37310.00 | 2481.30 | 34828.70 | 10250.00 |
+| SIM-RH-002 | 42000.00 | 3780.00 | 38220.00 | 2690.60 | 35529.40 | 10500.00 |
+| SIM-RH-003 | 43000.00 | 3870.00 | 39130.00 | 2899.90 | 36230.10 | 10750.00 |
+| SIM-RH-004 | 44000.00 | 3960.00 | 40040.00 | 3110.80 | 36929.20 | 11000.00 |
+| SIM-RH-005 | 45000.00 | 4050.00 | 40950.00 | 3356.50 | 37593.50 | 11250.00 |
+| SIM-RH-006 | 46000.00 | 4140.00 | 41860.00 | 3602.20 | 38257.80 | 11500.00 |
+| SIM-RH-007 | 47000.00 | 4230.00 | 42770.00 | 3847.90 | 38922.10 | 11750.00 |
+| SIM-RH-008 | 48000.00 | 4320.00 | 43680.00 | 4093.60 | 39586.40 | 12000.00 |
+
+Les bases et primes réelles, l’assiette CNAS, le traitement du panier, les retenues et l’ensemble des charges restent à qualifier ; il ne faut pas utiliser ce tableau pour un bulletin ou un versement réel. L’applicabilité 2026 et le traitement des montants hors des lignes de la table ne sont pas démontrés par ces huit exemples. L’atelier ERP actuel emploie des valeurs de test distinctes (5 %, 10 %, 1 000 DA) et **n’affiche pas cette comparaison DGI**.
+
+L'environnement d'exécution local était indisponible pendant cette intervention : comparaison arithmétique et lignes sources vérifiées, mais tests automatisés et rendu Streamlit connecté non exécutés. Les paramètres CNAS/IRG restent absents des registres de production, pour éviter de présenter un calcul dont l'arrondi et les assiettes ne sont pas établis comme une règle juridique confirmée.

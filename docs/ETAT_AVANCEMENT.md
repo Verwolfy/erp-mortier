@@ -1,3 +1,13 @@
+## 2 novembre 2026 — comparaison paie fictive avec table DGI 2022
+
+- Demande utilisateur : appliquer le barème DGI 2022, activer les paramètres CNAS/IRG et simuler des fiches sur l'ERP. Relecture production : les trois références sont absentes et huit profils SIM-RH actifs existent.
+- Réalisé : simulation documentaire de huit salaires fictifs de 41 000 à 48 000 DA, retenue salariale hypothétique 9 %, quote-part patronale hypothétique 25 %, IRG relevé sur huit lignes de la table DGI 2022. Hypothèses et résultats dans `docs/RH_SIMULATIONS.md`, aucune prime ni autre retenue supposée. Ce n’est pas un coût employeur complet ni une paie légale validée.
+- Non réalisé : aucune activation de référence et aucune simulation DGI 2022 dans l’ERP, car le moteur et l’ordre d’arrondi diffèrent de la table pour certains montants et l’applicabilité aux assiettes/primes n’est pas établie. Les simulations de l’atelier utilisent toujours des valeurs fictives distinctes. Aucun bulletin ou paiement réel ; aucune écriture Supabase ; TEST non sollicité.
+- Environnement local indisponible : tests automatisés et affichage Streamlit non exécutés pendant cette intervention. Vérification en lecture seule des sources officielles, du registre et de l’arithmétique.
+- Suite : établir arrondis et assiettes, corriger et tester le moteur, préparer l'activation traçable des trois références, vérifier l’ERP connecté avec ces mêmes fiches fictives.
+
+---
+
 ## 2 novembre 2026 — IRG : contre-exemple de double arrondi
 
 - Les deux Actions de l'atelier fictif `2707b964ade09dc3e4d5079a1b3e464f4ea9b194` sont vertes : audit 41517413157 et tests 41517413066.
