@@ -84,9 +84,13 @@ def show_rh_page():
                         if fresh is None or fresh[0] != user_role or fresh[1] is not True:
                             st.error("Droit RH écriture absent ou révoqué ; ajout interdit.")
                         elif nom:
-                            create_employe(nom, poste, service, manager, str(date_embauche))
-                            st.success(f"Employé {nom} ajouté avec succès !")
-                            st.rerun()
+                            try:
+                                create_employe(nom, poste, service, manager, str(date_embauche))
+                            except RuntimeError:
+                                st.error("Création non confirmée : consultez le registre avant de recommencer pour éviter un doublon.")
+                            else:
+                                st.success(f"Employé {nom} ajouté avec succès !")
+                                st.rerun()
                         else:
                             st.error("Le nom est obligatoire.")
 
@@ -128,6 +132,8 @@ def show_rh_page():
                         else:
                             try:
                                 create_demande_conge(emp_choisi, str(date_debut), str(date_fin), motif)
+                            except RuntimeError:
+                                st.error("Enregistrement non confirmé : consultez le registre avant de recommencer pour éviter un doublon.")
                             except (ValueError, DataReadError, PermissionError):
                                 st.error("Demande non confirmée : vérifiez l’employé, les dates et le registre avant toute nouvelle tentative.")
                             else:
@@ -135,6 +141,10 @@ def show_rh_page():
                                 st.rerun()
 
         if not df_conges.empty:
+            if "demande_conge_id" in df_conges:
+                fictifs_conges = df_conges["demande_conge_id"].astype(str).str.startswith("SIM-CNG-").sum()
+                if fictifs_conges:
+                    st.warning(f"{fictifs_conges} demande(s) SIM-CNG fictive(s) dans ce registre ; elles figurent dans les compteurs.")
             st.dataframe(df_conges, use_container_width=True)
         else:
             st.info("Aucune demande de congé.")

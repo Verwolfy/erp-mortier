@@ -1,3 +1,14 @@
+## 2 novembre 2026 — RH : retour incertain et congés fictifs visibles
+
+- Les Actions du scénario `41058c1b03f1b91e4d58e8bc1dda400842b18213` sont réussies : [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/41456800413), [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/41456800460).
+- Le registre signale désormais les demandes fictives `SIM-CNG-` qui figurent dans les compteurs.
+- Les formulaires d’employé et de congé présentent un message de résultat non confirmé lors d’une erreur d’écriture et invitent à vérifier le registre avant une nouvelle tentative ; aucune exception technique n’est exposée. Il ne s’agit pas d’une reprise idempotente transactionnelle.
+- Test AppTest avec écriture simulée incertaine : aucune exception à l’écran, aucun faux succès, avertissement visible, sans accès réseau ou écriture métier.
+- Pas de modification Supabase, pas de changement des fiches/congés fictifs, aucun paiement ni permission modifiée ; TEST reste en pause. Le cycle d’approbation des congés et la paie homologuée restent à développer séparément.
+- CI de ce changement à vérifier après publication.
+
+---
+
 ## 2 novembre 2026 — scénario RH congés et paie simulée
 
 - À la demande de l’utilisateur, trois demandes fictives `SIM-CNG-001` à `003` créées en PRODUCTION sur les employés SIM-RH-004, 006 et 008, marque `[SIMULATION]`, statut EN_ATTENTE ; insertion unique sans écrasement et relecture SQL. Aucune approbation, suppression ou modification des droits.
