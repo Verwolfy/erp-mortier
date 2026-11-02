@@ -33,3 +33,20 @@ La comparaison ne tranche pas si la table ou une formule avec arrondi final doit
 2. Établir les règles exactes d’arrondi IRG et la compatibilité de la table DGI avec la date cible, puis confronter le moteur à un ensemble représentatif de lignes, seuils et catégories, y compris entrées non multiples de 10 DA.
 3. Préparer des données de référence traçables avec dates, unités et sources ; confirmer les droits et vérifier les registres sans doublons avant toute écriture. Tester sans paie réelle.
 4. Maintenir l’interdiction de bulletin officiel tant que les profils, assiettes, règles, validation et circuit légal ne sont pas établis. Ne pas réveiller le projet TEST.
+
+
+## Périmètre choisi par l’utilisateur — 2 novembre 2026
+
+- Phase initiale : salariés du **régime général**. Les autres profils sont hors périmètre et ne doivent pas être traités par défaut comme un salarié général.
+- Le coût employeur recherché doit être aussi complet que possible, avec chaque contribution détaillée et son assiette, sa période et sa source. Distinguer les montants établis des montants non calculables ; ne jamais remplacer une contribution inconnue par zéro.
+- Finalité : préparer à terme des bulletins utilisables par l’entreprise, après vérification complète des règles, des arrondis et des profils ; ne pas lever les blocages actuels au seul motif de ce choix.
+
+### Contribution formation et apprentissage : portée
+
+La [loi de finances 2026, articles 18 à 20](https://dgb.mf.gov.dz/wp-content/uploads/2026/01/LF-2026.pdf), modifie les articles 196 bis, 196 quater et 196 quinquies du CIDTA : les deux dispositifs ont une assiette de masse salariale brute **semestrielle** et leur calcul tient compte des dépenses éligibles du semestre. Ces taxes ne peuvent pas être ajoutées mécaniquement comme deux taux fixes à chaque bulletin individuel. Il faut vérifier le champ d’application, les exonérations, les dépenses et les justificatifs propres à l’entreprise et à la période avant de calculer un montant.
+
+Le calcul d’un coût employeur individuel complet nécessite une règle documentée de répartition des charges collectives lorsqu’une telle répartition est pertinente. À défaut, les présenter séparément comme montant collectif non attribué ; ne pas inventer de clé de répartition ni traiter les fiches fictives comme effectif réel.
+
+### Validation réglementaire encore nécessaire
+
+La table IRG 2022 et le moteur divergent de quelques centimes dans les cas rapportés ci-dessus. Les conditions d’arrondi, la date d’effet de la table et son utilisation pour des bases non multiples de 10 DA ne sont pas encore établies. La preuve d’un cas concordant ne valide pas l’ensemble du barème. Les deux références CNAS et le barème restent absents du registre actif ; aucune écriture ni changement de permission n’a été effectué.

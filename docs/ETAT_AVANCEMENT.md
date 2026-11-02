@@ -1,3 +1,12 @@
+## 2 novembre 2026 — périmètre paie confirmé
+
+- Choix de l’utilisateur : salariés du régime général d’abord ; coût employeur aussi complet que possible, avec détail ; objectif à terme de bulletins utilisables après vérification complète.
+- Loi de finances 2026, articles 18–20 : formation professionnelle et apprentissage à examiner distinctement sur la masse salariale semestrielle et selon les dépenses réalisées ; aucune application automatique de taux fixes par bulletin. Sources et limites dans `docs/PAIE_QUALIFICATION_20261102.md`.
+- Les écarts IRG et la définition complète des contributions ne sont pas encore résolus. Aucun paramètre actif ou règle juridique ajouté, aucune écriture Supabase, aucun droit modifié ; projet TEST non sollicité.
+- Suite : recouper les textes officiels et arrondis, définir les postes collectifs/non calculables, tester les valeurs de référence avant toute qualification.
+
+---
+
 ## 2 novembre 2026 — qualification IRG/CNAS : éléments et écarts
 
 - Analyse demandée des trois références, documentée dans `docs/PAIE_QUALIFICATION_20261102.md`. Journal officiel n°49/2015 p.7 : tableau 25 % employeur, 9 % salarié, 0,5 % fonds des œuvres sociales, total 34,5 %. Vérification requise de la version applicable, des autres contributions et de la signification du champ coût employeur avant paramétrage.
