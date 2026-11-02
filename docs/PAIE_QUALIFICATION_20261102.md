@@ -78,3 +78,12 @@ La [DGI, traitements et salaires](https://mfdgi.gov.dz/fr/particuliers/irg-trait
 | IRG | Régime général mensuel initialement | Écarts d’arrondi avec la table à résoudre |
 
 Aucun montant de rémunération réel, dossier individuel, taux qualifié ou règle active n’a été ajouté à Supabase à partir de ces choix.
+
+
+## Essai d'arrondi non déployé
+
+Le [Journal officiel n°57 du 31 décembre 1990, article 324](https://www.joradp.dz/FTP/Jo-Francais/1990/F1990057.pdf) énonce une règle générale pour l'assiette et les cotisations, sous réserve des dispositions spéciales ; sa version applicable au salaire et aux retenues pour la période visée reste à vérifier dans le code consolidé et les instructions pertinentes. Ne pas confondre cet article avec une règle générale établie spécifiquement pour toutes les étapes des retenues sur salaires.
+
+L'essai local arrondit **après le calcul actuel** au dixième de dinar le plus proche, avec égalité arrondie vers le haut. Sur les quatre exemples de cas général (33 000, 35 000, 35 010 et 50 000 DA), il reproduit les quatre valeurs publiées dans la table DGI 2022 citée plus haut. C'est une hypothèse expérimentale, non une preuve de conformité. Les multiples arrondis intermédiaires, les bases non multiples de 10, les seuils et la version applicable ne sont pas établis. Le script de test est `tests/test_irg_recherche_arrondi.py` ; il ne change ni le moteur ni les données de production.
+
+La [DGI annonce la publication des codes fiscaux 2026](https://mfdgi.gov.dz/fr/a-propos/actu-fr/codes-fiscaux-fr), mais le téléchargement du code consolidé n'a pas abouti lors de cette recherche. Obtenir l'édition applicable et comparer les articles pertinents, les dispositions spéciales et, si disponibles, les instructions de calcul avant toute qualification.

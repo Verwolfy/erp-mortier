@@ -1,3 +1,13 @@
+## 2 novembre 2026 — recherche sur l'arrondi IRG
+
+- Recherche en sources primaires : le JO n°57/1990 article 324 énonce une règle générale sous réserve de dispositions spéciales. Son application exacte aux retenues salariales et sa version consolidée 2026 restent à établir ; la page DGI annonçant le code 2026 a été trouvée mais son téléchargement n'a pas abouti.
+- Essai hors ligne : un arrondi expérimental final au dixième reproduit les quatre exemples DGI 2022 précédemment comparés. Ce petit échantillon ne constitue ni une qualification, ni une preuve des étapes ou de la portée juridique. Test reproductible `tests/test_irg_recherche_arrondi.py`, dossier paie complété.
+- Aucun changement du moteur, taux ou référence de production, aucune écriture Supabase ni modification de droit. Projet TEST non sollicité. Les bulletins officiels restent bloqués.
+- Validation : 23 tests ciblés et 2 307 tests locaux réussis ; CI à contrôler après publication.
+- Suite : consulter le code consolidé et les éventuelles dispositions spéciales, élargir les cas de comparaison aux seuils et aux assiettes non multiples de 10, puis qualifier les trois références avant déploiement.
+
+---
+
 ## 2 novembre 2026 — Guide & Aide : règles de paie et références
 
 - Ajout de la rubrique « Paie : règles et références » : périmètre régime général, choix utilisateur sur base/rendement/panier et charges, limites de qualification, CNAS, IRG, formation et apprentissage. Chaque sujet réglementaire est relié aux sources DGI ou Journal officiel et distingue source publiée, application à vérifier et choix de produit.
