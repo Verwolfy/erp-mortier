@@ -1,3 +1,12 @@
+## 2 novembre 2026 — vérification hébergée de l’atelier DGI fictif
+
+- Authentification sécurisée réussie dans Streamlit ; module RH et ses 10 fiches SIM-RH visibles. La sélection de l’atelier présente huit options.
+- Onglet « Atelier paie fictive » : comparaison DGI 2022 disponible et testée en lecture pour SIM-RH-001 (brut 41 000, assiette 37 310, IRG 2 481,30, net 34 828,70 DA) et SIM-RH-008 (brut 48 000, assiette 43 680, IRG 4 093,60, net 39 586,40 DA). Aucun bulletin ou paiement créé.
+- Les 12 cas de test locaux couvrent les huit lignes et les identifiants refusés ; suite complète 2 321 tests. CI du commit c178f3cb71ffc912519bd44773d028203cb4c601 : [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/41520135849) et [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/41520135917) réussis.
+- Les références réglementaires CNAS et IRG ne sont pas activées : les exemples fixes sont documentaires, sans qualification de paie réelle. Aucune écriture Supabase pendant cette intervention ; TEST non sollicité.
+
+---
+
 ## 2 novembre 2026 — comparaison DGI 2022 dans l'atelier RH
 
 - À la demande de l’utilisateur, ajout dans RH/Atelier paie fictive d’un bouton distinct de l’exemple arbitraire affichant les huit comparaisons DGI 2022 déjà documentées : brut fictif, cotisation salariale hypothétique à 9 %, assiette, IRG extrait de la table, net arithmétique et quote-part employeur hypothétique 25 %.
