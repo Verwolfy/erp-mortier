@@ -15,7 +15,8 @@ import pandas as pd
 import streamlit as st
 
 from config.roles import has_permission
-from core.db_service import fetch_data, get_supabase_client
+from core.db_service import get_supabase_client
+from core.strict_reads import DataReadError, fetch_data_strict, read_section
 from core.listes_service import get_liste, liste_to_dict
 from core.utils import get_local_now
 from modules.achats.service import (
@@ -218,13 +219,17 @@ def _remaining_quantities(cmd_id: str, lines: pd.DataFrame, brs: pd.DataFrame) -
 
 
 def get_fournisseurs_actifs():
-    df = pd.DataFrame(fetch_data("fournisseurs"))
-    return df[df["actif"] == "OUI"] if not df.empty and "actif" in df.columns else pd.DataFrame()
+    df = pd.DataFrame(fetch_data_strict("fournisseurs"))
+    if not df.empty and "actif" not in df.columns:
+        raise DataReadError("Référentiel incomplet")
+    return df[df["actif"] == "OUI"] if not df.empty else df
 
 
 def get_mp_actives():
-    df = pd.DataFrame(fetch_data("matieres_premieres"))
-    return df[df["actif"] == "OUI"] if not df.empty and "actif" in df.columns else pd.DataFrame()
+    df = pd.DataFrame(fetch_data_strict("matieres_premieres"))
+    if not df.empty and "actif" not in df.columns:
+        raise DataReadError("Référentiel incomplet")
+    return df[df["actif"] == "OUI"] if not df.empty else df
 
 
 def _mark_achats_activity() -> None:
@@ -243,7 +248,7 @@ def show_achats_page():
     tab1, tab2, tab3 = st.tabs(["➕ Nouvelle Commande", "📦 Réception & Entrée Stock", "📋 Historique & Suivi"])
 
     # --- COMMANDE FOURNISSEUR ---
-    with tab1:
+    with tab1, read_section("Nouvelle commande"):
         if not can_write:
             st.info("🔒 Mode lecture seule.")
         elif _pending_panel("commande", user_id):
@@ -262,7 +267,7 @@ def show_achats_page():
                                                 format_func=lambda x: liste_fournisseurs[x])
                 type_achat = col2.selectbox("Type d'achat", ["Matière Première", "Emballage", "Frais Généraux"])
                 col3, col4, col5 = st.columns(3)
-                dict_devise = liste_to_dict(get_liste("Devise")) or {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
+                dict_devise = liste_to_dict(get_liste("Devise", strict=True)) or {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
                 devise = col3.selectbox("Devise", options=list(dict_devise),
                                        format_func=lambda x: dict_devise.get(x, x))
                 # Les prix du panier sont saisis dans la devise selectionnee.
@@ -289,7 +294,7 @@ def show_achats_page():
                     liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
                     mp_choisie = c_mp.selectbox("Article", options=list(liste_mp),
                                                format_func=lambda x: liste_mp[x])
-                    qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=1.0)
+                    qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=0.001, format="%.3f")
                     prix_u = c_prix.number_input(f"Prix unitaire ({devise})", min_value=0.0, step=1.0)
                     if c_btn.button("Ajouter", use_container_width=True):
                         mp_row = df_mp[df_mp["mp_id"] == mp_choisie].iloc[0]
@@ -317,11 +322,11 @@ def show_achats_page():
                 st.divider()
                 st.subheader("3. Modalités & Validation")
                 c_mode, c_delai, c_valider = st.columns(3)
-                dict_mode = liste_to_dict(get_liste("ModePaiement")) or {
+                dict_mode = liste_to_dict(get_liste("ModePaiement", strict=True)) or {
                     "Virement": "Virement", "Chèque": "Chèque", "Espèces": "Espèces"}
                 mode = c_mode.selectbox("Mode de paiement", options=list(dict_mode),
                                         format_func=lambda x: dict_mode.get(x, x))
-                dict_delai = liste_to_dict(get_liste("ConditionPaiement")) or {
+                dict_delai = liste_to_dict(get_liste("ConditionPaiement", strict=True)) or {
                     "Comptant": "Comptant", "30 jours": "30 jours", "60 jours": "60 jours"}
                 delai = c_delai.selectbox("Délai de paiement", options=list(dict_delai),
                                           format_func=lambda x: dict_delai.get(x, x))
@@ -335,7 +340,7 @@ def show_achats_page():
                     _start_operation("commande", user_id, payload)
 
     # --- BON DE RÉCEPTION ---
-    with tab2:
+    with tab2, read_section("Réception"):
         st.subheader("Générer un bon de réception (BR)")
         if not can_write:
             st.info("🔒 Mode lecture seule.")
@@ -417,7 +422,7 @@ def show_achats_page():
                                         })
 
     # --- HISTORIQUE ---
-    with tab3:
+    with tab3, read_section("Historique achats"):
         st.subheader("Commandes d'Achats")
         commandes = get_commandes()
         if not commandes.empty:

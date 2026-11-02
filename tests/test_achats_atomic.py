@@ -24,6 +24,8 @@ def achats(monkeypatch):
     db.fetch_data_filtered = Mock(side_effect=lambda t, c, v: [{c: v}])
     db.insert_hybrid = Mock()
     db.update_hybrid = Mock()
+    strict = types.ModuleType("core.strict_reads")
+    strict.fetch_data_strict = Mock(side_effect=lambda table, **kw: [{kw["equal_column"]: kw["equal_value"]}] if kw else [])
     utils = types.ModuleType("core.utils")
     utils.generate_unique_id = Mock(side_effect=lambda prefix, ids: f"{prefix}-0001")
     utils.generate_technical_id = Mock(side_effect=lambda prefix: f"{prefix}-XYZ")
@@ -40,7 +42,7 @@ def achats(monkeypatch):
         }))
     client.rpc.side_effect = rpc
     for name, obj in [("core", types.ModuleType("core")),
-                      ("core.db_service", db), ("core.utils", utils),
+                      ("core.db_service", db), ("core.strict_reads", strict), ("core.utils", utils),
                       ("modules", types.ModuleType("modules")),
                       ("modules.stocks", types.ModuleType("modules.stocks")),
                       ("modules.stocks.service", stock)]:
@@ -48,6 +50,7 @@ def achats(monkeypatch):
     spec = importlib.util.spec_from_file_location("test_achat_module", SRC)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    db.strict = strict
     return mod, db, utils, client
 
 
@@ -225,9 +228,9 @@ def test_decimal_precision(achats):
 def test_get_lines_are_filtered_in_supabase(achats):
     mod,db,_,_=achats
     assert mod.get_lignes_achats("CMA-10").iloc[0]["commande_achat_id"]=="CMA-10"
-    db.fetch_data_filtered.assert_called_with("lignes_achats","commande_achat_id","CMA-10")
+    db.strict.fetch_data_strict.assert_called_with("lignes_achats",equal_column="commande_achat_id",equal_value="CMA-10")
     assert mod.get_lignes_bons_reception("BR-10").iloc[0]["bon_reception_id"]=="BR-10"
-    db.fetch_data_filtered.assert_called_with("lignes_bons_reception","bon_reception_id","BR-10")
+    db.strict.fetch_data_strict.assert_called_with("lignes_bons_reception",equal_column="bon_reception_id",equal_value="BR-10")
 
 
 def test_unfiltered_read_support(achats):
@@ -236,7 +239,7 @@ def test_unfiltered_read_support(achats):
     assert mod.get_bons_reception().empty
     assert mod.get_lignes_achats().empty
     assert mod.get_lignes_bons_reception().empty
-    assert db.fetch_data.call_count==4
+    assert db.strict.fetch_data_strict.call_count==4
 
 
 def test_max_lines(achats):

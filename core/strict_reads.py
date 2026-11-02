@@ -18,7 +18,8 @@ class DataReadError(RuntimeError):
 
 
 def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
-                      date_column=None, start_date=None, end_date=None):
+                      date_column=None, start_date=None, end_date=None,
+                      equal_column=None, equal_value=None):
     """SELECT paginé, trié par PK et contrôlé par count exact à chaque page.
 
     Une limite API plus petite que page_size est acceptée : on poursuit à partir
@@ -41,6 +42,11 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
                 raise ValueError("Date ISO attendue")
         if start_date > end_date:
             raise ValueError("Période inversée")
+    if equal_column is not None:
+        if equal_column not in columns or type(equal_value) not in (str, int) or (isinstance(equal_value, str) and not equal_value.strip()):
+            raise ValueError("Filtre de lecture invalide")
+    elif equal_value is not None:
+        raise ValueError("Colonne de filtre manquante")
     rows, seen, expected = [], set(), None
     try:
         while True:
@@ -48,6 +54,8 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
             db._require_read_permission(table_name)
             query = db.get_supabase_client().table(table_name).select(
                 db._read_projection(table_name), count="exact")
+            if equal_column is not None:
+                query = query.eq(equal_column, equal_value)
             if date_column is not None:
                 query = query.gte(date_column, start_date).lte(date_column, end_date)
             response = query.order(key).range(len(rows), len(rows) + page_size - 1).execute()

@@ -16,6 +16,10 @@ class Query:
         self.projection = projection
         return self
 
+    def eq(self, col, value):
+        self.filters.append(("eq", col, value))
+        return self
+
     def gte(self, col, value):
         self.filters.append(('gte', col, value))
         return self
@@ -41,7 +45,12 @@ class Query:
             return response
         data = self.client.tables.get(self.table, [])
         for op, col, value in self.filters:
-            data = [r for r in data if r[col] >= value] if op == 'gte' else [r for r in data if r[col] <= value]
+            if op == 'eq':
+                data = [r for r in data if r[col] == value]
+            elif op == 'gte':
+                data = [r for r in data if r[col] >= value]
+            else:
+                data = [r for r in data if r[col] <= value]
         data = sorted(data, key=lambda r: r[self.sort])
         total = len(data)
         start, end = self.bounds
@@ -188,3 +197,27 @@ def test_strict_reference_list_propagates_failure(env):
     env[0].responses = [ConnectionError('private response')]
     with pytest.raises(reads.DataReadError):
         get_liste('TypeInteractionCRM', strict=True)
+
+
+def test_equality_filter_paginates_only_matching_rows(env):
+    client, guard = env
+    client.api_cap = 1
+    client.tables['lignes_achats'] = [
+        {'ligne_achat_id':'a', 'commande_achat_id':'C1'},
+        {'ligne_achat_id':'b', 'commande_achat_id':'C2'},
+        {'ligne_achat_id':'c', 'commande_achat_id':'C1'}]
+    rows = reads.fetch_data_strict('lignes_achats', equal_column='commande_achat_id', equal_value='C1')
+    assert [r['ligne_achat_id'] for r in rows] == ['a', 'c']
+    assert guard.call_count == 2
+    assert all(q.filters == [('eq', 'commande_achat_id', 'C1')] for q in client.calls)
+
+
+@pytest.mark.parametrize('kwargs', [
+    {'equal_column':'hash_mdp', 'equal_value':'secret'},
+    {'equal_column':'commande_achat_id', 'equal_value':''},
+    {'equal_value':'C1'},
+])
+def test_invalid_equality_filter_never_queries(env, kwargs):
+    with pytest.raises(ValueError):
+        reads.fetch_data_strict('lignes_achats', **kwargs)
+    assert env[0].calls == []

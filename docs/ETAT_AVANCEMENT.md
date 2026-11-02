@@ -1,3 +1,12 @@
+## 2 novembre 2026 — Achats : lectures et parcours sécurisés
+
+- Atelier paie mis en pause à la demande ; reprise du module Achats. Les trois onglets hébergés ont été consultés en ADMIN sans validation : fournisseur et article visibles, interface indiquant aucune commande ni réception ; aucune transaction créée.
+- Correction : lectures paginées contrôlées des fournisseurs, matières, commandes, lignes et réceptions, filtrage serveur paginé par document, contrôles de permission maintenus. Une erreur ou un volume supérieur à 10 000 lignes bloque la rubrique au lieu de simuler un registre vide ; les sections et référentiels sont isolés. Les lectures paginées ne forment pas un instantané transactionnel.
+- Quantité de commande affichée à trois décimales, correspondant au minimum 0,001 ; Guide Achats complété sur réception partielle, conformité, taux historique et erreur de lecture. Aucun schéma ni donnée Supabase modifié ; TEST non sollicité.
+- Tests hors réseau : 172 ciblés et 2 327 sur la suite complète réussis. Déploiement et CI à vérifier après publication ; parcours de réception réelle non exécuté faute de commande de test autorisée.
+
+---
+
 ## 2 novembre 2026 — vérification hébergée de l’atelier DGI fictif
 
 - Authentification sécurisée réussie dans Streamlit ; module RH et ses 10 fiches SIM-RH visibles. La sélection de l’atelier présente huit options.

@@ -41,6 +41,16 @@ distinct du créateur. Ne jamais inventer de pièce ni de validateur.
   affecte les stocks ; ce bouton ne sert pas à tester la connexion.
 - **Historique & Suivi :** consulter les commandes et bons de réception.
 
+Les quantités sont saisies en unités de stock avec trois décimales. Le prix
+d’une réception provient de la commande et son taux historique ; une réception
+partielle conserve le solde à recevoir. Les réceptions non conformes ou avec
+réserve sont bloquées : la quarantaine n’est pas disponible.
+
+Si une lecture est indisponible ou incomplète, l’écran signale l’erreur et
+bloque la rubrique concernée : réessayer avant de conclure à un registre vide.
+Les consultations sont limitées à 10 000 lignes par table ou filtre ; au-delà,
+faire réduire le volume de consultation avant de poursuivre.
+
 Ne pas ressaisir dans Stocks une réception déjà enregistrée ici.
 Après une réponse incertaine, conserver l'identifiant d'opération et utiliser
 la reprise proposée avant d'envisager une nouvelle saisie.

@@ -4,6 +4,7 @@ import sys
 import types
 from pathlib import Path
 from unittest.mock import MagicMock
+from contextlib import contextmanager
 
 import pandas as pd
 import pytest
@@ -39,6 +40,19 @@ def ui(monkeypatch):
     db.get_supabase_client = MagicMock(return_value=client)
     db.fetch_data = MagicMock(return_value=[])
 
+    strict = types.ModuleType("core.strict_reads")
+    class DataReadError(RuntimeError):
+        pass
+    strict.DataReadError = DataReadError
+    strict.fetch_data_strict = db.fetch_data
+    @contextmanager
+    def read_section(label):
+        try:
+            yield
+        except (DataReadError, PermissionError):
+            st.error(f"{label} : données indisponibles")
+    strict.read_section = read_section
+
     roles = types.ModuleType("config.roles")
     roles.has_permission = MagicMock(return_value=True)
 
@@ -66,6 +80,7 @@ def ui(monkeypatch):
         "config.roles": roles,
         "core": types.ModuleType("core"),
         "core.db_service": db,
+        "core.strict_reads": strict,
         "core.listes_service": listes,
         "core.utils": utils,
         "modules": types.ModuleType("modules"),
@@ -77,7 +92,7 @@ def ui(monkeypatch):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return types.SimpleNamespace(mod=mod, st=st, db=db, client=client, query=query,
-                                 roles=roles, achats=achats)
+                                 roles=roles, achats=achats, strict=strict)
 
 
 def _sample_order():
@@ -410,4 +425,21 @@ def test_receipt_ui_blocks_invalid_exchange_rate(ui, bad_rate):
     ui.st.form_submit_button.return_value = True
     ui.st.radio.return_value = "CONFORME"
     ui.mod.show_achats_page()
+    ui.achats.creer_bon_reception.assert_not_called()
+
+
+def test_indisponibilite_commandes_ne_simule_pas_un_historique_vide(ui):
+    ui.achats.get_commandes.side_effect = ui.strict.DataReadError("offline")
+    ui.mod.show_achats_page()
+    assert any("données indisponibles" in str(c) for c in ui.st.error.call_args_list)
+    assert not any("Aucune commande" in str(c) for c in ui.st.info.call_args_list)
+    ui.st.form_submit_button.assert_not_called()
+
+
+def test_indisponibilite_receptions_bloque_formulaire(ui):
+    _configure_received(ui)
+    ui.achats.get_lignes_bons_reception.side_effect = ui.strict.DataReadError("offline")
+    ui.mod.show_achats_page()
+    assert any("Réception" in str(c) for c in ui.st.error.call_args_list)
+    ui.st.form_submit_button.assert_not_called()
     ui.achats.creer_bon_reception.assert_not_called()

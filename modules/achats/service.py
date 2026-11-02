@@ -16,7 +16,8 @@ from uuid import uuid4
 
 import pandas as pd
 
-from core.db_service import check_server_permission, fetch_data, fetch_data_filtered
+from core.db_service import check_server_permission
+from core.strict_reads import fetch_data_strict
 from core.utils import generate_technical_id, generate_unique_id, get_local_now
 from modules.stocks.service import _stock_rpc_client
 
@@ -91,22 +92,22 @@ def _rpc(name: str, params: dict[str, Any], *, receipt: bool) -> dict[str, Any]:
 
 
 def get_commandes() -> pd.DataFrame:
-    return pd.DataFrame(fetch_data("commandes_achats"))
+    return pd.DataFrame(fetch_data_strict("commandes_achats"))
 
 
 def get_lignes_achats(commande_id: str | None = None) -> pd.DataFrame:
-    data = (fetch_data_filtered("lignes_achats", "commande_achat_id", commande_id)
-            if commande_id else fetch_data("lignes_achats"))
+    data = (fetch_data_strict("lignes_achats", equal_column="commande_achat_id", equal_value=commande_id)
+            if commande_id else fetch_data_strict("lignes_achats"))
     return pd.DataFrame(data)
 
 
 def get_bons_reception() -> pd.DataFrame:
-    return pd.DataFrame(fetch_data("bons_reception"))
+    return pd.DataFrame(fetch_data_strict("bons_reception"))
 
 
 def get_lignes_bons_reception(br_id: str | None = None) -> pd.DataFrame:
-    data = (fetch_data_filtered("lignes_bons_reception", "bon_reception_id", br_id)
-            if br_id else fetch_data("lignes_bons_reception"))
+    data = (fetch_data_strict("lignes_bons_reception", equal_column="bon_reception_id", equal_value=br_id)
+            if br_id else fetch_data_strict("lignes_bons_reception"))
     return pd.DataFrame(data)
 
 
