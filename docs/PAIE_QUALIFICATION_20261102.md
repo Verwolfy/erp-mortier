@@ -87,3 +87,12 @@ Le [Journal officiel n°57 du 31 décembre 1990, article 324](https://www.joradp
 L'essai local arrondit **après le calcul actuel** au dixième de dinar le plus proche, avec égalité arrondie vers le haut. Sur les quatre exemples de cas général (33 000, 35 000, 35 010 et 50 000 DA), il reproduit les quatre valeurs publiées dans la table DGI 2022 citée plus haut. C'est une hypothèse expérimentale, non une preuve de conformité. Les multiples arrondis intermédiaires, les bases non multiples de 10, les seuils et la version applicable ne sont pas établis. Le script de test est `tests/test_irg_recherche_arrondi.py` ; il ne change ni le moteur ni les données de production.
 
 La [DGI annonce la publication des codes fiscaux 2026](https://mfdgi.gov.dz/fr/a-propos/actu-fr/codes-fiscaux-fr), mais le téléchargement du code consolidé n'a pas abouti lors de cette recherche. Obtenir l'édition applicable et comparer les articles pertinents, les dispositions spéciales et, si disponibles, les instructions de calcul avant toute qualification.
+
+
+## Contre-exemple : arrondir deux fois peut produire une erreur
+
+Un rapprochement élargi de 12 lignes de la table DGI 2022 (bases fictives de 30 000 à 320 000 DA) donne 11 correspondances pour l'essai qui arrondit au dixième le résultat déjà arrondi au centime, et une divergence à 32 000 DA : 957,90 DA contre 957,80 DA dans la table. La table est publiée par la [DGI](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf).
+
+À cette assiette et pour la formule du cas général de la [DGI](https://mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires), le résultat après premier abattement est 1 656 DA et la formule supplémentaire donne environ 957,845588 DA avant arrondi. Arrondir directement ce nombre au dixième donne 957,80 ; arrondir d'abord au centime donne 957,85 puis au dixième 957,90. Le test expérimental reproduit cette différence, sans modifier le moteur.
+
+Ces observations identifient le risque de double arrondi ; elles ne suffisent pas à établir l'ordre légal des arrondis, l'applicabilité d'une édition donnée ou le traitement des assiettes non multiples de 10. Le code consolidé 2026 et les éventuelles instructions spécifiques n'ont pas encore été consultés ; aucune référence n'est qualifiée ni activée.

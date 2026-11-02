@@ -1,3 +1,13 @@
+## 2 novembre 2026 — IRG : contre-exemple de double arrondi
+
+- Les deux Actions de l'atelier fictif `2707b964ade09dc3e4d5079a1b3e464f4ea9b194` sont vertes : audit 41517413157 et tests 41517413066.
+- Table DGI 2022 : parmi 12 lignes de bases fictives, l'essai de double arrondi reproduit 11 valeurs mais donne 957,90 DA à 32 000 DA alors que la DGI indique 957,80 DA. Le calcul non arrondi de la formule aboutit à environ 957,845588 DA ; arrondi direct au dixième = 957,80, après arrondi préalable au centime = 957,90.
+- Ajout d'un test expérimental reproductible et du raisonnement dans le dossier de qualification. Ce constat ne prouve pas l'ordre légal des arrondis ni l'application aux bases non multiples de 10. Code fiscal consolidé 2026 toujours à consulter.
+- 2 309 tests locaux réussis ; AppTest du guide réussi. CI et déploiement hébergé à contrôler après publication.
+- Aucune modification du moteur de paie, aucune règle active ou écriture Supabase ; employés et congés fictifs conservés, TEST non sollicité. Prochaine étape : vérifier les sources applicables et comparer les seuils/assiettes avant qualification et déploiement réglementaire.
+
+---
+
 ## 2 novembre 2026 — atelier de paie fictive dans RH
 
 - Demande utilisateur : activer CNAS/IRG et simuler des salaires fictifs sur l'ERP. Contrôle SQL PRODUCTION : les trois codes de références sont absents ; huit employés SIM-RH actifs existent.

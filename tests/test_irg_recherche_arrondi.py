@@ -16,3 +16,15 @@ for base, attendu in cas:
 """
     r=subprocess.run([sys.executable,'-c',script],cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,timeout=45)
     assert r.returncode==0,r.stdout+r.stderr
+
+def test_essai_double_arrondi_32000_differe_de_la_table_dgi():
+    """L'essai en deux arrondis ne reproduit pas la ligne DGI à 32 000 DA."""
+    from decimal import Decimal, ROUND_HALF_UP
+    # Formule DGI du cas général après premier abattement : 1656 DA.
+    montant = Decimal(1656) * Decimal(137) / Decimal(51) - Decimal(27925) / Decimal(8)
+    direct = montant.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+    double = montant.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP).quantize(
+        Decimal('0.1'), rounding=ROUND_HALF_UP
+    )
+    assert direct == Decimal('957.80')  # table DGI 2022, assiette 32 000
+    assert double == Decimal('957.90')

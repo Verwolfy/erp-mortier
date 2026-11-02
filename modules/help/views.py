@@ -159,7 +159,8 @@ date d’application doivent être vérifiées.
 La [table IRG 2022 DGI](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf)
 sert aux comparaisons. Des écarts de quelques centimes subsistent avec le moteur
 sur certains exemples : la portée de la table et les règles d’arrondi restent
-à établir avant qualification.
+à établir avant qualification. Un double arrondi peut changer le résultat ;
+l’ordre applicable reste à vérifier.
 
 ### Formation et apprentissage
 
@@ -296,7 +297,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-09")
+    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-10")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")

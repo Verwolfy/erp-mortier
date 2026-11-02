@@ -15,7 +15,7 @@ app.sidebar.radio[0].set_value("📚 Paie : règles et références").run()
 body=" ".join(x.value for x in app.markdown)
 for expected in ("joradp.dz/FTP/jo-francais/2015/F2015049.pdf","mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires","dgb.mf.gov.dz/wp-content/uploads/2026/01/LF-2026.pdf","ne sont pas qualifiés","prime mensuelle de panier"):
     assert expected in body, expected
-assert any("GUIDE-09" in x.value for x in app.caption)
+assert any("GUIDE-10" in x.value for x in app.caption)
 '''
     r=subprocess.run([sys.executable,'-c',script],cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,timeout=45)
     assert r.returncode==0,r.stdout+r.stderr
