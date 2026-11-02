@@ -55,6 +55,9 @@ faire réduire le volume de consultation avant de poursuivre.
 Ne pas ressaisir dans Stocks une réception déjà enregistrée ici.
 Après une réponse incertaine, conserver l'identifiant d'opération et utiliser
 la reprise proposée avant d'envisager une nouvelle saisie.
+Si le message « Connexion serveur Achats indisponible avant envoi » apparaît,
+l’administrateur doit vérifier la configuration Supabase et la clé serveur dédiée
+du déploiement. Conserver le dossier de reprise pendant cette vérification.
 """,
     "📦 Stocks & Magasin": """
 - **État des Stocks :** consulter séparément matières premières en vrac,

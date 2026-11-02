@@ -2,9 +2,10 @@
 
 - Autorisation utilisateur : créer des enregistrements fictifs pour les audits dans chaque module, à supprimer en fin d’audit. Fournisseur SIM-AUD-FOU-001 et matière SIM-AUD-MP-001 créés avec noms [FICTIF AUDIT], sans identité fiscale ou contact inventé. Registre de nettoyage : ces références, leurs documents, lignes, opérations/outbox, lots, mouvements et stock exclusivement liés aux essais devront être rapprochés avant suppression.
 - Commande fictive CMA-0001 : 0,003 KG à 10 DZD/KG, total 0,03 DZD ; opération ACH-UI-f69847663ade494fb506c9279fcb0c2f. Tentative Streamlit non confirmée et absence en base vérifiée ; la RPC Supabase appelée directement avec le même identifiant a ensuite réussi. Il ne s’agit pas d’une validation du chemin d’écriture Streamlit.
-- Formulaire hébergé : péremption vide, quantité 0,003 visible ; soumission NON_CONFORME refusée, aucune réception créée. Une tentative conforme à 0,001 reste non confirmée ; diagnostic en cours.
+- Formulaire hébergé : péremption vide, quantité 0,003 visible ; soumission NON_CONFORME refusée. Diagnostic déployé puis reprise testée : création du client serveur dédié indisponible avant envoi. Configuration Supabase/clé dédiée du déploiement à vérifier, aucune modification de secret. Les dossiers de reprise sont conservés.
+- RPC directes : première réception 0,001 puis solde 0,002, statut partiel puis RECEPTIONNE. Répétition de la première opération sans doublon ; contrôle SQL final : deux réceptions, deux mouvements, deux lots sans péremption, stock 0,003 KG à CMP 10 DZD. Identifiants et nettoyage documentés dans docs/AUDIT_DONNEES_FICTIVES.md ; les données fictives peuvent affecter les agrégats jusqu’au nettoyage.
 - Amélioration du diagnostic Achats : distinguer la création du client avant envoi des erreurs RPC ; ne présenter que des messages fixes et des codes serveur autorisés, jamais le détail d’exception potentiellement sensible. Dossier de reprise préservé.
-- 2 333 tests réussis avant ajout des codes serveur ; vérification finale et CI à compléter. Aucun changement de schéma, de permission ou de contrôle de sécurité ; projet TEST non sollicité.
+- 2 333 tests finaux réussis ; les deux Actions du correctif bd29437 sont vertes : audit 41527883868 et tests 41527883877. Guide complété sur le diagnostic. Aucun changement de schéma, de permission ou de contrôle de sécurité ; projet TEST non sollicité.
 
 ---
 
