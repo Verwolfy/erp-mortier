@@ -29,9 +29,11 @@ LIMIT = Decimal("1e15")
 class PurchaseOperationError(RuntimeError):
     """Échec non confirmé. Réessayer avec le MÊME operation_id, jamais un nouveau."""
 
-    def __init__(self, message: str, *, operation_id: str):
+    def __init__(self, message: str, *, operation_id: str, phase: str = "rpc", code: str | None = None):
         super().__init__(message)
         self.operation_id = operation_id
+        self.phase = phase
+        self.code = code if code in {"PGRST202", "PGRST301", "42501", "23505", "23514", "22023", "401"} else None
 
 
 def _text(value: Any, label: str, *, max_len: int = 200, allow_empty: bool = False) -> str:
@@ -74,11 +76,18 @@ def _rpc(name: str, params: dict[str, Any], *, receipt: bool) -> dict[str, Any]:
     if receipt and check_server_permission("mouvements") is not True:
         raise PermissionError("Droit d'écriture Stocks refusé")
     try:
-        response = _stock_rpc_client().rpc(name, params).execute()
+        client = _stock_rpc_client()
+    except Exception as exc:
+        raise PurchaseOperationError(
+            "Connexion serveur Achats indisponible avant envoi",
+            operation_id=op_id, phase="connexion",
+        ) from exc
+    try:
+        response = client.rpc(name, params).execute()
     except Exception as exc:
         raise PurchaseOperationError(
             "Transaction non confirmée : contrôler la base avant de réessayer avec le MÊME operation_id",
-            operation_id=op_id,
+            operation_id=op_id, code=getattr(exc, "code", None),
         ) from exc
     result = response.data
     expected_doc = "bon_reception_id" if receipt else "commande_achat_id"

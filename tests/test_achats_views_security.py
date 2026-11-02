@@ -479,3 +479,13 @@ def test_receipt_small_remaining_quantity_is_visible(ui, ordered, received, fmt)
     assert call.kwargs['format'] == fmt
     assert float(call.kwargs['format'] % call.kwargs['value']) > 0
     ui.achats.creer_bon_reception.assert_not_called()
+
+
+def test_connection_failure_preserves_retry_without_exposing_server_error(ui):
+    error = RuntimeError('secret-do-not-display')
+    error.phase = 'connexion'
+    ui.achats.create_commande_achat.side_effect = error
+    ui.mod._start_operation('commande', 'USR-1', _order_payload())
+    assert 'Connexion serveur' in str(ui.st.error.call_args)
+    assert 'secret-do-not-display' not in str(ui.st.error.call_args)
+    assert ui.mod._operation_key('commande', 'USR-1') in ui.st.session_state

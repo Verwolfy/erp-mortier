@@ -106,7 +106,14 @@ def _execute_operation(kind: str, user_id: str) -> None:
         # Un timeout peut survenir après le commit PostgreSQL : conserver le dossier.
         _LOG.warning("Transaction Achats non confirmée (%s)", type(exc).__name__)
         record["status"] = "uncertain"
-        st.error("Opération non confirmée. Vérifiez son résultat avant de réessayer.")
+        if getattr(exc, "phase", None) == "connexion":
+            st.error("Connexion serveur Achats indisponible avant envoi. "
+                     "Vérifiez la configuration Supabase du déploiement "
+                     "et sa clé serveur dédiée. Conservez ce dossier de reprise.")
+        else:
+            st.error("Opération non confirmée. Vérifiez son résultat avant de réessayer.")
+        if getattr(exc, "code", None) in {"PGRST202", "PGRST301", "42501", "23505", "23514", "22023", "401"}:
+            st.caption(f"Code serveur Achats : {exc.code}")
         st.code(record["operation_id"])
         return
 

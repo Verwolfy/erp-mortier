@@ -1,3 +1,13 @@
+## 2 novembre 2026 — Achats : essais fictifs autorisés en production
+
+- Autorisation utilisateur : créer des enregistrements fictifs pour les audits dans chaque module, à supprimer en fin d’audit. Fournisseur SIM-AUD-FOU-001 et matière SIM-AUD-MP-001 créés avec noms [FICTIF AUDIT], sans identité fiscale ou contact inventé. Registre de nettoyage : ces références, leurs documents, lignes, opérations/outbox, lots, mouvements et stock exclusivement liés aux essais devront être rapprochés avant suppression.
+- Commande fictive CMA-0001 : 0,003 KG à 10 DZD/KG, total 0,03 DZD ; opération ACH-UI-f69847663ade494fb506c9279fcb0c2f. Tentative Streamlit non confirmée et absence en base vérifiée ; la RPC Supabase appelée directement avec le même identifiant a ensuite réussi. Il ne s’agit pas d’une validation du chemin d’écriture Streamlit.
+- Formulaire hébergé : péremption vide, quantité 0,003 visible ; soumission NON_CONFORME refusée, aucune réception créée. Une tentative conforme à 0,001 reste non confirmée ; diagnostic en cours.
+- Amélioration du diagnostic Achats : distinguer la création du client avant envoi des erreurs RPC ; ne présenter que des messages fixes et des codes serveur autorisés, jamais le détail d’exception potentiellement sensible. Dossier de reprise préservé.
+- 2 333 tests réussis avant ajout des codes serveur ; vérification finale et CI à compléter. Aucun changement de schéma, de permission ou de contrôle de sécurité ; projet TEST non sollicité.
+
+---
+
 ## 2 novembre 2026 — Achats : réception partielle et péremption
 
 - Relecture de la réception partielle : le solde est calculé par matière, la valorisation utilise le prix moyen pondéré et le taux historique de la commande, et la RPC SQL contrôle à nouveau les quantités sous verrou. Les réceptions avec réserve ou non conformes restent bloquées.

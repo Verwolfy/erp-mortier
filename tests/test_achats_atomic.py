@@ -291,3 +291,16 @@ def test_unconfigured_pack_conversion_remains_forbidden(achats):
             "prix_unitaire": 4, "total_devise": 200,
         }])
     client.rpc.assert_not_called()
+
+
+def test_client_configuration_failure_is_distinct_from_uncertain_rpc(achats, monkeypatch):
+    mod, _, _, client = achats
+    def unavailable():
+        raise RuntimeError('secret-do-not-display')
+    monkeypatch.setattr(mod, '_stock_rpc_client', unavailable)
+    with pytest.raises(mod.PurchaseOperationError) as error:
+        cmd(mod, operation_id='SIM-AUD-OP')
+    assert error.value.phase == 'connexion'
+    assert 'secret-do-not-display' not in str(error.value)
+    assert error.value.operation_id == 'SIM-AUD-OP'
+    client.rpc.assert_not_called()
