@@ -50,3 +50,31 @@ Le calcul d’un coût employeur individuel complet nécessite une règle docume
 ### Validation réglementaire encore nécessaire
 
 La table IRG 2022 et le moteur divergent de quelques centimes dans les cas rapportés ci-dessus. Les conditions d’arrondi, la date d’effet de la table et son utilisation pour des bases non multiples de 10 DA ne sont pas encore établies. La preuve d’un cas concordant ne valide pas l’ensemble du barème. Les deux références CNAS et le barème restent absents du registre actif ; aucune écriture ni changement de permission n’a été effectué.
+
+
+## Précisions fournies par l’utilisateur — 2 novembre 2026
+
+- Effectif réel annoncé : **moins de 20 employés**, en excluant les dix fiches fictives `SIM-RH-`. Cette déclaration décrit la situation indiquée ; elle ne prouve pas l’effectif à chaque période ni la méthode juridique de décompte.
+- Premier modèle : salaire de base, prime de rendement mensuelle et prime de panier. Le caractère mensuel ne suffit pas à déterminer le traitement social ou fiscal ; documenter séparément conditions d’attribution, pièces et règles applicables à chaque composante. Les rappels et primes non mensuelles restent hors de ce premier périmètre.
+- Charges collectives : une répartition est souhaitée lorsqu’elle est nécessaire, avec une **clé propre à chaque charge** ; aucune clé n’a encore été choisie pour un poste donné. Une charge non déterminée ou non répartissable reste indiquée comme telle et ne devient pas zéro.
+
+### Textes et incidence sur le périmètre déclaré
+
+L’article 56 de la [loi de finances 2022, JO n°100](https://www.joradp.dz/FTP/jo-francais/2021/F2021100.pdf), a introduit l’article 196 ter prévoyant une exonération de la **taxe de formation professionnelle** pour les employeurs de moins de vingt employés. La [loi de finances 2026, articles 18 à 20](https://dgb.mf.gov.dz/wp-content/uploads/2026/01/LF-2026.pdf), modifie séparément le champ, l’assiette et le taux des taxes de formation et d’apprentissage. Vérifier le texte consolidé, la période, la définition de l’effectif et les déclarations avant d’appliquer cette exonération ; ne pas l’étendre automatiquement à l’apprentissage.
+
+La [DGI, traitements et salaires](https://mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires), distingue diverses indemnités et rémunérations pour l’IRG. Elle ne suffit pas à qualifier automatiquement la prime de panier particulière de l’entreprise, ni son assiette sociale ; vérifier les textes et justificatifs spécifiques.
+
+### Matrice de réalisation
+
+| Poste | Décision de produit | État de qualification |
+|---|---|---|
+| Base | Salaire de base du régime général | Assiettes et profils à vérifier |
+| Rendement | Prime mensuelle distincte | Règles sociales/fiscales à vérifier |
+| Panier | Prime mensuelle distincte | Conditions et traitement à vérifier, sans présumer une exonération |
+| CNAS salarié | Retenue séparée | Texte, date d’effet et assiette à confirmer pour le profil |
+| CNAS employeur | Contribution distincte | Périmètre et autres contributions à confirmer |
+| Formation / apprentissage | Charges collectives semestrielles distinctes | Éligibilité et justificatifs par période à vérifier |
+| Répartition | Choisir une clé par charge | Aucune clé choisie ; ne pas répartir par défaut |
+| IRG | Régime général mensuel initialement | Écarts d’arrondi avec la table à résoudre |
+
+Aucun montant de rémunération réel, dossier individuel, taux qualifié ou règle active n’a été ajouté à Supabase à partir de ces choix.

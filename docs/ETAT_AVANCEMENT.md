@@ -1,3 +1,12 @@
+## 2 novembre 2026 — précisions métier pour la paie
+
+- Réponses utilisateur : moins de 20 employés réels, hors jeu fictif ; premier modèle salaire de base + primes mensuelles de rendement et de panier ; clé de répartition à définir par charge collective.
+- Recherche : l’article 56 LF 2022 crée une exonération de taxe de formation professionnelle pour les employeurs de moins de 20 employés ; la LF 2026 modifie d’autres éléments du dispositif. Vérification du texte consolidé, du décompte et de l’application à l’entreprise encore requise. Ne pas étendre automatiquement ce traitement à l’apprentissage.
+- Matrice des postes, hypothèses, sources et éléments non qualifiés consignée dans `docs/PAIE_QUALIFICATION_20261102.md`. Les taux CNAS et barème IRG ne sont pas activés ; aucun changement Supabase ou permission. TEST non sollicité.
+- Suite : établir le traitement fiscal et social des deux primes avec leurs conditions ; vérifier les règles d’arrondi IRG ; qualifier chaque contribution et sa clé de répartition avec sources et dates.
+
+---
+
 ## 2 novembre 2026 — périmètre paie confirmé
 
 - Choix de l’utilisateur : salariés du régime général d’abord ; coût employeur aussi complet que possible, avec détail ; objectif à terme de bulletins utilisables après vérification complète.
