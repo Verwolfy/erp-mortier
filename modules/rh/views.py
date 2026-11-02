@@ -63,6 +63,7 @@ def show_rh_page():
     if can_read_paie:
         noms_onglets.append("🧮 Simulation IRG (non validée)")
         noms_onglets.append("🔎 Préparation Paie IRG / CNAS")
+        noms_onglets.append("🧪 Atelier paie fictive")
     onglets = st.tabs(noms_onglets)
     tab1, tab2 = onglets[:2]
 
@@ -205,6 +206,49 @@ def show_rh_page():
     if can_read_paie:
         with onglets[3]:
             _preflight_paie_tab(user_role)
+
+        with onglets[4]:
+            _atelier_paie_fictive(df_emp, user_role)
+
+
+def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
+    """Atelier arithmétique borné au jeu SIM-RH ; aucune écriture ou règle légale."""
+    st.subheader("Atelier de paie fictive")
+    st.warning("TEST UNIQUEMENT — montants et taux arbitraires ; aucun calcul CNAS ou IRG officiel, aucun bulletin, paiement ou déclaration. Ne pas utiliser pour une paie réelle.")
+    st.caption("Exemple fixe : retenue de test 5 %, contribution de test 10 %, retenue forfaitaire de test 1 000 DZD. Ces valeurs ne sont pas des taux légaux.")
+    required = {"employe_id", "nom", "actif"}
+    if df_emp.empty or not required.issubset(df_emp):
+        st.info("Aucun employé fictif actif disponible.")
+        return
+    rows = df_emp.loc[
+        df_emp["employe_id"].astype(str).str.fullmatch(r"SIM-RH-00[1-8]")
+        & df_emp["nom"].astype(str).str.startswith("[FICTIF]")
+        & (df_emp["actif"] == "OUI")
+    ].sort_values("employe_id")
+    if rows.empty:
+        st.info("Aucun employé fictif actif disponible.")
+        return
+    options = rows["employe_id"].tolist()
+    chosen = st.selectbox("Employé fictif", options=options, key="rh_test_employe",
+                          on_change=_mark_rh_activity)
+    if st.button("Calculer l’exemple fictif", key="rh_test_calculer",
+                 on_click=_mark_rh_activity):
+        fresh = _rh_access()
+        if fresh is None or fresh[0] != user_role or fresh[2] is not True:
+            st.error("Droit Paie absent, révoqué ou non vérifiable.")
+            return
+        from decimal import Decimal
+        number = int(chosen.rsplit("-", 1)[1])
+        base = Decimal("40000") + Decimal(number) * Decimal("1000")
+        retenue = base * Decimal("0.05")
+        contribution = base * Decimal("0.10")
+        net = base - retenue - Decimal("1000")
+        st.metric("Base fictive (DZD)", f"{base:.2f}")
+        st.metric("Retenues fictives (DZD)", f"{retenue + Decimal('1000'):.2f}")
+        st.metric("Net fictif (DZD)", f"{net:.2f}")
+        st.metric("Contribution fictive de test (DZD)", f"{contribution:.2f}")
+        st.caption("Calcul en mémoire seulement ; aucune donnée de paie n’est enregistrée.")
+
 
 
 def _preflight_paie_tab(user_role: str) -> None:

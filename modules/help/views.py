@@ -173,6 +173,14 @@ sur certains exemples : la portée de la table et les règles d’arrondi resten
   séparément ; ne pas ajouter mécaniquement deux taux fixes par bulletin.
   [Source : loi de finances 2026, articles 18 à 20](https://dgb.mf.gov.dz/wp-content/uploads/2026/01/LF-2026.pdf).
 
+### Atelier de paie fictive
+
+Dans **RH → Atelier paie fictive**, le rôle doit disposer de Paie/lecture.
+Seuls les employés SIM-RH-001 à 008 actifs et marqués [FICTIF] sont proposés.
+Le bouton calcule un exemple en mémoire, sans écriture. Les retenues de 5 %,
+10 % et 1 000 DZD sont arbitraires : elles ne représentent ni taux CNAS ni
+barème IRG et ne doivent pas servir à une paie ou une déclaration réelle.
+
 ### Utiliser l’écran
 
 Dans **RH → Préparation Paie IRG / CNAS**, choisir la date et lancer **Vérifier
@@ -288,7 +296,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-08")
+    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-09")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")

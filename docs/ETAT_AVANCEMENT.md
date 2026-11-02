@@ -1,3 +1,14 @@
+## 2 novembre 2026 — atelier de paie fictive dans RH
+
+- Demande utilisateur : activer CNAS/IRG et simuler des salaires fictifs sur l'ERP. Contrôle SQL PRODUCTION : les trois codes de références sont absents ; huit employés SIM-RH actifs existent.
+- Les sources/arrondis et le coût employeur complet ne sont pas suffisamment établis pour marquer les règles réglementaires confirmées. Aucune référence n'a été activée, aucune règle juridique inventée et les garde-fous existants sont conservés.
+- Ajout d'un onglet RH « Atelier paie fictive » sous la permission existante Paie/lecture, revérifiée au clic. Choix limité à SIM-RH-001..008 actifs et nom [FICTIF], calcul local en mémoire. Taux 5 %/10 % et retenue 1 000 DA explicitement arbitraires, ni CNAS ni IRG ; aucun bulletin ou paiement, aucune écriture.
+- Tests AppTest avec un salarié réel et un faux marqueur : seule la fiche admissible est proposée, résultat arithmétique vérifié, aucun service d'écriture appelé. Guide intégré et dossier de simulation complétés, repère GUIDE-09.
+- 2 308 tests locaux réussis, dont AppTest de l’atelier et du guide. Aucune modification Supabase, permission, RLS ou paie réelle ; TEST non sollicité. CI et déploiement hébergé à vérifier après publication.
+- Suite : vérifier les Actions et l'onglet connecté ; confirmer les sources consolidées, assiettes, taux et arrondis réglementaires pour permettre l'activation demandée sans présenter des valeurs fictives comme des règles valides.
+
+---
+
 ## 2 novembre 2026 — recherche sur l'arrondi IRG
 
 - Recherche en sources primaires : le JO n°57/1990 article 324 énonce une règle générale sous réserve de dispositions spéciales. Son application exacte aux retenues salariales et sa version consolidée 2026 restent à établir ; la page DGI annonçant le code 2026 a été trouvée mais son téléchargement n'a pas abouti.

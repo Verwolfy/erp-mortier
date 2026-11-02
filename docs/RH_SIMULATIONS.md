@@ -59,3 +59,10 @@ Huit bulletins ont été calculés **en mémoire seulement**, un pour chaque emp
 La simulation du cycle complet reste limitée : le module ne fournit pas encore un cycle d’approbation et d’annulation des congés ni une émission de bulletin homologuée. Les fonctions et autorisations doivent être auditées avant toute activation ; ne pas inventer de règles juridiques pour compléter ce parcours.
 
 Le registre des congés signale désormais le nombre de demandes `SIM-CNG-`. Si une écriture d’employé ou de congé ne reçoit pas de confirmation, l’écran demande de vérifier le registre avant toute nouvelle tentative ; cela ne garantit pas une reprise transactionnelle automatique.
+
+
+## Atelier fictif intégré
+
+Onglet RH « Atelier paie fictive » réservé aux personnes disposant de Paie/lecture ; seules les huit fiches actives SIM-RH-001 à 008 avec marqueur [FICTIF] sont proposées. Calcul en mémoire : base fictive 40 000 + 1 000 × numéro, retenue de test 5 %, contribution de test 10 % et retenue de test 1 000 DA. Ces paramètres sont arbitraires, non juridiques et sans correspondance CNAS/IRG. Aucun bulletin, montant, paiement ou déclaration n'est enregistré. Le contrôle d'accès est revérifié au clic.
+
+Les références réglementaires et les bulletins officiels restent bloqués tant que les règles, assiettes, dates et arrondis ne sont pas qualifiés. Le rendu hébergé dépend du déploiement effectif de Streamlit.
