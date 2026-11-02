@@ -85,6 +85,11 @@ Les valeurs IRG proviennent des lignes cas général de la [table DGI 2022](http
 | SIM-RH-007 | 47000.00 | 4230.00 | 42770.00 | 3847.90 | 38922.10 | 11750.00 |
 | SIM-RH-008 | 48000.00 | 4320.00 | 43680.00 | 4093.60 | 39586.40 | 12000.00 |
 
-Les bases et primes réelles, l’assiette CNAS, le traitement du panier, les retenues et l’ensemble des charges restent à qualifier ; il ne faut pas utiliser ce tableau pour un bulletin ou un versement réel. L’applicabilité 2026 et le traitement des montants hors des lignes de la table ne sont pas démontrés par ces huit exemples. L’atelier ERP actuel emploie des valeurs de test distinctes (5 %, 10 %, 1 000 DA) et **n’affiche pas cette comparaison DGI**.
+Les bases et primes réelles, l’assiette CNAS, le traitement du panier, les retenues et l’ensemble des charges restent à qualifier ; il ne faut pas utiliser ce tableau pour un bulletin ou un versement réel. L’applicabilité 2026 et le traitement des montants hors des lignes de la table ne sont pas démontrés par ces huit exemples. L’atelier ERP conserve l’exemple arbitraire distinct (5 %, 10 %, 1 000 DA) et propose maintenant un bouton séparé pour afficher cette comparaison DGI 2022, en mémoire et réservée aux employés fictifs actifs.
 
 L'environnement d'exécution local était indisponible pendant cette intervention : comparaison arithmétique et lignes sources vérifiées, mais tests automatisés et rendu Streamlit connecté non exécutés. Les paramètres CNAS/IRG restent absents des registres de production, pour éviter de présenter un calcul dont l'arrondi et les assiettes ne sont pas établis comme une règle juridique confirmée.
+
+
+## Comparaison DGI dans l'atelier RH
+
+Le bouton « Comparer avec la table DGI 2022 » affiche les huit lignes de référence ci-dessus et leurs sources. Il vérifie la permission Paie au clic, ne permet que les fiches fictives actives admises et n’enregistre aucun résultat. L’exemple suppose des primes et autres retenues nulles ; il ne remplace pas les règles de paie de l’entreprise ni un bulletin officiel. Les références réglementaires restent non activées.

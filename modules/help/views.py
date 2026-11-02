@@ -182,6 +182,19 @@ Le bouton calcule un exemple en mémoire, sans écriture. Les retenues de 5 %,
 10 % et 1 000 DZD sont arbitraires : elles ne représentent ni taux CNAS ni
 barème IRG et ne doivent pas servir à une paie ou une déclaration réelle.
 
+### Comparaison DGI 2022 pour les salariés fictifs
+
+Dans l’atelier, le bouton **Comparer avec la table DGI 2022** affiche, pour les
+huit profils fictifs, des exemples fixes relevés dans la table cas général.
+L’hypothèse est un brut totalement soumis à une cotisation salariale de 9 %,
+sans prime ni autre retenue ; le net affiché est une comparaison arithmétique,
+non une fiche de paie validée. La quote-part employeur à 25 % illustre le tableau
+du décret ; elle ne représente pas nécessairement toutes les charges.
+[Table DGI 2022](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf)
+et [JO n°49/2015, p. 7](https://www.joradp.dz/FTP/jo-francais/2015/F2015049.pdf).
+Aucune donnée de paie n’est enregistrée. Les autres assiettes, primes et règles
+réelles restent à qualifier ; les références réglementaires ne sont pas activées.
+
 ### Utiliser l’écran
 
 Dans **RH → Préparation Paie IRG / CNAS**, choisir la date et lancer **Vérifier
@@ -297,7 +310,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-10")
+    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-11")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")

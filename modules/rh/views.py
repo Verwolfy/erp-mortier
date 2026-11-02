@@ -249,6 +249,27 @@ def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
         st.metric("Contribution fictive de test (DZD)", f"{contribution:.2f}")
         st.caption("Calcul en mémoire seulement ; aucune donnée de paie n’est enregistrée.")
 
+    st.divider()
+    st.markdown("**Comparaison fictive avec la table DGI 2022**")
+    st.caption("Hypothèses de test : brut fictif totalement soumis à 9 % de cotisation salariale, aucune prime ni autre retenue ; assiette IRG = brut − cotisation. Les 8 valeurs proviennent de lignes précises de la table DGI 2022. Applicabilité à la période et assiettes réelles non vérifiées.")
+    st.markdown("[Table DGI 2022](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf) · [Journal officiel n°49/2015, page 7](https://www.joradp.dz/FTP/jo-francais/2015/F2015049.pdf)")
+    if st.button("Comparer avec la table DGI 2022", key="rh_test_dgi",
+                 on_click=_mark_rh_activity):
+        fresh = _rh_access()
+        if fresh is None or fresh[0] != user_role or fresh[2] is not True:
+            st.error("Droit Paie absent, révoqué ou non vérifiable.")
+            return
+        from core.simulation_paie_dgi import comparaison_dgi_2022
+        simulation = comparaison_dgi_2022(chosen)
+        st.warning("SIMULATION DOCUMENTAIRE : résultat non qualifié pour une paie réelle, aucun bulletin enregistré.")
+        st.metric("Brut fictif DGI (DZD)", f"{simulation['brut']:.2f}")
+        st.metric("Cotisation salariale fictive à 9 % (DZD)", f"{simulation['cotisation_salarie']:.2f}")
+        st.metric("Assiette IRG fictive (DZD)", f"{simulation['assiette_irg']:.2f}")
+        st.metric("IRG lu dans la table DGI 2022 (DZD)", f"{simulation['irg_table']:.2f}")
+        st.metric("Net fictif comparatif (DZD)", f"{simulation['net']:.2f}")
+        st.metric("Quote-part employeur fictive à 25 % (DZD)", f"{simulation['cotisation_employeur']:.2f}")
+        st.caption("La quote-part employeur affichée ne couvre pas nécessairement toutes les contributions. Pas de prime ni autre retenue ; aucune écriture.")
+
 
 
 def _preflight_paie_tab(user_role: str) -> None:

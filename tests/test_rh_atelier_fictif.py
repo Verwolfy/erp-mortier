@@ -29,6 +29,14 @@ assert metrics['Base fictive (DZD)']=='41000.00'
 assert metrics['Net fictif (DZD)']=='37950.00'
 assert any('aucun calcul CNAS ou IRG officiel' in w.value for w in app.warning)
 assert not app.success
+app.button(key='rh_test_dgi').click().run()
+assert not app.exception, app.exception
+metrics={m.label:m.value for m in app.metric}
+assert metrics['Assiette IRG fictive (DZD)']=='37310.00'
+assert metrics['IRG lu dans la table DGI 2022 (DZD)']=='2481.30'
+assert metrics['Net fictif comparatif (DZD)']=='34828.70'
+assert any('SIMULATION DOCUMENTAIRE' in w.value for w in app.warning)
+assert not app.success
 """
     r=subprocess.run([sys.executable,'-c',script],cwd=Path(__file__).resolve().parents[1],capture_output=True,text=True,timeout=45)
     assert r.returncode==0,r.stdout+r.stderr

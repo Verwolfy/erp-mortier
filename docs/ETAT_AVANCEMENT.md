@@ -1,3 +1,13 @@
+## 2 novembre 2026 — comparaison DGI 2022 dans l'atelier RH
+
+- À la demande de l’utilisateur, ajout dans RH/Atelier paie fictive d’un bouton distinct de l’exemple arbitraire affichant les huit comparaisons DGI 2022 déjà documentées : brut fictif, cotisation salariale hypothétique à 9 %, assiette, IRG extrait de la table, net arithmétique et quote-part employeur hypothétique 25 %.
+- Sélection strictement limitée aux huit identifiants SIM-RH actifs avec marqueur [FICTIF] ; autorisation Paie/lecture revérifiée au clic ; données fixes en mémoire, aucune écriture ni bulletin. Hypothèses et liens DGI/JO visibles : aucun calcul pour d’autres assiettes, aucune prime ou autre retenue simulée.
+- 12 tests des huit lignes et des identifiants interdits ; AppTest vérifie les écrans, l’exclusion d’un salarié réel et les montants du premier cas, sans aucune écriture.
+- Les trois références CNAS/IRG ne sont pas activées : date/version, assiettes, coût employeur complet et ordre d’arrondi restent à établir. Ne pas présenter cette comparaison comme une paie homologuée. Guide GUIDE-11 et dossier de simulation complétés.
+- 2 321 tests locaux réussis, dont l’AppTest de la comparaison et des 13 rubriques du guide. Aucune modification Supabase, de permission ou transaction métier ; TEST non sollicité. CI et déploiement Streamlit à vérifier après publication.
+
+---
+
 ## 2 novembre 2026 — comparaison paie fictive avec table DGI 2022
 
 - Demande utilisateur : appliquer le barème DGI 2022, activer les paramètres CNAS/IRG et simuler des fiches sur l'ERP. Relecture production : les trois références sont absentes et huit profils SIM-RH actifs existent.
