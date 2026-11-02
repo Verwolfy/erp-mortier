@@ -3,7 +3,7 @@
 - Relecture de la réception partielle : le solde est calculé par matière, la valorisation utilise le prix moyen pondéré et le taux historique de la commande, et la RPC SQL contrôle à nouveau les quantités sous verrou. Les réceptions avec réserve ou non conformes restent bloquées.
 - Correction : la date de péremption est facultative et ne prend plus automatiquement la date du jour ; si elle est omise, aucune date n’est transmise. La quantité restante est affichée avec suffisamment de décimales pour les petits soldes. Guide Achats actualisé.
 - Tests : 138 ciblés et 2 331 sur la suite complète réussis ; date absente ou explicitement choisie, soldes 0,001 et 0,0001, scénarios de réception et contrôles existants ; aucune commande, réception ni entrée stock créée. Aucun changement de schéma ou de données Supabase ; TEST non sollicité.
-- Vérification hébergée limitée : le registre ne contient pas de commande réceptionnable, donc le formulaire de réception ne peut pas être ouvert sur des données réelles sans création métier. CI et déploiement à vérifier après publication.
+- Vérification hébergée limitée : le registre ne contient pas de commande réceptionnable, donc le formulaire de réception ne peut pas être ouvert sur des données réelles sans création métier. Commit 9761880 : [tests GitHub](https://github.com/Verwolfy/erp-mortier/actions/runs/41524620239) et [audit GitHub](https://github.com/Verwolfy/erp-mortier/actions/runs/41524620350) réussis ; guide actualisé visible dans l’ERP hébergé.
 
 ---
 
