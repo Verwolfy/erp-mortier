@@ -1,3 +1,11 @@
+## 2 novembre 2026 — Guide & Aide : règles de paie et références
+
+- Ajout de la rubrique « Paie : règles et références » : périmètre régime général, choix utilisateur sur base/rendement/panier et charges, limites de qualification, CNAS, IRG, formation et apprentissage. Chaque sujet réglementaire est relié aux sources DGI ou Journal officiel et distingue source publiée, application à vérifier et choix de produit.
+- Explication du diagnostic « Non »/erreur/« Oui » et lien vers le dossier détaillé. Les références CNAS/IRG restent non qualifiées ; aucun paramètre, paiement, bulletin ou changement Supabase ou de permission. TEST non sollicité.
+- Repère SOF-ERP-20261102-GUIDE-08. 2 306 tests locaux réussis ; AppTest vérifie les 13 rubriques, les liens et limites du guide. CI à contrôler après publication ; déploiement dans une session autorisée à confirmer.
+
+---
+
 ## 2 novembre 2026 — précisions métier pour la paie
 
 - Réponses utilisateur : moins de 20 employés réels, hors jeu fictif ; premier modèle salaire de base + primes mensuelles de rendement et de panier ; clé de répartition à définir par charge collective.

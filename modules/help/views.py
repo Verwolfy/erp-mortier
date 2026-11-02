@@ -116,6 +116,73 @@ homologué ni une déclaration officielle. Les références à confirmer, assiet
 et périodes manquantes doivent être examinées avant tout usage réglementaire.
 Ne pas inventer de salaire, taux, salarié ou justificatif pour lever un blocage.
 """,
+    "📚 Paie : règles et références": """
+### Périmètre retenu
+
+Le premier modèle concerne les **salariés du régime général** : salaire de base,
+prime mensuelle de rendement et prime mensuelle de panier. L’entreprise a indiqué
+moins de 20 employés réels ; les fiches SIM-RH ne sont pas des salariés réels.
+La situation et l’effectif propres à chaque période restent à vérifier. Les
+rappels et primes non mensuelles restent hors du premier périmètre.
+
+**État actuel : les deux références CNAS et le barème IRG ne sont pas qualifiés
+dans l’ERP ; aucun bulletin officiel ni déclaration ne peut être produit.**
+Les exemples fictifs servent aux tests, sans valeur fiscale ou sociale.
+
+### Cotisations et rémunération
+
+- **Cotisations salarié / employeur :** le tableau du décret exécutif 15-236
+  indique 9 % à la charge du salarié, 25 % à la charge de l’employeur et 0,5 %
+  à la charge du fonds des œuvres sociales pour les branches listées. Cela ne
+  prouve pas le coût employeur complet. Vérifier l’applicabilité, les assiettes,
+  les autres contributions et les cas particuliers.
+  [Source : Journal officiel n°49 du 16 septembre 2015, page 7](https://www.joradp.dz/FTP/jo-francais/2015/F2015049.pdf).
+- **Prime de rendement :** montant et conditions doivent être documentés ; son
+  traitement fiscal et social reste à qualifier.
+  [Source fiscale : DGI, traitements et salaires](https://mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires).
+- **Prime de panier :** distinguer son objet et les justificatifs applicables ;
+  son traitement fiscal et social n’est pas automatiquement présumé exonéré.
+  [Source fiscale : DGI, traitements et salaires](https://mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires).
+- **Coût employeur :** détailler les contributions, assiettes, périodes et
+  sources. Une charge inconnue reste non déterminée. Pour les charges
+  collectives, définir et tracer une clé de répartition par charge ; aucune
+  répartition automatique n’a encore été qualifiée.
+  [Source du tableau des cotisations : JO n°49/2015](https://www.joradp.dz/FTP/jo-francais/2015/F2015049.pdf).
+
+### IRG sur les salaires
+
+La DGI décrit un barème progressif mensualisé, une exonération jusqu’à 30 000 DA
+et des abattements selon l’assiette et le profil. L’assiette individuelle et la
+date d’application doivent être vérifiées.
+[Source : DGI, article 104 du CIDTA](https://mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires).
+
+La [table IRG 2022 DGI](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf)
+sert aux comparaisons. Des écarts de quelques centimes subsistent avec le moteur
+sur certains exemples : la portée de la table et les règles d’arrondi restent
+à établir avant qualification.
+
+### Formation et apprentissage
+
+- La loi de finances 2022 a introduit une exonération de la **taxe de formation
+  professionnelle** pour les employeurs de moins de 20 employés. Vérifier le
+  texte consolidé, le décompte et la période ; ne pas appliquer automatiquement
+  cette exonération à la taxe d’apprentissage.
+  [Source : loi de finances 2022, article 56, JO n°100](https://www.joradp.dz/FTP/jo-francais/2021/F2021100.pdf).
+- La loi de finances 2026 modifie l’assiette semestrielle et le calcul de ces
+  taxes en tenant compte des dépenses éligibles. Examiner ces postes collectifs
+  séparément ; ne pas ajouter mécaniquement deux taux fixes par bulletin.
+  [Source : loi de finances 2026, articles 18 à 20](https://dgb.mf.gov.dz/wp-content/uploads/2026/01/LF-2026.pdf).
+
+### Utiliser l’écran
+
+Dans **RH → Préparation Paie IRG / CNAS**, choisir la date et lancer **Vérifier
+les référentiels**. « Non » indique que la référence attendue n’est pas
+qualifiée ou disponible ; une erreur de lecture s’affiche séparément. Un « Oui »
+éventuel ne valide pas les assiettes individuelles, les profils ni un bulletin.
+Ne pas utiliser de règle ou de salaire fictif comme référence juridique.
+
+[Dossier détaillé : qualification des références de paie](https://github.com/Verwolfy/erp-mortier/blob/main/docs/PAIE_QUALIFICATION_20261102.md).
+""",
     "📊 Tableaux de bord": """
 Les onglets couvrent Direction, Rentabilité (P&L), Ventes & Facturation, Achats,
 Stocks, Production, CRM, RH et Finance, selon les droits de consultation.
@@ -221,7 +288,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
-    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-07")
+    st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-08")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
     st.sidebar.subheader("📑 Navigation Documentaire")
