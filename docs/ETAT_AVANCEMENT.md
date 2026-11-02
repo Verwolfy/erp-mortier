@@ -13,7 +13,8 @@
 - **2 300 tests locaux réussis**, dont 29 nouveaux cas : statuts du formulaire/anciens codes, coût manquant, seuil inconnu, bornes de péremption, employé inactif, service manquant. Un avertissement gotrue préexistant.
 - AppTest réel non vide Stocks/CRM/RH : effectif actif, pipeline pondéré et avertissement de date absente conformes aux données fictives locales ; aucune exception. Tests de panne/jeu vide existants réussis.
 - Compilation et `git diff --check` réussis. Aucune donnée de production utilisée comme fixture.
-- CI à contrôler après publication ; déploiement hébergé interne toujours non attesté faute de session connectée.
+- Commit `ab07bcac3d11a6430824df5bb16ec67b061c00ca` : [audit GitHub réussi](https://github.com/Verwolfy/erp-mortier/actions/runs/41452893530), [tests facturation et suite complète réussis](https://github.com/Verwolfy/erp-mortier/actions/runs/41452893360). Les 12 rubriques du guide rendent sans exception sous AppTest.
+- Déploiement hébergé interne toujours non attesté faute de session connectée.
 - Aucune transaction métier, migration, écriture Supabase, suppression ni modification de permissions. TEST non sollicité et conservé en pause.
 
 ### Limites et suite
