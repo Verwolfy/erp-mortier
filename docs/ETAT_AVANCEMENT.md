@@ -1,3 +1,12 @@
+## 2 novembre 2026 — qualification IRG/CNAS : éléments et écarts
+
+- Analyse demandée des trois références, documentée dans `docs/PAIE_QUALIFICATION_20261102.md`. Journal officiel n°49/2015 p.7 : tableau 25 % employeur, 9 % salarié, 0,5 % fonds des œuvres sociales, total 34,5 %. Vérification requise de la version applicable, des autres contributions et de la signification du champ coût employeur avant paramétrage.
+- Rapprochement de quatre montants fictifs du moteur avec la table DGI 2022 : concordance à 50 000 DA mais écarts de -0,05 DA à 33 000, -0,04 DA à 35 000 et -0,02 DA à 35 010. Règles d’arrondi et application 2026 à établir ; pas de correction d’arrondi déduite de quelques exemples.
+- Aucun paramètre inséré ou qualifié, aucun bulletin réel, aucune modification de schéma/droit. TEST non sollicité. Le diagnostic reste incomplet ; ne pas affirmer que les trois indicateurs sont activés ou que la paie est homologuée.
+- Références et critères de finalisation inscrits au dossier. Aucun calcul légal n’a été inventé ; la fixture d’essai n’est pas une règle de production.
+
+---
+
 ## 2 novembre 2026 — diagnostic écran IRG/CNAS
 
 - Capture utilisateur : les trois indicateurs affichent « Non » au 02/11/2026.
