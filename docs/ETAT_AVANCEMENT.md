@@ -12,7 +12,7 @@
 ### Preuves
 - **2 302 tests locaux réussis**. Tests du jeu : 10 identifiants uniques, 8 actifs, six services, managers valides, séquence réelle EMP inchangée.
 - Streamlit AppTest réel : affichage de l’avertissement, seulement 8 employés sélectionnables, 009/010 exclus, zéro sélecteur/bouton de congé lorsque tous sont inactifs ; écritures interdites par doubles de test.
-- Compilation et `git diff --check` réussis. CI à contrôler après publication.
+- Compilation et `git diff --check` réussis. Commit `7e35d902af43b96d304cb9029c79175909a93528` : [audit GitHub réussi](https://github.com/Verwolfy/erp-mortier/actions/runs/41454872814), [tests facturation et suite complète réussis](https://github.com/Verwolfy/erp-mortier/actions/runs/41454872781). Les 12 rubriques du guide rendent sans exception.
 - Vérification SQL réelle limitée aux dix fiches et aux compteurs associés. Rendu hébergé toujours non attesté faute de session ERP connectée.
 
 ### Suite centrée sur RH
