@@ -1,3 +1,14 @@
+## 2 novembre 2026 — diagnostic écran IRG/CNAS
+
+- Capture utilisateur : les trois indicateurs affichent « Non » au 02/11/2026.
+- Contrôle SQL en lecture seule sur PRODUCTION : aucune ligne sous les codes `CNAS_SALARIE_TAUX`, `CNAS_EMPLOYEUR_TAUX`, `IRG_SALAIRES_MENSUEL` dans les registres respectifs. Le résultat correspond au comportement de `core/preflight_paie.py` ; la capture seule ne prouve pas la version hébergée.
+- La [DGI présente les règles de traitement des salaires](https://www.mfdgi.gov.dz/fr/particuliers/irg-traitements-et-salaires) et diffuse une [table IRG 2022](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf). Ces sources sont des pistes documentaires ; leur applicabilité complète à la date et les paramètres CNAS doivent être vérifiés avant toute qualification.
+- Aucun taux ou statut juridique ajouté ou modifié. La paie demeure non homologuée. Les simulations locales précédentes utilisent des valeurs explicitement fictives et ne valident pas ces paramètres.
+- Le correctif précédent `ecbc174096c000d4bb28b59183f34bebdf6ed060` a réussi ses deux CI : [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/41457688163), [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/41457688076). Aucune écriture Supabase lors de ce diagnostic ; TEST non sollicité.
+- Suite : constituer et recouper les sources officielles, dates d’effet, unités et règles de calcul, puis procéder aux tests et à la qualification réglementaire sans activer prématurément la paie réelle.
+
+---
+
 ## 2 novembre 2026 — RH : retour incertain et congés fictifs visibles
 
 - Les Actions du scénario `41058c1b03f1b91e4d58e8bc1dda400842b18213` sont réussies : [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/41456800413), [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/41456800460).
