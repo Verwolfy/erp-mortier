@@ -1,3 +1,14 @@
+## 2 novembre 2026 — RH : lectures et validation des congés
+
+- Lectures des employés et congés paginées et contrôlées ; panne ou refus affiché explicitement au lieu d’un registre faussement vide. Les formulaires restent bloqués si les lectures nécessaires échouent.
+- Avant une demande, le service vérifie dates ISO, ordre des dates et employé existant actif, avec nouvelle lecture. Aucune règle de droit aux congés inventée. Cette vérification applicative n’est pas atomique : une modification concurrente reste possible avant insertion.
+- Erreur de saisie ou de lecture : demande non confirmée, registre à vérifier avant nouvelle tentative. L’écriture hybride et sa reprise restent à auditer séparément.
+- Tests isolés sur données fictives : employés inexistants/inactifs, dates invalides/inversées, panne et cas valide sans écriture réelle. Suite complète : **2 303 tests réussis**, dont un test regroupant six scénarios isolés. `git diff --check` réussi.
+- Aucune écriture Supabase, aucun congé créé, aucun changement de permission ; les 10 employés fictifs existants sont conservés. TEST non sollicité.
+- Suite : vérifier la CI et le rendu hébergé, puis sécuriser les écritures et la reprise incertaine ; la finalisation RH n’est pas encore acquise.
+
+---
+
 ## 2 novembre 2026 — priorité RH et employés fictifs en production
 
 ### Autorisation et réalisation

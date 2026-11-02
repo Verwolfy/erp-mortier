@@ -4,6 +4,7 @@ Interface utilisateur du module RH.
 import streamlit as st
 import pandas as pd
 from config.roles import has_permission
+from core.strict_reads import DataReadError
 from modules.rh.service import create_employe, create_demande_conge, get_employes, get_conges
 
 
@@ -52,6 +53,12 @@ def show_rh_page():
         st.error("Accès RH refusé : session, compte ou permission non vérifiable.")
         return
     user_role, can_write, can_read_paie = access
+    try:
+        df_emp = get_employes()
+        df_conges = get_conges()
+    except (DataReadError, PermissionError):
+        st.error("RH : données indisponibles ou accès refusé. Réessayez la consultation ; aucune liste vide ne peut être confirmée.")
+        return
     noms_onglets = ["👨‍💼 Registre des Employés", "🌴 Gestion des Congés"]
     if can_read_paie:
         noms_onglets.append("🧮 Simulation IRG (non validée)")
@@ -83,7 +90,6 @@ def show_rh_page():
                         else:
                             st.error("Le nom est obligatoire.")
 
-        df_emp = get_employes()
         if not df_emp.empty and "employe_id" in df_emp:
             fictifs = df_emp["employe_id"].astype(str).str.startswith("SIM-RH-").sum()
             if fictifs:
@@ -120,11 +126,14 @@ def show_rh_page():
                         elif date_fin < date_debut:
                             st.error("La date de fin ne peut pas précéder la date de début.")
                         else:
-                            create_demande_conge(emp_choisi, str(date_debut), str(date_fin), motif)
-                            st.success("Demande enregistrée !")
-                            st.rerun()
+                            try:
+                                create_demande_conge(emp_choisi, str(date_debut), str(date_fin), motif)
+                            except (ValueError, DataReadError, PermissionError):
+                                st.error("Demande non confirmée : vérifiez l’employé, les dates et le registre avant toute nouvelle tentative.")
+                            else:
+                                st.success("Demande enregistrée !")
+                                st.rerun()
 
-        df_conges = get_conges()
         if not df_conges.empty:
             st.dataframe(df_conges, use_container_width=True)
         else:

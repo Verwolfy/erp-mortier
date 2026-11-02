@@ -5,7 +5,9 @@ Conforme au schéma docs/schema_reference.md.
 Lecture Supabase, Écriture hybride (Supabase + Google Sheets).
 """
 import pandas as pd
-from core.db_service import fetch_data, insert_hybrid
+from core.db_service import insert_hybrid
+from core.strict_reads import fetch_data_strict as fetch_data
+from datetime import date
 from core.utils import generate_unique_id, generate_technical_id
 
 
@@ -46,6 +48,20 @@ def create_demande_conge(employe_id: str, date_debut: str, date_fin: str, motif:
     """
     Enregistre une demande de congé avec un identifiant technique UUID.
     """
+    if not isinstance(employe_id, str) or not employe_id.strip():
+        raise ValueError("Employé invalide")
+    try:
+        debut, fin = date.fromisoformat(date_debut), date.fromisoformat(date_fin)
+    except (ValueError, TypeError):
+        raise ValueError("Dates de congé invalides") from None
+    if fin < debut:
+        raise ValueError("Période de congé inversée")
+    employees = get_employes()
+    if employees.empty or not {"employe_id", "actif"}.issubset(employees):
+        raise ValueError("Employé actif introuvable")
+    matching = employees.loc[employees["employe_id"] == employe_id]
+    if len(matching) != 1 or matching.iloc[0]["actif"] != "OUI":
+        raise ValueError("Employé actif introuvable")
     conge_id = generate_technical_id("CNG")
 
     data_conge = {
