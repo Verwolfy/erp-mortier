@@ -1,3 +1,13 @@
+## 2 novembre 2026 — scénario RH congés et paie simulée
+
+- À la demande de l’utilisateur, trois demandes fictives `SIM-CNG-001` à `003` créées en PRODUCTION sur les employés SIM-RH-004, 006 et 008, marque `[SIMULATION]`, statut EN_ATTENTE ; insertion unique sans écrasement et relecture SQL. Aucune approbation, suppression ou modification des droits.
+- Huit bulletins fictifs calculés hors ligne avec `preparer_bulletin_paie` ; taux et retenue arbitraires clairement étiquetés TEST_FICTIF, sans valeur fiscale, aucune preuve juridique prétendue. Aucun bulletin ni paiement enregistré en base. Scénarios et limites détaillés dans `docs/RH_SIMULATIONS.md`.
+- Les trois congés apparaissent dans les compteurs de production. Les 10 employés fictifs et le projet TEST en pause sont conservés.
+- Le cycle complet ne peut être revendiqué : approbation/annulation des congés et émission de bulletin homologuée restent à implémenter et auditer. Ne pas inventer de règle juridique.
+- Tests ciblés : 28 réussis ; suite complète : 2 304 tests réussis. CI à vérifier après publication. Aucune transaction financière ni déclaration.
+
+---
+
 ## 2 novembre 2026 — RH : lectures et validation des congés
 
 - Lectures des employés et congés paginées et contrôlées ; panne ou refus affiché explicitement au lieu d’un registre faussement vide. Les formulaires restent bloqués si les lectures nécessaires échouent.

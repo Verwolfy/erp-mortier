@@ -43,3 +43,17 @@ Les noms commencent par `[FICTIF]`. Les managers abrégés dans le tableau porte
 | Paie | Utiliser uniquement les simulateurs autorisés et les règles vérifiées ; aucune rémunération fictive ne doit devenir un paiement ou une déclaration. |
 
 Les tests automatiques chargent la fixture locale et n’écrivent jamais en production. Réutiliser les mêmes ID pour les prochains scénarios ; ne pas recréer les employés à chaque essai. Toute modification future du jeu doit être journalisée. Ne pas supprimer ou réinitialiser les fiches sans autorisation explicite.
+
+## Scénario du 2 novembre 2026 : congés et paie fictifs
+
+Trois demandes ont été insérées dans la base principale, toutes marquées `[SIMULATION]`, statut `EN_ATTENTE` :
+
+- `SIM-CNG-001` : `SIM-RH-004`, du 10 au 12 novembre 2026.
+- `SIM-CNG-002` : `SIM-RH-006`, le 16 novembre 2026.
+- `SIM-CNG-003` : `SIM-RH-008`, du 28 décembre 2026 au 2 janvier 2027.
+
+Ces demandes figurent dans le compteur des congés en attente ; elles ne sont pas des congés de personnes réelles. Aucune approbation n’a été simulée dans la base et elles ne doivent pas être utilisées pour une paie réelle.
+
+Huit bulletins ont été calculés **en mémoire seulement**, un pour chaque employé fictif actif, par le moteur `preparer_bulletin_paie` et le test `tests/test_rh_scenario_complet.py`. Les salaires de scénario (41 000 à 48 000 DZD), les taux 5 % / 10 % et la retenue IRG de 1 000 DZD sont des **valeurs arbitraires de test**, sans valeur légale ou fiscale. Les preuves sont des doubles `TEST_FICTIF` et ne représentent aucune validation juridique. Les résultats portent `SIMULATION_NON_VALIDEE` ; aucun bulletin n’est enregistré ou validé dans Supabase, aucun paiement n’est créé.
+
+La simulation du cycle complet reste limitée : le module ne fournit pas encore un cycle d’approbation et d’annulation des congés ni une émission de bulletin homologuée. Les fonctions et autorisations doivent être auditées avant toute activation ; ne pas inventer de règles juridiques pour compléter ce parcours.
