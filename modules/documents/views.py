@@ -79,6 +79,24 @@ def _verified_logo(logo_path: str | None) -> str | None:
         return None
 
 
+def _draw_qr_vector(pdf, doc: dict, x: float, y: float, size: float = 36) -> None:
+    """Dessine un QR vectoriel à modules carrés, indépendant du codec image."""
+    import qrcode
+    code = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, border=4)
+    code.add_data(tracking_payload(doc))
+    code.make(fit=True)
+    matrix = code.get_matrix()
+    step = size / len(matrix)
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(x, y, size, size, style="F")
+    pdf.set_fill_color(0, 0, 0)
+    for row_no, row in enumerate(matrix):
+        for col_no, filled in enumerate(row):
+            if filled:
+                pdf.rect(x + col_no * step, y + row_no * step,
+                         step + 0.01, step + 0.01, style="F")
+
+
 def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     """Export A4 multipage, brouillon visible. Aucun calcul fiscal."""
     validate_draft(doc)
@@ -137,24 +155,23 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     if doc.get("observations"):
         pdf.set_font("Helvetica", "", 9)
         pdf.multi_cell(0, 5, _safe("Observations : " + str(doc["observations"])))
-    qr = qrcode.make(tracking_payload(doc))
-    bio = BytesIO()
-    qr.save(bio, format="PNG")
-    bio.seek(0)
-    if pdf.get_y() > 228:
+    # Le bas de page se dessine avec le saut automatique désactivé : un
+    # petit brouillon ne doit jamais produire une deuxième page vide.
+    if pdf.get_y() > 211:
         pdf.add_page()
-    y = pdf.get_y() + 2
-    pdf.image(bio, x=158, y=y, w=30, h=30)
-    pdf.set_xy(12, y + 6)
+    y = pdf.get_y() + 3
+    _draw_qr_vector(pdf, doc, x=160, y=y, size=34)
+    pdf.set_xy(12, y + 5)
     pdf.set_font("Helvetica", "", 8)
     pdf.multi_cell(140, 5, _safe("Traçabilité locale : " + doc["trace_id"]))
-    pdf.set_y(-30)
+    pdf.set_auto_page_break(auto=False)
     pdf.set_draw_color(17, 120, 91)
-    pdf.line(10, 266, 200, 266)
+    pdf.line(10, 265, 200, 265)
     pdf.set_font("Helvetica", "", 7.5)
-    pdf.set_xy(10, 268)
+    pdf.set_xy(10, 269)
     pdf.multi_cell(190, 4, _safe(ADDRESS) + "\n" +
                    _safe("RC: " + RC + " | NIF: " + NIF + " | " + EMAIL), align="C")
+    pdf.set_auto_page_break(auto=True, margin=34)
     result = pdf.output(dest="S")
     return bytes(result) if not isinstance(result, str) else result.encode("latin-1")
 
