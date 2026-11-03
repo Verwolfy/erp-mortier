@@ -1,3 +1,14 @@
+## 3 novembre 2026 — Modèles de fiches techniques et FDS NEXTGEN (référence facture)
+
+- Demande : reprendre la charte graphique de la facture fournie (logo, bleu marine, vert, encarts gris, identité société, QR) pour les fiches techniques (FT) et les fiches de données de sécurité (FDS).
+- Code publié dans main : modules/documents/product_sheets.py (FT 10 rubriques, FDS 16 rubriques, PDF/Word/JSON, brouillons non validés), modules/documents/views.py (accès Documents > Fiches produits), tests/test_product_sheets_nextgen.py, modules/help/views.py et docs/guide/documents_ft_fds.md.
+- Aucune caractéristique chimique, danger, performance ou référence normative spécifique n'est inventée. Le QR n'est qu'un identifiant interne, sans suivi public. Aucune écriture SQL/Supabase ni émission officielle.
+- Preuve CI sur 948be60a : workflow facturation 41681524067 réussi (2 333 tests réussis, 7 ignorés, 6 avertissements) et audit 41681524495 réussi. Les tests ignorés préexistants restent à qualifier ; les avertissements des modèles FT/FDS ont été réduits ensuite.
+- Correctif ultérieur 2a7967b : suppression d'un appel PDF déprécié, normalisation typographique minimale et réinitialisation des champs lors du changement de modèle. La validation CI de ce correctif est encore à confirmer.
+- Reste à faire : contrôle visuel des PDF/Word depuis l'application hébergée, vérification du logo et des QR, et procédures de qualification/approbation technique et réglementaire avant toute publication.
+
+---
+
 ## 3 novembre 2026 — bibliothèque documentaire NEXTGEN intégrée à main
 
 - **Accès ERP :** Administration → « 📄 Documents NEXTGEN » (onglet soumis aux habilitations historiques d'Administration). Aucun nouveau rôle, GRANT ou RLS.
