@@ -118,8 +118,14 @@ def _execute_operation(kind: str, user_id: str) -> None:
                 "client": "Le client Supabase ne peut pas être initialisé ; contrôler le format de la configuration et les dépendances.",
             }
             reason = reasons.get(getattr(exc, "configuration_reason", None))
-            if reason:
-                st.caption(reason)
+            # La présence seule suffit pour identifier un paramètre absent.
+            if reason is None or getattr(exc, "configuration_reason", None) == "missing":
+                section = st.secrets.get("supabase", {})
+                if "url" not in section:
+                    reason = "Paramètre absent dans Streamlit Secrets : supabase.url."
+                elif "stock_service_key" not in section:
+                    reason = "Paramètre absent dans Streamlit Secrets : supabase.stock_service_key."
+            st.caption(reason or "Cause de configuration non identifiée.")
         else:
             st.error("Opération non confirmée. Vérifiez son résultat avant de réessayer.")
         if getattr(exc, "code", None) in {"PGRST202", "PGRST301", "42501", "23505", "23514", "22023", "401"}:
