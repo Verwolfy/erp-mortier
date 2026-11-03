@@ -22,3 +22,6 @@ tenacity==8.2.3
 fpdf2==2.7.9
 pytz==2024.1
 num2words==0.5.13
+# Documents administratifs NEXTGEN
+python-docx==1.1.2
+qrcode[pil]==8.2
