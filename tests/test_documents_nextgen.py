@@ -63,4 +63,12 @@ def test_pdf_brouillon_une_page_et_qr_vectoriel():
                      "quantite": "", "prix_unitaire": "", "total_ht": ""}]
     output = export_pdf(doc, None)
     assert len(re.findall(rb"/Type\s*/Page\b", output)) == 1
-    assert doc["trace_id"].encode("ascii") in output
+    import zlib
+    streams = re.findall(rb"stream\r?\n(.*?)\r?\nendstream", output, re.DOTALL)
+    decoded = []
+    for stream in streams:
+        try:
+            decoded.append(zlib.decompress(stream))
+        except zlib.error:
+            decoded.append(stream)
+    assert doc["trace_id"].encode("ascii") in b" ".join(decoded)
