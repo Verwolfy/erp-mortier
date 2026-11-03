@@ -72,3 +72,16 @@ def test_pdf_brouillon_une_page_et_qr_vectoriel():
         except zlib.error:
             decoded.append(stream)
     assert doc["trace_id"].encode("ascii") in b" ".join(decoded)
+
+
+def test_logo_officiel_est_lisible_et_exportable():
+    """Le fichier du dépôt doit être un vrai JPEG et non un blob corrompu."""
+    from pathlib import Path
+    from PIL import Image
+    logo = Path("assets/nextgen_logo.jpg")
+    assert logo.is_file()
+    with Image.open(logo) as picture:
+        picture.verify()
+    doc = new_draft("Facture")
+    assert export_pdf(doc, str(logo)).startswith(b"%PDF")
+    assert export_docx(doc, str(logo)).startswith(b"PK")
