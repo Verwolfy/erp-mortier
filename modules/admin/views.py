@@ -578,11 +578,16 @@ def show_admin_page():
     cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
     hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
 
-    tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations, tab_fiscal_sku = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations, tab_fiscal_sku, tab_documents = st.tabs([
         "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
         "🛍️ Produits", "📦 SKU", "📝 Listes de choix",
-        "📑 Exonérations TVA (lecture)", "📋 Qualification TVA SKU"
+        "📑 Exonérations TVA (lecture)", "📋 Qualification TVA SKU",
+        "📄 Documents NEXTGEN"
     ])
+
+    with tab_documents:
+        from modules.documents.views import show_documents_page
+        show_documents_page()
 
     # --- CLIENTS ---
     with tab1:
