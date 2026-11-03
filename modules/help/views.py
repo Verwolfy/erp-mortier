@@ -57,7 +57,7 @@ Après une réponse incertaine, conserver l'identifiant d'opération et utiliser
 la reprise proposée avant d'envisager une nouvelle saisie.
 Si le message « Connexion serveur Achats indisponible avant envoi » apparaît,
 l’administrateur doit vérifier la configuration Supabase et la clé serveur dédiée
-du déploiement. Conserver le dossier de reprise pendant cette vérification.
+du déploiement. Si le paramètre supabase.stock_service_key est absent, le propriétaire doit renseigner la clé serveur du projet dans la section [supabase] des secrets Streamlit. Conserver le dossier de reprise pendant cette vérification.
 """,
     "📦 Stocks & Magasin": """
 - **État des Stocks :** consulter séparément matières premières en vrac,

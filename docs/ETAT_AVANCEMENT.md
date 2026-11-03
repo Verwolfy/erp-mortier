@@ -1,6 +1,6 @@
 ## 3 novembre 2026 — Diagnostic de connexion Achats
 
-Le diagnostic distingue la configuration manquante, la clé vide, l’URL invalide, le refus de la cible et l’échec de création du client. Seuls des messages prédéfinis sont affichés. La suite locale comprend 2 337 tests réussis. Le dossier fictif existant sert à la vérification hébergée.
+Le diagnostic distingue la configuration manquante, la clé vide, l’URL invalide, le refus de la cible et l’échec de création du client. Seuls des messages prédéfinis sont affichés. La suite locale comprend 2 337 tests réussis. Après reconnexion ADMIN, une nouvelle tentative avec le fournisseur et la matière fictifs a confirmé le message « Paramètre absent dans Streamlit Secrets : supabase.stock_service_key. » Aucun enregistrement pour l’opération ACH-UI-8d013999552040fa99eb295434207228 lors du contrôle SQL. Une commande fictive existante, stock 0,003 KG. Le correctif 00918d5 identifie le nom manquant par un contrôle de présence. Le rétablissement nécessite la saisie confidentielle du paramètre dans la section [supabase] du déploiement. La bibliothèque épinglée supabase 2.5.0 vérifie un format JWT. Après configuration, utiliser le dossier de la nouvelle tentative du 3 novembre si la session est conservée et rapprocher le résultat en base.
 
 ## 2 novembre 2026 — Achats : essais fictifs autorisés en production
 
