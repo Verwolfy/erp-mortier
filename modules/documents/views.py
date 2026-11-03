@@ -113,6 +113,9 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     pdf.set_text_color(15, 43, 80)
     pdf.multi_cell(148, 7, _safe(COMPANY))
     pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(17, 120, 91)
+    pdf.set_line_width(0.7)
+    pdf.line(10, 32, 200, 32)
     pdf.set_xy(10, 34)
     pdf.set_font("Helvetica", "B", 17)
     pdf.cell(0, 12, _safe(doc["type"]).upper(), align="C", ln=True)
@@ -164,6 +167,18 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     pdf.set_xy(12, y + 5)
     pdf.set_font("Helvetica", "", 8)
     pdf.multi_cell(140, 5, _safe("Traçabilité locale : " + doc["trace_id"]))
+    # Visas pour les documents internes / signatures pour les échanges externes.
+    # Ne jamais masquer le QR ni ajouter une page inutile.
+    signatures_y = max(177, y + 43)
+    if signatures_y + 23 < 260:
+        pdf.set_draw_color(15, 43, 80)
+        pdf.set_text_color(15, 43, 80)
+        pdf.set_font("Helvetica", "B", 9)
+        for label, left in (("Établi par / cachet", 11), ("Reçu / validé par", 109)):
+            pdf.set_xy(left, signatures_y)
+            pdf.cell(90, 6, _safe(label), align="L")
+            pdf.rect(left, signatures_y + 7, 89, 17)
+        pdf.set_text_color(0, 0, 0)
     pdf.set_auto_page_break(auto=False)
     pdf.set_draw_color(17, 120, 91)
     pdf.line(10, 265, 200, 265)
