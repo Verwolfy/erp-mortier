@@ -79,7 +79,7 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     pdf.set_text_color(15, 43, 80)
     pdf.multi_cell(148, 7, _safe(COMPANY))
     pdf.set_text_color(0, 0, 0)
-    pdf.set_y(34)
+    pdf.set_xy(10, 34)
     pdf.set_font("Helvetica", "B", 17)
     pdf.cell(0, 12, _safe(doc["type"]).upper(), align="C", ln=True)
     pdf.set_font("Helvetica", "B", 11)
@@ -92,8 +92,10 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
         ("Tiers", doc.get("tiers_nom", "")), ("Adresse", doc.get("tiers_adresse", "")),
         ("Objet", doc.get("objet", "")),
     ]:
-        pdf.multi_cell(0, 6, _safe(label + " : " + str(value)))
+        pdf.set_x(10)
+        pdf.multi_cell(190, 6, _safe(label + " : " + str(value)))
     pdf.ln(5)
+    pdf.set_x(10)
     pdf.set_fill_color(15, 43, 80)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 9)
