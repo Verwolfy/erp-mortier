@@ -39,6 +39,17 @@ Ne pas annoncer une traçabilité juridiquement certifiée.
 Logo et en-tête : SARL NEXT GENRATION BUILDING SOLUTIONS.
 Pied de page : adresse Bouira, RC, NIF et courriel de facturation.
 Une validation réglementaire reste nécessaire avant toute émission officielle.
+
+**FT et FDS :** dans Documents administratifs > Module > Fiches produits,
+choisir Fiche technique (10 rubriques) ou Fiche de données de sécurité
+(16 rubriques SGH). Renseigner les éléments techniques à partir de sources
+fiables, puis exporter un PDF, un Word modifiable ou un JSON. La présentation
+reprend la charte de la facture NEXTGEN (bleu, vert, en-tête, QR interne,
+mentions d'entreprise), mais jamais les montants ou les taxes.
+Les champs non renseignés restent explicitement signalés ; aucun danger,
+composition ni performance n'est déduit. Les exports FT/FDS sont des brouillons
+non validés, sans enregistrement dans Supabase et sans suivi QR public.
+Une vérification technique/réglementaire humaine est indispensable avant diffusion.
 """,
     "⚙️ Administration & Référentiels": """
 Les onglets de référentiels permettent de consulter les listes de choix,
