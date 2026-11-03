@@ -44,3 +44,12 @@ def test_generation_brouillon_pdf_et_word():
         text = archive.read("word/document.xml").decode("utf-8")
     assert "BROUILLON" in text
     assert doc["trace_id"] in text
+
+
+def test_logo_corrompu_ne_bloque_pas_les_exports(tmp_path):
+    """Régression Streamlit PIL.UnidentifiedImageError."""
+    broken = tmp_path / "nextgen_logo.jpg"
+    broken.write_bytes(b"not-a-real-image")
+    doc = new_draft("Bon de livraison")
+    assert export_pdf(doc, str(broken)).startswith(b"%PDF")
+    assert export_docx(doc, str(broken)).startswith(b"PK")
