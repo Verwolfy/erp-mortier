@@ -37,7 +37,6 @@ _MENU_LABELS = {
     "Finance": "🏦 Comptabilité & Finances",
     "RH": "👥 Ressources Humaines",
     "Dashboards": "📊 Tableaux de bord",
-    "Documents": "📄 Documents administratifs",
 }
 _ACTIVE_VALUES = frozenset({"OUI", "TRUE", "1", "ACTIF", "ACTIVE", "YES"})
 
@@ -137,7 +136,6 @@ def _allowed_menu(role: str) -> dict[str, str]:
     from core.security_service import is_security_manager
     if is_security_manager():
         menu["Securite"] = "🔐 Utilisateurs & Sécurité"
-    menu["Documents"] = "📄 Documents administratifs"
     menu["Help"] = "📚 Guide & Aide"
     return menu
 
@@ -179,9 +177,6 @@ def _render_menu_page(choice: str | None, role: str) -> None:
     elif choice == "Dashboards":
         from modules.dashboards.views import show_dashboards_page
         show_dashboards_page()
-    elif choice == "Documents":
-        from modules.documents.views import show_documents_page
-        show_documents_page()
     elif choice == "Help":
         from modules.help.views import show_help_page
         show_help_page()
