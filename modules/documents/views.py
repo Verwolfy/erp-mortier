@@ -194,9 +194,13 @@ def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
 
 def show_documents_page():
     st.title("Documents administratifs NEXTGEN")
-    st.caption("20 modèles - édition de brouillons et exports PDF/DOCX sans écriture Supabase")
+    st.caption("20 modèles administratifs + fiches techniques et FDS - exports PDF/DOCX sans écriture Supabase")
     st.warning("Aucune pièce officielle n'est émise ici. Le QR fournit un identifiant unique, pas encore un suivi en ligne.")
-    group = st.selectbox("Module", list(DOCUMENTS), key="doc_group")
+    group = st.selectbox("Module", list(DOCUMENTS) + ["Fiches produits"], key="doc_group")
+    if group == "Fiches produits":
+        from modules.documents.product_sheets import show_product_sheets_page
+        show_product_sheets_page()
+        return
     kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind")
     doc_key = "nextgen_doc_draft"
     if st.session_state.get("nextgen_doc_type") != kind:
