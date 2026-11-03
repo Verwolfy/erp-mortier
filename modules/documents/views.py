@@ -62,6 +62,23 @@ def _safe(value: object) -> str:
     return str(value if value is not None else "").encode("latin-1", "replace").decode("latin-1")[:250]
 
 
+def _verified_logo(logo_path: str | None) -> str | None:
+    """Un logo absent ou endommagé ne doit jamais empêcher un export."""
+    if not logo_path:
+        return None
+    from pathlib import Path
+    from PIL import Image, UnidentifiedImageError
+    path = Path(logo_path)
+    if not path.is_file():
+        return None
+    try:
+        with Image.open(path) as picture:
+            picture.verify()
+        return str(path)
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
+
+
 def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     """Export A4 multipage, brouillon visible. Aucun calcul fiscal."""
     validate_draft(doc)
@@ -70,10 +87,9 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=34)
     pdf.add_page()
-    if logo_path:
-        from pathlib import Path
-        if Path(logo_path).is_file():
-            pdf.image(logo_path, x=12, y=10, w=33)
+    valid_logo = _verified_logo(logo_path)
+    if valid_logo:
+        pdf.image(valid_logo, x=12, y=10, w=33)
     pdf.set_xy(47, 12)
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(15, 43, 80)
@@ -147,14 +163,14 @@ def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
     validate_draft(doc)
     from docx import Document
     from docx.shared import Cm, Pt, RGBColor
-    from pathlib import Path
     document = Document()
     sec = document.sections[0]
     sec.header_distance = Cm(1)
     sec.footer_distance = Cm(1)
     header = sec.header.paragraphs[0]
-    if logo_path and Path(logo_path).is_file():
-        header.add_run().add_picture(logo_path, width=Cm(3))
+    valid_logo = _verified_logo(logo_path)
+    if valid_logo:
+        header.add_run().add_picture(valid_logo, width=Cm(3))
     header.add_run("  " + COMPANY).bold = True
     document.add_heading(doc["type"].upper(), 0)
     p = document.add_paragraph("BROUILLON - NON VALABLE / NON EMIS")
