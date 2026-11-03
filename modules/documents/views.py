@@ -226,7 +226,7 @@ def show_documents_page():
     doc["observations"] = st.text_area("Observations", value=doc["observations"])
     st.code(doc["trace_id"], language=None)
     try:
-        logo = "logo_entreprise.png"
+        logo = "assets/nextgen_logo.jpg"
         pdf = export_pdf(doc, logo)
         word = export_docx(doc, logo)
     except (ValueError, RuntimeError, ImportError) as exc:
