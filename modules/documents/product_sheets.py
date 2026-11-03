@@ -113,9 +113,18 @@ def sheet_tracking_payload(sheet: dict) -> str:
 
 
 def _latin(value: object, limit: int = 10000) -> str:
-    return str(value or "").replace("\t", " ").encode(
-        "latin-1", "replace"
-    ).decode("latin-1")[:limit]
+    # Helvetica du moteur PDF : préserver les signes scientifiques lisibles
+    # et translittérer les ligatures/ponctuations usuelles du français.
+    replacements = {
+        "œ": "oe", "Œ": "OE", "’": "'", "‘": "'",
+        "–": "-", "—": "-", "“": '"', "”": '"',
+        "≥": ">=", "≤": "<=", "→": "->",
+        "₂": "2", "₃": "3", "⁻": "-", "⁺": "+",
+    }
+    text = str(value or "").replace("\t", " ")
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+    return text.encode("latin-1", "replace").decode("latin-1")[:limit]
 
 
 def _qr_image(sheet: dict) -> BytesIO:
@@ -239,7 +248,7 @@ def export_product_sheet_pdf(sheet: dict, logo_path: str | None = None) -> bytes
     pdf.set_text_color(70, 70, 70)
     pdf.cell(190, 5, _latin("QR interne : " + sheet["trace_id"], 120), align="R")
 
-    result = pdf.output(dest="S")
+    result = pdf.output()
     return bytes(result) if not isinstance(result, str) else result.encode("latin-1")
 
 
@@ -315,6 +324,10 @@ def show_product_sheets_page() -> None:
     )
     kind = st.radio("Modèle", (TECHNICAL, SAFETY), horizontal=True, key="ng_sheet_kind")
     if st.session_state.get("ng_sheet_selected") != kind:
+        for widget_key in ("ng_sheet_product", "ng_sheet_code", "ng_sheet_ref",
+                           "ng_sheet_revision", "ng_sheet_date", "ng_sheet_pack",
+                           "ng_sheet_author"):
+            st.session_state.pop(widget_key, None)
         st.session_state["ng_sheet_selected"] = kind
         st.session_state["ng_product_sheet"] = new_product_sheet(kind)
     sheet = st.session_state["ng_product_sheet"]
