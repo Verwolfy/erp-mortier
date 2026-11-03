@@ -18,6 +18,28 @@ Ne validez aucune commande, réception, fabrication, facture ou paiement fictif
 pour tester la production. Un tableau vide et une lecture en erreur ne sont pas
 équivalents. Les simulations ne constituent pas une validation réglementaire.
 """,
+    "📄 Documents administratifs NEXTGEN": """
+**Accès :** Administration > Documents NEXTGEN.
+
+La bibliothèque regroupe 20 types de documents (Ventes, Achats, Stocks,
+Production, Finance et RH). Saisir les données dans le formulaire, corriger les
+lignes puis télécharger PDF, Word modifiable ou JSON.
+
+Les exports sont des **BROUILLONS NON VALABLES** et ne créent aucune pièce dans
+Supabase. Ils n'utilisent pas de données métier automatiquement : le contenu
+reste à vérifier manuellement. Les totaux sont saisis, jamais calculés par un
+taux fiscal supposé. Aucune facture ou aucun avoir officiels ne sont émis.
+
+Chaque création reçoit un identifiant QR aléatoire. Le QR encode cet identifiant,
+le type, la date et le NIF de l'émetteur, sans données confidentielles.
+Il ne constitue **pas encore** un lien de suivi en ligne ou un registre durable :
+aucun portail de vérification ou historique de consultation n'a été déployé.
+Ne pas annoncer une traçabilité juridiquement certifiée.
+
+Logo et en-tête : SARL NEXT GENRATION BUILDING SOLUTIONS.
+Pied de page : adresse Bouira, RC, NIF et courriel de facturation.
+Une validation réglementaire reste nécessaire avant toute émission officielle.
+""",
     "⚙️ Administration & Référentiels": """
 Les onglets de référentiels permettent de consulter les listes de choix,
 matières premières, produits, clients, fournisseurs et conditionnements (SKU).
