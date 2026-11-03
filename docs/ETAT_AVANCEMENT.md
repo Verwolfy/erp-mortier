@@ -1,3 +1,16 @@
+## 3 novembre 2026 — bibliothèque documentaire NEXTGEN intégrée à main
+
+- **Accès ERP :** Administration → « 📄 Documents NEXTGEN » (onglet soumis aux habilitations historiques d'Administration). Aucun nouveau rôle, GRANT ou RLS.
+- **20 modèles** : Ventes (5), Achats (4), Stocks (4), Production (3), Finance (2), RH (2). Édition manuelle, table de lignes, exports PDF A4, Word DOCX modifiable et JSON.
+- **Identité :** logo officiel fourni stocké dans `assets/nextgen_logo.jpg` ; dénomination SARL NEXT GENRATION BUILDING SOLUTIONS, adresse de facturation à Bouira, RC, NIF et email dans les exports.
+- **QR :** identifiant `NG-<UUID aléatoire>` par brouillon ; payload autonome (émetteur/type/numéro/date/ID). **Il n'existe pas encore de suivi centralisé en base ni de page de validation en ligne.**
+- **Garde-fous :** tous les exports portent « BROUILLON - NON VALABLE / NON EMIS » ; aucun calcul de taxe supposé, aucune création de facture, commande, mouvement ou écriture dans Supabase. Les montants sont des champs fournis.
+- **Code :** `modules/documents/views.py`, `modules/admin/views.py`, `tests/test_documents_nextgen.py`, `requirements.txt`, `modules/help/views.py`. Aucun SQL de production exécuté.
+- **CI :** à la publication du commit `66dea001f4af754ddfee8d679d299cc10b695bae`, workflow « ERP - tests lot C facturation » déclaré **success** ; audit de réconciliation encore en cours à ce moment. L'affichage hébergé Streamlit et les exports en navigateur restent à vérifier.
+- **Suites :** tester le déploiement hébergé et les 20 exports ; raccorder progressivement chaque document aux données métier et permissions spécifiques ; concevoir registre QR/endpoint sécurisé avant de parler de vérification publique ; homologuer le fiscal avant émission de factures ou avoirs.
+
+---
+
 ## 3 novembre 2026 — Diagnostic de connexion Achats
 
 Le diagnostic distingue la configuration manquante, la clé vide, l’URL invalide, le refus de la cible et l’échec de création du client. Seuls des messages prédéfinis sont affichés. La suite locale comprend 2 337 tests réussis. Après reconnexion ADMIN, une nouvelle tentative avec le fournisseur et la matière fictifs a confirmé le message « Paramètre absent dans Streamlit Secrets : supabase.stock_service_key. » Aucun enregistrement pour l’opération ACH-UI-8d013999552040fa99eb295434207228 lors du contrôle SQL. Une commande fictive existante, stock 0,003 KG. Le correctif 00918d5 identifie le nom manquant par un contrôle de présence. Le rétablissement nécessite la saisie confidentielle du paramètre dans la section [supabase] du déploiement. La bibliothèque épinglée supabase 2.5.0 vérifie un format JWT. Après configuration, utiliser le dossier de la nouvelle tentative du 3 novembre si la session est conservée et rapprocher le résultat en base.
