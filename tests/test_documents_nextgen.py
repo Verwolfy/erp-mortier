@@ -53,3 +53,14 @@ def test_logo_corrompu_ne_bloque_pas_les_exports(tmp_path):
     doc = new_draft("Bon de livraison")
     assert export_pdf(doc, str(broken)).startswith(b"%PDF")
     assert export_docx(doc, str(broken)).startswith(b"PK")
+
+
+def test_pdf_brouillon_une_page_et_qr_vectoriel():
+    """Une pièce presque vide ne doit plus créer un pied de page isolé."""
+    import re
+    doc = new_draft("Devis")
+    doc["items"] = [{"reference": "", "designation": "", "unite": "",
+                     "quantite": "", "prix_unitaire": "", "total_ht": ""}]
+    output = export_pdf(doc, None)
+    assert len(re.findall(rb"/Type\s*/Page\b", output)) == 1
+    assert doc["trace_id"].encode("ascii") in output
