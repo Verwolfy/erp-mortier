@@ -110,6 +110,16 @@ def _execute_operation(kind: str, user_id: str) -> None:
             st.error("Connexion serveur Achats indisponible avant envoi. "
                      "Vérifiez la configuration Supabase du déploiement "
                      "et sa clé serveur dédiée. Conservez ce dossier de reprise.")
+            reasons = {
+                "missing": "Configuration manquante : supabase.url ou supabase.stock_service_key dans les secrets Streamlit.",
+                "url": "L’URL Supabase du déploiement est invalide.",
+                "empty_key": "La clé serveur dédiée stock_service_key est vide ou invalide.",
+                "environment": "La politique d’environnement ou le projet Supabase déclaré est refusé.",
+                "client": "Le client Supabase ne peut pas être initialisé ; contrôler le format de la configuration et les dépendances.",
+            }
+            reason = reasons.get(getattr(exc, "configuration_reason", None))
+            if reason:
+                st.caption(reason)
         else:
             st.error("Opération non confirmée. Vérifiez son résultat avant de réessayer.")
         if getattr(exc, "code", None) in {"PGRST202", "PGRST301", "42501", "23505", "23514", "22023", "401"}:

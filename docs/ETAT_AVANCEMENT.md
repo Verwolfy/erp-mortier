@@ -1,3 +1,7 @@
+## 3 novembre 2026 — Diagnostic de connexion Achats
+
+Le diagnostic distingue la configuration manquante, la clé vide, l’URL invalide, le refus de la cible et l’échec de création du client. Seuls des messages prédéfinis sont affichés. La suite locale comprend 2 337 tests réussis. Le dossier fictif existant sert à la vérification hébergée.
+
 ## 2 novembre 2026 — Achats : essais fictifs autorisés en production
 
 - Autorisation utilisateur : créer des enregistrements fictifs pour les audits dans chaque module, à supprimer en fin d’audit. Fournisseur SIM-AUD-FOU-001 et matière SIM-AUD-MP-001 créés avec noms [FICTIF AUDIT], sans identité fiscale ou contact inventé. Registre de nettoyage : ces références, leurs documents, lignes, opérations/outbox, lots, mouvements et stock exclusivement liés aux essais devront être rapprochés avant suppression.

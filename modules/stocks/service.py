@@ -60,6 +60,19 @@ def get_lots() -> pd.DataFrame:
     return pd.DataFrame(fetch_data("lots"))
 
 
+class StockClientConfigurationError(RuntimeError):
+    """Diagnostic fixe, sans valeur de configuration ni détail du fournisseur."""
+    def __init__(self, reason: str):
+        self.configuration_reason = reason
+        super().__init__({
+            'missing': 'Configuration supabase.url ou supabase.stock_service_key absente',
+            'url': 'URL Supabase invalide',
+            'empty_key': 'Clé serveur stock_service_key vide ou invalide',
+            'environment': 'Politique ou cible environnement Supabase refusée',
+            'client': 'Initialisation du client Supabase impossible',
+        }[reason])
+
+
 def _stock_rpc_client() -> Client:
     """Client *serveur dédié*, jamais authentifié avec un utilisateur final.
 
@@ -70,13 +83,19 @@ def _stock_rpc_client() -> Client:
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["stock_service_key"]
     except (KeyError, TypeError) as exc:
-        raise RuntimeError("Clé serveur stock_service_key absente de st.secrets") from exc
+        raise StockClientConfigurationError("missing") from None
     if not isinstance(url, str) or not url.startswith("https://"):
-        raise RuntimeError("URL Supabase incorrecte")
+        raise StockClientConfigurationError("url")
     if not isinstance(key, str) or not key.strip():
-        raise RuntimeError("Clé serveur stock_service_key vide")
-    require_supabase_target(policy_from_streamlit(st.secrets), url)
-    return create_client(url, key)
+        raise StockClientConfigurationError("empty_key")
+    try:
+        require_supabase_target(policy_from_streamlit(st.secrets), url)
+    except RuntimeError:
+        raise StockClientConfigurationError("environment") from None
+    try:
+        return create_client(url, key)
+    except Exception:
+        raise StockClientConfigurationError("client") from None
 
 
 def _positive_number(value: Any, name: str, *, allow_zero: bool = False) -> str:

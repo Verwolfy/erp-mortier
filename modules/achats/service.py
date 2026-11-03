@@ -29,10 +29,11 @@ LIMIT = Decimal("1e15")
 class PurchaseOperationError(RuntimeError):
     """Échec non confirmé. Réessayer avec le MÊME operation_id, jamais un nouveau."""
 
-    def __init__(self, message: str, *, operation_id: str, phase: str = "rpc", code: str | None = None):
+    def __init__(self, message: str, *, operation_id: str, phase: str = "rpc", code: str | None = None, configuration_reason: str | None = None):
         super().__init__(message)
         self.operation_id = operation_id
         self.phase = phase
+        self.configuration_reason = configuration_reason if configuration_reason in {"missing", "url", "empty_key", "environment", "client"} else None
         self.code = code if code in {"PGRST202", "PGRST301", "42501", "23505", "23514", "22023", "401"} else None
 
 
@@ -81,6 +82,7 @@ def _rpc(name: str, params: dict[str, Any], *, receipt: bool) -> dict[str, Any]:
         raise PurchaseOperationError(
             "Connexion serveur Achats indisponible avant envoi",
             operation_id=op_id, phase="connexion",
+            configuration_reason=getattr(exc, "configuration_reason", None),
         ) from exc
     try:
         response = client.rpc(name, params).execute()

@@ -214,3 +214,20 @@ def test_invalid_stock_response_must_fail(stock, remaining):
         data={"operation_id": p["p_operation_id"], "cost_total": "0", "quantity_remaining": remaining}))
     with pytest.raises(mod.StockOperationError):
         mod.enregistrer_sortie_pf("SKU", 1, "BL")
+
+
+@pytest.mark.parametrize(('change', 'reason'), [('missing', 'missing'), ('empty', 'empty_key'), ('url', 'url'), ('client', 'client')])
+def test_server_configuration_diagnostics_are_safe(stock, change, reason):
+    mod, _, _, st, api = stock
+    if change == 'missing':
+        del st.secrets['supabase']['stock_service_key']
+    elif change == 'empty':
+        st.secrets['supabase']['stock_service_key'] = ' '
+    elif change == 'url':
+        st.secrets['supabase']['url'] = 'invalid'
+    else:
+        api.create_client.side_effect = RuntimeError('SENSITIVE-EXCEPTION')
+    with pytest.raises(mod.StockClientConfigurationError) as error:
+        mod._stock_rpc_client_original()
+    assert error.value.configuration_reason == reason
+    assert 'SENSITIVE' not in str(error.value)
