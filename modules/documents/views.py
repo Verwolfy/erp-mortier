@@ -198,6 +198,9 @@ def show_documents_page():
     kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind")
     doc_key = "nextgen_doc_draft"
     if st.session_state.get("nextgen_doc_type") != kind:
+        for widget_key in ("doc_number", "doc_date", "doc_tiers", "doc_address",
+                           "doc_subject", "doc_lines"):
+            st.session_state.pop(widget_key, None)
         st.session_state[doc_key] = new_draft(kind)
         st.session_state["nextgen_doc_type"] = kind
     doc = st.session_state[doc_key]
