@@ -203,7 +203,7 @@ def test_logo_hd_bytes_compatible_pdf_docx():
     header, footer = branded_images(logo_bytes)
     with Image.open(BytesIO(header)) as picture:
         assert picture.size == (1500, 330)
-    assert footer.startswith(b"\\x89PNG")
+    assert footer.startswith(b"\x89PNG")
     draft = new_draft("Devis")
     assert export_pdf(draft, logo_bytes).startswith(b"%PDF")
     assert export_docx(draft, logo_bytes).startswith(b"PK")
@@ -231,5 +231,5 @@ def test_logo_original_hd_installe_et_exportable():
     assert export_docx(draft, str(logo)).startswith(b"PK")
     from modules.documents.branding_images import branded_images
     header, footer = branded_images(str(logo))
-    assert header.startswith(b"\\x89PNG")
-    assert footer.startswith(b"\\x89PNG")
+    assert header.startswith(b"\x89PNG")
+    assert footer.startswith(b"\x89PNG")
