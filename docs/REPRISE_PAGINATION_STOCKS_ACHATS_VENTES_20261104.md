@@ -26,3 +26,11 @@ Les historiques ne sont plus visibles spontanément ; clic nécessaire. Les num�
 5. Registre QR 033 : transaction serveur, identités, droits et tests RLS avant toute activation en production.
 
 **Règles de reprise :** avancer automatiquement sur le code non critique ; donner 5 lignes concises en français : résultat, prochaine action, pourquoi, comment, ce que l'utilisateur doit faire.
+
+
+## Suivi de régression CI (04/11/2026)
+- Première CI du lot `899c7e5` a relevé **2 tests historiques obsolètes**, et non une erreur de compilation : `test_read_only_role_can_view_history_not_write` attendait un chargement automatique des commandes Achats ; `test_denied_write_cannot_retry_old_pending_operation` attendait l'absence de tout bouton Stocks lorsque l'écriture est interdite.
+- Adaptation des assertions en préservant la sécurité : en Achats lecture seule, aucun chargement global avant clic ; en Stocks lecture seule, seul le bouton d'historique est accessible et aucune entrée en stock ne peut être relancée.
+- Commits correctifs : `ca3a1f7` et `811a804`.
+- CI de validation des correctifs : tests `41916595600`, audit `41916595967` (verdict à confirmer).
+- Cette modification concerne les écrans de consultation uniquement. Aucun taux fiscal, droit SQL, solde, commande, facture ou stock modifié.
