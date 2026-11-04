@@ -5,6 +5,24 @@ Interroge directement Supabase (SQL) via des filtres de dates pour des performan
 """
 import pandas as pd
 from datetime import timedelta
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+# Cache éphémère par rendu, jamais partagé entre sessions utilisateurs.
+# Il stocke des lignes brutes, puis retourne des DataFrame indépendants.
+_DASHBOARD_READS: ContextVar[dict | None] = ContextVar(
+    "nextgen_dashboard_reads", default=None
+)
+
+
+@contextmanager
+def dashboard_read_scope():
+    token = _DASHBOARD_READS.set({})
+    try:
+        yield
+    finally:
+        _DASHBOARD_READS.reset(token)
+
 from core.strict_reads import (fetch_data_strict as fetch_data,
                                fetch_data_by_date_range_strict as fetch_data_by_date_range)
 from core.utils import get_local_now
@@ -16,8 +34,17 @@ from core.indicateurs_tresorerie import validated_payments, cash_balances
 from core.indicateurs_charges import payroll_net_for_period, supplier_operating_payments
 
 def charger_donnees(table_name: str) -> pd.DataFrame:
-    """Charge une table entière (réservé aux petites tables type référentiels ou stocks actuels)."""
-    return pd.DataFrame(fetch_data(table_name))
+    """Lecture stricte partagée pour un rendu, sans cache inter-utilisateur.
+
+    Les contrôles de permission continuent de s'exécuter au premier accès,
+    et chaque KPI reçoit sa propre copie des données.
+    """
+    current = _DASHBOARD_READS.get()
+    if current is None:
+        return pd.DataFrame(fetch_data(table_name))
+    if table_name not in current:
+        current[table_name] = fetch_data(table_name)
+    return pd.DataFrame(current[table_name]).copy(deep=True)
 
 def get_kpis_direction() -> dict:
     now = get_local_now()
