@@ -72,3 +72,38 @@ def test_nested_scope_restores_previous_read(monkeypatch):
             assert service.charger_donnees("factures").loc[0, "montant"] == 2
         assert service.charger_donnees("factures").loc[0, "montant"] == 1
     assert calls == ["factures", "factures"]
+
+
+def test_achats_aucune_ligne_chargee_quand_periode_vide(monkeypatch):
+    import pandas as pd
+    queried = []
+    def read(table):
+        queried.append(table)
+        return []
+    monkeypatch.setattr(service, "fetch_data", read)
+    monkeypatch.setattr(service, "fetch_data_by_date_range", lambda *args: [])
+    monkeypatch.setattr(service, "get_local_now", lambda: pd.Timestamp("2026-11-01"))
+    result = service.get_kpis_achats(
+        pd.Timestamp("2026-11-01"), pd.Timestamp("2026-11-30"))
+    assert result["montant_total"] == 0
+    assert "lignes_achats" not in queried
+
+
+def test_pnl_aucune_ligne_facture_ni_cout_si_aucune_facture(monkeypatch):
+    import pandas as pd
+    queried = []
+    def read(table):
+        queried.append(table)
+        return []
+    monkeypatch.setattr(service, "fetch_data", read)
+    monkeypatch.setattr(service, "fetch_data_by_date_range", lambda *args: [])
+    monkeypatch.setattr(service, "validated_documents", lambda frame: pd.DataFrame(
+        {"montant_ht": [], "type_facture": []}))
+    monkeypatch.setattr(service, "client_invoices", lambda frame: frame)
+    monkeypatch.setattr(service, "supplier_operating_payments", lambda *args: 0.0)
+    monkeypatch.setattr(service, "payroll_net_for_period", lambda *args: 0.0)
+    result = service.get_kpis_pnl(
+        pd.Timestamp("2026-11-01"), pd.Timestamp("2026-11-30"))
+    assert result["cogs"] == 0
+    assert "lignes_facture" not in queried
+    assert "stock_actuel_pf" not in queried
