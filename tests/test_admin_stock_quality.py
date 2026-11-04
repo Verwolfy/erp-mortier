@@ -67,3 +67,45 @@ def test_ui_stock_audit_lecture_seule():
     assert "fetch_data_paginated" in service
     assert "insert_hybrid" not in service
     assert "update_hybrid" not in service
+
+
+def test_mouvements_quantites_articles_lots_et_types():
+    from modules.admin.stock_quality import audit_stock_movements
+    rows = _data()
+    rows["mouvements"] = [
+        {"mp_id": "MP1", "quantite": "4", "type_mouvement": "ENTREE", "lot_id": "L1"},
+        {"mp_id": "MP1", "quantite": "0", "type_mouvement": "SORTIE", "lot_id": "L2"},
+        {"mp_id": "MP404", "quantite": "NaN", "type_mouvement": "AUTRE", "lot_id": "X"},
+    ]
+    rows["mouvements_pf"] = [
+        {"sku_id": "SKU1", "quantite": "2", "type_mouvement": "SORTIE", "lot_id": ""},
+    ]
+    result = audit_stock_movements(rows)
+    assert result[0]["Articles introuvables"] == 1
+    assert result[0]["Lots absents ou incompatibles"] == 2
+    assert result[0]["Quantités invalides"] == 1
+    assert result[0]["Quantités non positives"] == 1
+    assert result[0]["Types inconnus"] == 1
+    assert result[1]["Articles introuvables"] == 0
+    assert result[1]["Lots absents ou incompatibles"] == 0
+
+
+def test_mouvements_audit_refus_lecture_partielle():
+    from modules.admin.stock_quality import audit_stock_movements_autorise
+    rows = _data()
+    rows["mouvements"] = []
+    rows["mouvements_pf"] = []
+    assert len(audit_stock_movements_autorise(
+        reader=lambda name: rows[name])) == 2
+    with pytest.raises(PermissionError):
+        audit_stock_movements_autorise(
+            reader=lambda name: (_ for _ in ()).throw(PermissionError("Refus"))
+        )
+
+
+def test_ui_mouvements_sans_prise_ecriture():
+    from pathlib import Path
+    code = Path("modules/admin/views.py").read_text(encoding="utf-8")
+    assert "Analyser les mouvements de stock autorisés" in code
+    service = Path("modules/admin/stock_quality.py").read_text(encoding="utf-8")
+    assert "insert_hybrid" not in service and "update_hybrid" not in service
