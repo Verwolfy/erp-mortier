@@ -667,6 +667,27 @@ def show_admin_page():
                 else:
                     st.success("Aucune incohérence structurelle de mouvement détectée.")
                 st.caption("Ne reconstitue pas les soldes historiques : les mouvements antérieurs peuvent être incomplets.")
+        st.divider()
+        st.caption("Achats et Ventes : liens entre commandes, lignes, réceptions, livraisons et factures.")
+        if st.button("Analyser les flux Achats et Ventes autorisés", key="ng_admin_audit_flows"):
+            from modules.admin.sales_purchases_quality import audit_sales_purchases_autorise
+            try:
+                quality_flows = audit_sales_purchases_autorise()
+            except (PermissionError, ValueError, RuntimeError, OSError):
+                st.error("Contrôle des flux indisponible : droits insuffisants ou lecture incomplète.")
+            else:
+                st.table(quality_flows)
+                total_problems = sum(
+                    row["Parents manquants"] + row["Parents introuvables"] +
+                    row["Articles manquants"] + row["Articles introuvables"] +
+                    row["Quantités invalides"] + row["Quantités non positives"]
+                    for row in quality_flows
+                )
+                if total_problems:
+                    st.warning(f"{total_problems} incohérences potentielles à examiner dans Achats/Ventes.")
+                else:
+                    st.success("Aucune incohérence structurelle détectée sur les flux analysés.")
+                st.caption("Les liens commande facultatifs sont tolérés ; aucun montant fiscal ni solde n'est recalculé.")
 
     # --- CLIENTS ---
     with tab1:
