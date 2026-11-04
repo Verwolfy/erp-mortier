@@ -63,6 +63,16 @@ non validés, sans enregistrement dans Supabase et sans suivi QR public.
 Une vérification technique/réglementaire humaine est indispensable avant diffusion.
 """,
     "⚙️ Administration & Référentiels": """
+**Qualité référentiels :** Administration > Qualité référentiels >
+« Analyser les référentiels autorisés ». Audit transversal lecture seule sur
+Clients, Fournisseurs, Produits, SKU et Matières premières :
+IDs manquants/doublons, désignations manquantes, SKU reliés à un produit
+absent. Les inactifs sont comptés séparément (pas des erreurs).
+Le rapport ne révèle ni coordonnées ni données individuelles. Les droits
+de lecture serveur sont vérifiés sur chaque table : si une lecture est
+refusée ou incomplète, aucun bilan partiel n'est présenté.
+Ce contrôle ne corrige aucune ligne automatiquement.
+
 Les onglets de référentiels permettent de consulter les listes de choix,
 matières premières, produits, clients, fournisseurs et conditionnements (SKU).
 Un SKU est une présentation vendable d'un produit, liée à un emballage.
