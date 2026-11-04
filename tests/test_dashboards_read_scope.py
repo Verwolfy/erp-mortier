@@ -44,3 +44,31 @@ def test_portee_imbriquee_isolee(monkeypatch):
             assert service.charger_donnees("factures").loc[0, "n"] == 2
         assert service.charger_donnees("factures").loc[0, "n"] == 1
     assert len(calls) == 2
+
+
+def test_scope_failures_not_cached(monkeypatch):
+    import pytest
+    calls = []
+    def deny(table):
+        calls.append(table)
+        raise PermissionError("Refus RBAC")
+    monkeypatch.setattr(service, "fetch_data", deny)
+    with service.dashboard_read_scope():
+        for _ in range(2):
+            with pytest.raises(PermissionError):
+                service.charger_donnees("comptes")
+    assert calls == ["comptes", "comptes"]
+
+
+def test_nested_scope_restores_previous_read(monkeypatch):
+    calls = []
+    def read(table):
+        calls.append(table)
+        return [{"montant": len(calls)}]
+    monkeypatch.setattr(service, "fetch_data", read)
+    with service.dashboard_read_scope():
+        assert service.charger_donnees("factures").loc[0, "montant"] == 1
+        with service.dashboard_read_scope():
+            assert service.charger_donnees("factures").loc[0, "montant"] == 2
+        assert service.charger_donnees("factures").loc[0, "montant"] == 1
+    assert calls == ["factures", "factures"]
