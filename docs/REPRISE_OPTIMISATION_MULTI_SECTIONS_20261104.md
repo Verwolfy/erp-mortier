@@ -27,3 +27,16 @@
 3. Ajouter d'autres contrôles non destructifs si besoin : Stocks (cohérence lot/stock), Achats (liens fournisseurs), Ventes (liaisons commande/client), Production (recettes/OF), sans contourner RLS et sans inventer d'anomalies.
 4. Étudier le retrait des constantes fiscales codées en dur **après** audit de l'interface réglementaire paramétrée et des dépendances, sans changer de taux.
 5. Registre QR 033 : conception du RPC transactionnel et des ACL, tests SQL isolés et approbation pour toute opération RLS/GRANT/DDL sur production.
+
+
+## Lot complémentaire — intégrité des liens métier
+- `modules/admin/data_quality.py` : `audit_operations` + `audit_operations_autorise`, lectures bornées via RBAC serveur, contrôle des liaisons :
+  - `commandes_ventes.client_id` vers `clients.client_id` ;
+  - `commandes_achats.fournisseur_id` vers `fournisseurs.fournisseur_id` ;
+  - `ordres_fabrication.pf_id` vers `produits.pf_id`.
+- `modules/admin/views.py` : deuxième bouton **Analyser les liens métier autorisés**, tableau de comptages et message d'alerte sans donnée individuelle.
+- `tests/test_admin_data_quality.py` : cas lien manquant/introuvable, absence d'informations personnelles, échec fail-closed sur refus RBAC.
+- `modules/help/views.py` mis à jour.
+- Commits : `19e6864`, `4de480d`, `ad8cdcc`, `2a737cb`.
+- Tests GitHub du dernier commit documentaire à confirmer, voir GitHub Actions `main`.
+- Pas de SQL exécuté, pas de mouvement de stock, pas d'écriture Ventes, Achats ou Production.
