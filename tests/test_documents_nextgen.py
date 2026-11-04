@@ -352,3 +352,70 @@ def test_ui_import_json_existe_sans_stockage_supabase():
     source = Path("modules/documents/views.py").read_text(encoding="utf-8")
     assert "ng_draft_import_button" in source
     assert "read_draft_json(" in source
+
+
+def test_prefill_clients_fournisseurs_et_sku_autorises():
+    from modules.documents.prefill import (
+        list_parties, list_skus, apply_party, append_sku,
+    )
+    tables = {
+        "clients": [
+            {"client_id": "C1", "nom": "Client A", "adresse": "Bouira", "actif": "OUI"},
+            {"client_id": "C2", "nom": "Inactif", "adresse": "Alger", "actif": "NON"},
+        ],
+        "fournisseurs": [
+            {"fournisseur_id": "F1", "nom": "Fournisseur A", "adresse": "Oran", "actif": "OUI"}
+        ],
+        "produits": [
+            {"pf_id": "PF1", "nom": "FENEK BOND", "actif": "OUI"},
+            {"pf_id": "PF2", "nom": "Produit inactif", "actif": "NON"},
+        ],
+        "sku_conditionnement": [
+            {"sku_id": "SKU1", "pf_id": "PF1", "unite_vente": "SAC",
+             "format": "25 KG", "prix_vente_defaut": "300", "actif": "OUI"},
+            {"sku_id": "SKU2", "pf_id": "PF2", "actif": "OUI"},
+        ],
+    }
+    def reader(table):
+        return tables[table]
+    clients = list_parties("Devis", reader=reader)
+    assert [x["id"] for x in clients] == ["C1"]
+    suppliers = list_parties("Bon de commande fournisseur", reader=reader)
+    assert [x["id"] for x in suppliers] == ["F1"]
+    assert list_parties("Feuille de temps", reader=reader) == []
+    products = list_skus("Devis", reader=reader)
+    assert [x["id"] for x in products] == ["SKU1"]
+    assert list_skus("Bon de consommation", reader=reader) == []
+
+    draft = new_draft("Devis")
+    changed = apply_party(draft, clients[0])
+    changed = append_sku(changed, products[0])
+    assert draft["tiers_nom"] == ""
+    assert changed["tiers_nom"] == "Client A"
+    assert changed["items"][0]["designation"] == "FENEK BOND"
+    assert changed["items"][0]["prix_unitaire"] == ""
+    assert changed["items"][0]["quantite"] == ""
+
+
+def test_prefill_refuse_lecture_sans_droits_et_borne_lignes():
+    from modules.documents.prefill import list_parties, append_sku
+    def denied(table):
+        raise PermissionError("Accès interdit")
+    with pytest.raises(PermissionError):
+        list_parties("Facture", reader=denied)
+    doc = new_draft("Devis")
+    doc["items"] = [{} for _ in range(200)]
+    with pytest.raises(ValueError, match="200"):
+        append_sku(doc, {"id": "X", "designation": "Produit", "unite": "KG"})
+
+
+def test_ui_prefill_lecture_seule_et_sans_prix_force():
+    from pathlib import Path
+    code = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    assert "Charger les référentiels autorisés" in code
+    assert "list_parties(kind)" in code
+    assert "list_skus(kind)" in code
+    assert "Ajouter ce SKU au brouillon" in code
+    service = Path("modules/documents/prefill.py").read_text(encoding="utf-8")
+    assert "fetch_data_paginated" in service
+    assert "insert_hybrid" not in service and "update_hybrid" not in service
