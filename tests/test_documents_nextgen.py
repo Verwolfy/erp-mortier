@@ -152,3 +152,39 @@ def test_polices_corporate_tailles_reelles():
     footer_font = _font(20)
     assert company_font.getbbox("NEXTGEN")[3] - company_font.getbbox("NEXTGEN")[1] >= 23
     assert footer_font.getbbox("BOUIRA")[3] - footer_font.getbbox("BOUIRA")[1] >= 11
+
+
+def test_calcul_ht_ttc_decimal_sans_taux_implicite():
+    from modules.documents.calculations import calculate_financial_draft
+    rows = [
+        {"reference": "1", "designation": "FENEK BOND", "quantite": "10",
+         "prix_unitaire": "300"},
+        {"reference": "2", "designation": "FENEK FLOW", "quantite": "2",
+         "prix_unitaire": "100000"},
+    ]
+    output = calculate_financial_draft(rows, "2000")
+    assert output["errors"] == []
+    assert [x["total_ht"] for x in output["items"]] == ["3000.00", "200000.00"]
+    assert output["total_ht"] == "203000.00"
+    assert output["total_ttc"] == "205000.00"
+    assert "total_ht" not in rows[0]  # aucune mutation
+    assert calculate_financial_draft(rows)["total_ttc"] == ""
+
+
+def test_calcul_refuse_incomplet_et_montants_invalides():
+    from modules.documents.calculations import calculate_financial_draft
+    assert calculate_financial_draft([{"designation": "Produit", "quantite": "3"}])["errors"]
+    assert calculate_financial_draft([{"designation": "Produit", "quantite": "-1", "prix_unitaire": "2"}])["errors"]
+    assert calculate_financial_draft([{"designation": "Produit", "quantite": "NaN", "prix_unitaire": "2"}])["errors"]
+    assert calculate_financial_draft([{"designation": "Produit", "quantite": "1,5", "prix_unitaire": "2"}])["total_ht"] == "3.00"
+    assert calculate_financial_draft([{"designation": "Produit", "quantite": "1", "prix_unitaire": "2"}], "-1")["errors"]
+    assert calculate_financial_draft([{"designation": "Produit", "quantite": "1", "prix_unitaire": "2"}], "19%")["errors"]
+
+
+def test_ui_montants_non_editables_et_calcules():
+    from pathlib import Path
+    source = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    section = source.split("def show_documents_page():", 1)[1]
+    assert 'field == "total_ht"' in section
+    assert "calculate_financial_draft(" in section
+    assert "Montant des taxes validé" in section
