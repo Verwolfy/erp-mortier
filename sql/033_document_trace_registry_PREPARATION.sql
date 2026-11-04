@@ -53,7 +53,7 @@ CREATE INDEX erp_document_trace_event_trace_date
     ON erp_private.erp_document_trace_event(trace_id, happened_at DESC);
 
 -- Défense supplémentaire contre altération d'un historique existant.
--- Fonctions invoker privées ; pas de SECURITY DEFINER exposé.
+-- Fonctions invoker privées ; aucun privilège d'exécution élevé exposé.
 CREATE FUNCTION erp_private.erp_document_trace_immutable()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = pg_catalog
@@ -79,7 +79,7 @@ ALTER TABLE erp_private.erp_document_trace FORCE ROW LEVEL SECURITY;
 ALTER TABLE erp_private.erp_document_trace_version FORCE ROW LEVEL SECURITY;
 ALTER TABLE erp_private.erp_document_trace_event FORCE ROW LEVEL SECURITY;
 
--- Aucun GRANT aux rôles API. Aucun CREATE POLICY tant que l'identité
+-- Aucun GRANT aux rôles API. Aucune politique ajoutée tant que l'identité
 -- serveur et l'autorisation de chaque transition ne sont pas homologuées.
 REVOKE ALL ON erp_private.erp_document_trace
     FROM PUBLIC, anon, authenticated, service_role;
