@@ -276,31 +276,54 @@ def show_stocks_page():
     # --- ONGLET 3 : HISTORIQUE DES MOUVEMENTS ---
     with tab3:
         st.subheader("Historique des mouvements")
-        sous_tab_hist_vrac, sous_tab_hist_emb, sous_tab_hist_pf = st.tabs(["🧪 Mouvements Vrac", "📦 Mouvements Emballages", "🛍️ Mouvements PF"])
-        df_mouv = get_mouvements()
-        if not df_mouv.empty and not df_mp_global.empty:
-            df_mouv_detail = pd.merge(df_mouv, df_mp_global[['mp_id', 'categorie_mp']], on='mp_id', how='left')
-            df_mouv_vrac = df_mouv_detail[~df_mouv_detail["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
-            df_mouv_emb = df_mouv_detail[df_mouv_detail["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
-        else:
-            df_mouv_vrac = pd.DataFrame()
-            df_mouv_emb = pd.DataFrame()
-
-        with sous_tab_hist_vrac:
-            if not df_mouv_vrac.empty:
-                st.dataframe(df_mouv_vrac.drop(columns=["categorie_mp"]).sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
+        st.caption("Consultation paginée : 50 mouvements maximum par registre et par clic.")
+        page_stock = st.number_input(
+            "Page des mouvements", min_value=1, max_value=1000,
+            value=1, step=1, key="ng_stocks_history_page"
+        )
+        if st.button("Afficher les mouvements de stock", key="ng_stocks_history_load",
+                     on_click=_mark_stocks_activity):
+            from core.strict_reads import fetch_history_page_strict, DataReadError
+            try:
+                mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock))
+                pf_rows, pf_total = fetch_history_page_strict("mouvements_pf", page=int(page_stock))
+                df_mouv = pd.DataFrame(mp_rows)
+                df_mouv_pf = pd.DataFrame(pf_rows)
+            except (PermissionError, DataReadError, ValueError):
+                st.error("Historique Stocks indisponible : droits ou lecture incomplète.")
             else:
-                st.info("Aucun mouvement enregistré pour le Vrac.")
-
-        with sous_tab_hist_emb:
-            if not df_mouv_emb.empty:
-                st.dataframe(df_mouv_emb.drop(columns=["categorie_mp"]).sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
-            else:
-                st.info("Aucun mouvement enregistré pour les Emballages.")
-
-        with sous_tab_hist_pf:
-            df_mouv_pf = get_mouvements_pf()
-            if not df_mouv_pf.empty:
-                st.dataframe(df_mouv_pf.sort_values(by="date", ascending=False), use_container_width=True, hide_index=True)
-            else:
-                st.info("Aucun mouvement enregistré pour les Produits Finis.")
+                st.caption(
+                    f"Page {int(page_stock)} : mouvements MP {len(mp_rows)}/{mp_total}, "
+                    f"mouvements PF {len(pf_rows)}/{pf_total}."
+                )
+                if not df_mouv.empty and not df_mp_global.empty:
+                    df_mouv_detail = pd.merge(
+                        df_mouv, df_mp_global[["mp_id", "categorie_mp"]],
+                        on="mp_id", how="left"
+                    )
+                    emballages = df_mouv_detail["categorie_mp"].fillna("").str.strip().str.upper().isin(
+                        ["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"]
+                    )
+                    df_mouv_vrac = df_mouv_detail.loc[~emballages]
+                    df_mouv_emb = df_mouv_detail.loc[emballages]
+                else:
+                    df_mouv_vrac = pd.DataFrame()
+                    df_mouv_emb = pd.DataFrame()
+                st.caption("Les catégories Vrac et Emballages sont filtrées sur la page MP chargée.")
+                with st.expander("Mouvements Vrac", expanded=True):
+                    if df_mouv_vrac.empty:
+                        st.info("Aucun mouvement Vrac sur cette page.")
+                    else:
+                        st.dataframe(df_mouv_vrac.drop(columns=["categorie_mp"]),
+                                     use_container_width=True, hide_index=True)
+                with st.expander("Mouvements Emballages"):
+                    if df_mouv_emb.empty:
+                        st.info("Aucun mouvement Emballages sur cette page.")
+                    else:
+                        st.dataframe(df_mouv_emb.drop(columns=["categorie_mp"]),
+                                     use_container_width=True, hide_index=True)
+                with st.expander("Mouvements Produits Finis"):
+                    if df_mouv_pf.empty:
+                        st.info("Aucun mouvement PF sur cette page.")
+                    else:
+                        st.dataframe(df_mouv_pf, use_container_width=True, hide_index=True)
