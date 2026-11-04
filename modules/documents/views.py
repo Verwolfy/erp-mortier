@@ -98,97 +98,14 @@ def _draw_qr_vector(pdf, doc: dict, x: float, y: float, size: float = 36) -> Non
 
 
 def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
-    """Export A4 multipage, brouillon visible. Aucun calcul fiscal."""
+    """PDF harmonisé NEXTGEN, brouillon non émis et QR hors ligne."""
     validate_draft(doc)
-    import qrcode
-    from fpdf import FPDF
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=34)
-    pdf.add_page()
-    valid_logo = _verified_logo(logo_path)
-    if valid_logo:
-        pdf.image(valid_logo, x=12, y=10, w=33)
-    pdf.set_xy(47, 12)
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.set_text_color(15, 43, 80)
-    pdf.multi_cell(148, 7, _safe(COMPANY))
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_draw_color(17, 120, 91)
-    pdf.set_line_width(0.7)
-    pdf.line(10, 32, 200, 32)
-    pdf.set_xy(10, 34)
-    pdf.set_font("Helvetica", "B", 17)
-    pdf.cell(0, 12, _safe(doc["type"]).upper(), align="C", ln=True)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(190, 37, 38)
-    pdf.cell(0, 7, "BROUILLON - NON VALABLE / NON EMIS", align="C", ln=True)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Helvetica", "", 10)
-    for label, value in [
-        ("N°", doc.get("numero", "")), ("Date", doc.get("date", "")),
-        ("Tiers", doc.get("tiers_nom", "")), ("Adresse", doc.get("tiers_adresse", "")),
-        ("Objet", doc.get("objet", "")),
-    ]:
-        pdf.set_x(10)
-        pdf.multi_cell(190, 6, _safe(label + " : " + str(value)))
-    pdf.ln(5)
-    pdf.set_x(10)
-    pdf.set_fill_color(15, 43, 80)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 9)
-    widths = [27, 55, 19, 22, 32, 35]
-    for head, width in zip(COLUMNS, widths):
-        pdf.cell(width, 8, _safe(head), border=1, fill=True)
-    pdf.ln()
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Helvetica", "", 8)
-    for item in doc["items"]:
-        if pdf.get_y() > 247:
-            pdf.add_page()
-        values = [item.get(x, "") for x in ("reference", "designation", "unite", "quantite", "prix_unitaire", "total_ht")]
-        for value, width in zip(values, widths):
-            pdf.cell(width, 7, _safe(value)[:35], border=1)
-        pdf.ln()
-    pdf.ln(5)
-    pdf.set_font("Helvetica", "B", 10)
-    for label, key in (("Total HT", "total_ht"), ("Taxes - valeur fournie", "total_taxes"),
-                       ("Total TTC", "total_ttc")):
-        if doc.get(key) not in ("", None):
-            pdf.cell(0, 7, _safe(f"{label} : {doc[key]} DZD"), ln=True, align="R")
-    if doc.get("observations"):
-        pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, _safe("Observations : " + str(doc["observations"])))
-    # Le bas de page se dessine avec le saut automatique désactivé : un
-    # petit brouillon ne doit jamais produire une deuxième page vide.
-    if pdf.get_y() > 211:
-        pdf.add_page()
-    y = pdf.get_y() + 3
-    _draw_qr_vector(pdf, doc, x=160, y=y, size=34)
-    pdf.set_xy(12, y + 5)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.multi_cell(140, 5, _safe("Traçabilité locale : " + doc["trace_id"]))
-    # Visas pour les documents internes / signatures pour les échanges externes.
-    # Ne jamais masquer le QR ni ajouter une page inutile.
-    signatures_y = max(177, y + 43)
-    if signatures_y + 23 < 260:
-        pdf.set_draw_color(15, 43, 80)
-        pdf.set_text_color(15, 43, 80)
-        pdf.set_font("Helvetica", "B", 9)
-        for label, left in (("Établi par / cachet", 11), ("Reçu / validé par", 109)):
-            pdf.set_xy(left, signatures_y)
-            pdf.cell(90, 6, _safe(label), align="L")
-            pdf.rect(left, signatures_y + 7, 89, 17)
-        pdf.set_text_color(0, 0, 0)
-    pdf.set_auto_page_break(auto=False)
-    pdf.set_draw_color(17, 120, 91)
-    pdf.line(10, 265, 200, 265)
-    pdf.set_font("Helvetica", "", 7.5)
-    pdf.set_xy(10, 269)
-    pdf.multi_cell(190, 4, _safe(ADDRESS) + "\n" +
-                   _safe("RC: " + RC + " | NIF: " + NIF + " | " + EMAIL), align="C")
-    pdf.set_auto_page_break(auto=True, margin=34)
-    result = pdf.output(dest="S")
-    return bytes(result) if not isinstance(result, str) else result.encode("latin-1")
+    from modules.documents.layout_nextgen import render_pdf
+    return render_pdf(
+        doc, _verified_logo(logo_path),
+        company=COMPANY, address=ADDRESS, rc=RC, nif=NIF, email=EMAIL,
+        tracking_payload=tracking_payload, draw_qr=_draw_qr_vector,
+    )
 
 
 def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
@@ -212,18 +129,20 @@ def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
         paragraph = document.add_paragraph()
         paragraph.add_run(label + " : ").bold = True
         paragraph.add_run(str(doc.get(key, "")))
-    table = document.add_table(rows=1, cols=6)
+    from modules.documents.layout_nextgen import columns_for, signature_labels, FINANCIAL_KINDS
+    columns = columns_for(doc["type"])
+    table = document.add_table(rows=1, cols=len(columns))
     table.style = "Table Grid"
-    for cell, value in zip(table.rows[0].cells, COLUMNS):
+    for cell, (_, value) in zip(table.rows[0].cells, columns):
         cell.text = value
     for item in doc["items"]:
-        for cell, key in zip(table.add_row().cells, ("reference", "designation", "unite",
-                                                   "quantite", "prix_unitaire", "total_ht")):
+        for cell, (key, _) in zip(table.add_row().cells, columns):
             cell.text = str(item.get(key, ""))
-    for label, key in (("Total HT", "total_ht"), ("Taxes (montant fourni)", "total_taxes"),
-                       ("Total TTC", "total_ttc")):
-        if doc.get(key) not in ("", None):
-            document.add_paragraph(f"{label} : {doc[key]} DZD")
+    if doc["type"] in FINANCIAL_KINDS:
+        for label, key in (("Total HT", "total_ht"), ("Taxes (montant fourni)", "total_taxes"),
+                           ("Total TTC", "total_ttc")):
+            if doc.get(key) not in ("", None):
+                document.add_paragraph(f"{label} : {doc[key]} DZD")
     document.add_paragraph("Observations : " + str(doc.get("observations", "")))
     import qrcode
     qr = qrcode.make(tracking_payload(doc))
@@ -232,6 +151,8 @@ def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
     image.seek(0)
     document.add_picture(image, width=Cm(3))
     document.add_paragraph("Identifiant QR : " + doc["trace_id"])
+    for label in signature_labels(doc["type"]):
+        document.add_paragraph(label + " : __________________________")
     foot = sec.footer.paragraphs[0]
     foot.text = ADDRESS + "\nRC: " + RC + " | NIF: " + NIF + " | " + EMAIL
     foot.style = document.styles["Normal"]
@@ -264,19 +185,27 @@ def show_documents_page():
     doc["tiers_adresse"] = st.text_input("Adresse", value=doc["tiers_adresse"], key="doc_address")
     doc["objet"] = st.text_input("Objet", value=doc["objet"], key="doc_subject")
     import pandas as pd
+    from modules.documents.layout_nextgen import columns_for, FINANCIAL_KINDS
+    columns = columns_for(kind)
     if not doc["items"]:
-        doc["items"] = [{"reference": "", "designation": "", "unite": "",
-                          "quantite": "", "prix_unitaire": "", "total_ht": ""}]
+        doc["items"] = [{key: "" for key, _ in columns}]
     df = pd.DataFrame(doc["items"])
+    for key, _ in columns:
+        if key not in df:
+            df[key] = ""
+    df = df[[key for key, _ in columns]]
     st.subheader("Lignes")
-    edited = st.data_editor(df, num_rows="dynamic", hide_index=True, key="doc_lines")
+    edited = st.data_editor(df, num_rows="dynamic", hide_index=True, key="doc_lines",
+                            column_config={key: st.column_config.TextColumn(label)
+                                           for key, label in columns})
     doc["items"] = edited.fillna("").to_dict("records")
     if kind in FISCAL:
         st.error("Document fiscal : aucun taux calculé, émission finale bloquée.")
-    c1, c2, c3 = st.columns(3)
-    doc["total_ht"] = c1.text_input("Total HT (fourni)", value=doc["total_ht"])
-    doc["total_taxes"] = c2.text_input("Taxes (fournies)", value=doc["total_taxes"])
-    doc["total_ttc"] = c3.text_input("Total TTC (fourni)", value=doc["total_ttc"])
+    if kind in FINANCIAL_KINDS:
+        c1, c2, c3 = st.columns(3)
+        doc["total_ht"] = c1.text_input("Total HT (fourni)", value=doc["total_ht"])
+        doc["total_taxes"] = c2.text_input("Taxes (fournies)", value=doc["total_taxes"])
+        doc["total_ttc"] = c3.text_input("Total TTC (fourni)", value=doc["total_ttc"])
     doc["observations"] = st.text_area("Observations", value=doc["observations"])
     st.code(doc["trace_id"], language=None)
     try:
