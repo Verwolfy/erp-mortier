@@ -110,48 +110,29 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
                tracking_payload, draw_qr):
     """Factures et autres pièces restent des brouillons non émis."""
     from fpdf import FPDF
+    from modules.documents.branding_images import branded_images
+    header_png, footer_png = branded_images(logo_path)
     kind = doc["type"]
     cols = columns_for(kind)
     col_width = [27, 57, 17, 23, 31, 35]  # 190 mm
 
     class NextgenPDF(FPDF):
         def header(self):
-            if logo_path:
-                self.image(logo_path, x=12, y=9, w=31)
-            self.set_xy(48, 13)
-            self.set_font("Helvetica", "B", 12)
-            self.set_text_color(*NAVY)
-            self.multi_cell(148, 6.5, latin(company), align="L")
-            self.set_draw_color(*NAVY)
-            self.set_line_width(0.45)
-            self.line(10, 34, 154, 34)
-            self.set_draw_color(*GREEN)
-            self.set_line_width(1.1)
-            self.line(156, 34, 200, 34)
+            self.image(BytesIO(header_png), x=0, y=0, w=210, h=46.2)
 
         def footer(self):
-            self.set_auto_page_break(auto=False)
-            self.set_draw_color(*NAVY)
-            self.set_line_width(0.4)
-            self.line(10, 266, 200, 266)
-            self.set_draw_color(*GREEN)
-            self.set_line_width(1.2)
-            self.line(86, 266, 124, 266)
+            # Image fixe issue du modèle validé, répétée sur chaque page.
+            self.image(BytesIO(footer_png), x=0, y=268, w=210, h=24.36)
+            self.set_xy(10, 292)
+            self.set_font("Helvetica", "", 7)
             self.set_text_color(*NAVY)
-            self.set_xy(10, 268)
-            self.set_font("Helvetica", "", 7)
-            self.multi_cell(190, 4, latin(address) + "\n" +
-                            latin("RC : " + rc + "   |   NIF : " + nif + "   |   " + email),
-                            align="C")
-            self.set_xy(10, 288)
-            self.set_font("Helvetica", "", 7)
-            self.cell(190, 4, f"Page {self.page_no()}/{{nb}}", align="R")
+            self.cell(190, 3, f"Page {self.page_no()}/{{nb}}", align="R")
 
     pdf = NextgenPDF(format="A4", unit="mm")
     pdf.alias_nb_pages()
-    pdf.set_auto_page_break(auto=True, margin=36)
+    pdf.set_auto_page_break(auto=True, margin=39)
     pdf.add_page()
-    pdf.set_y(40)
+    pdf.set_y(51)
     pdf.set_fill_color(*NAVY)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 17)
@@ -209,7 +190,7 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
         height = min(24, max(7, max(len(lines) for lines in lines_by_cell) * 4.4 + 2))
         if pdf.get_y() + height > 244:
             pdf.add_page()
-            pdf.set_y(43)
+            pdf.set_y(52)
             table_header()
         y = pdf.get_y()
         fill = row_no % 2 == 1
