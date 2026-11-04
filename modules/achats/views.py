@@ -449,18 +449,35 @@ def show_achats_page():
 
     # --- HISTORIQUE ---
     with tab3, read_section("Historique achats"):
-        st.subheader("Commandes d'Achats")
-        commandes = get_commandes()
-        if not commandes.empty:
-            st.dataframe(commandes.sort_values(by="date_commande", ascending=False),
-                         use_container_width=True, hide_index=True)
-        else:
-            st.info("Aucune commande enregistrée.")
-        st.divider()
-        st.subheader("Bons de réception")
-        receptions = get_bons_reception()
-        if not receptions.empty:
-            st.dataframe(receptions.sort_values(by="date_reception", ascending=False),
-                         use_container_width=True, hide_index=True)
-        else:
-            st.info("Aucun bon de réception enregistré.")
+        st.subheader("Commandes et réceptions")
+        st.caption("Chargement à la demande : 50 lignes maximum par registre et par page.")
+        page_achats = st.number_input(
+            "Page des historiques Achats", min_value=1, max_value=1000,
+            value=1, step=1, key="ng_achats_history_page"
+        )
+        if st.button("Afficher l'historique Achats", key="ng_achats_history_load",
+                     on_click=_mark_achats_activity):
+            from core.strict_reads import fetch_history_page_strict
+            rows_commandes, total_commandes = fetch_history_page_strict(
+                "commandes_achats", page=int(page_achats)
+            )
+            rows_receptions, total_receptions = fetch_history_page_strict(
+                "bons_reception", page=int(page_achats)
+            )
+            st.caption(
+                f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
+                f"réceptions {len(rows_receptions)}/{total_receptions}."
+            )
+            st.subheader("Commandes d'Achats")
+            if rows_commandes:
+                st.dataframe(pd.DataFrame(rows_commandes), use_container_width=True,
+                             hide_index=True)
+            else:
+                st.info("Aucune commande sur cette page.")
+            st.divider()
+            st.subheader("Bons de réception")
+            if rows_receptions:
+                st.dataframe(pd.DataFrame(rows_receptions), use_container_width=True,
+                             hide_index=True)
+            else:
+                st.info("Aucun bon de réception sur cette page.")
