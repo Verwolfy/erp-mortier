@@ -19,6 +19,12 @@ def _mark_dashboards_activity() -> None:
 
 
 def show_dashboards_page():
+    from modules.dashboards.service import dashboard_read_scope
+    with dashboard_read_scope():
+        return _show_dashboards_page_impl()
+
+
+def _show_dashboards_page_impl():
     st.title("📊 Tableaux de bord & KPIs")
     st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261102-KPI-05")
 
