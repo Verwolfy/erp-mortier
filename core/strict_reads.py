@@ -94,10 +94,10 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
 
 
 def fetch_history_page_strict(table_name, *, page=1, page_size=50,
-                              max_total=100000):
+                              max_total=100000, date_column=None):
     """Charge uniquement une page historique et annonce son total exact.
 
-    Tri déterministe par clé technique décroissante. Pas un snapshot SQL :
+    Tri par date décroissante puis clé technique décroissante si demandé.\n    Sans date explicitement choisie : clé technique décroissante.\n    Pas un snapshot SQL :
     une mutation concurrente entre pages peut modifier la composition.
     Aucune page partielle n'est rendue comme résultat complet.
     """
@@ -110,16 +110,20 @@ def fetch_history_page_strict(table_name, *, page=1, page_size=50,
         table_name, db.SCHEMA_CONFIG[table_name]["cols"][0])
     if key not in columns:
         raise ValueError("Clé de lecture non autorisée")
+    if date_column is not None and (not isinstance(date_column, str) or
+                                    date_column not in columns or date_column == key):
+        raise ValueError("Colonne chronologique non autorisée")
     start = (page - 1) * page_size
     if start >= max_total:
         raise ValueError("Page hors de la limite autorisée")
     try:
         db._require_read_permission(table_name)
-        response = (db.get_supabase_client().table(table_name)
-                    .select(db._read_projection(table_name), count="exact")
-                    .order(key, desc=True)
-                    .range(start, start + page_size - 1)
-                    .execute())
+        query = db.get_supabase_client().table(table_name).select(
+            db._read_projection(table_name), count="exact")
+        if date_column is not None:
+            query = query.order(date_column, desc=True, nullsfirst=False)
+        response = (query.order(key, desc=True)
+                    .range(start, start + page_size - 1).execute())
         batch, count = response.data, response.count
         if (not isinstance(batch, list) or type(count) is not int or
                 count < 0 or count > max_total or len(batch) > page_size):
