@@ -108,6 +108,8 @@ def _draw_qr_vector(pdf, doc: dict, x: float, y: float, size: float = 36) -> Non
 def export_pdf(doc: dict, logo_path: str | bytes | None = None) -> bytes:
     """PDF harmonisé NEXTGEN, brouillon non émis et QR hors ligne."""
     validate_draft(doc)
+    from modules.documents.calculations import normalize_financial_export
+    doc = normalize_financial_export(doc)
     from modules.documents.layout_nextgen import render_pdf
     return render_pdf(
         doc, _verified_logo(logo_path),
@@ -118,6 +120,8 @@ def export_pdf(doc: dict, logo_path: str | bytes | None = None) -> bytes:
 
 def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
     validate_draft(doc)
+    from modules.documents.calculations import normalize_financial_export
+    doc = normalize_financial_export(doc)
     from docx import Document
     from docx.shared import Cm, Pt, RGBColor
     from modules.documents.branding_images import branded_images
