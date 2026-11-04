@@ -89,11 +89,17 @@ def show_crm_page():
     with tab3, read_section("Historique CRM"):
         st.subheader("Historique des Interactions")
         st.caption("Chargement à la demande pour éviter une lecture inutile à chaque navigation.")
+        page_crm = st.number_input(
+            "Page historique CRM", min_value=1, max_value=1000, value=1,
+            step=1, key="ng_crm_history_page")
         if st.button("Afficher l'historique CRM", key="ng_crm_load_history"):
-            df_int = get_interactions()
+            from modules.crm.service import get_interactions_page
+            df_int, total = get_interactions_page(page=int(page_crm))
             if not df_int.empty:
-                st.dataframe(df_int.sort_values(by="date_creation", ascending=False),
-                             use_container_width=True)
+                st.caption(f"Page {int(page_crm)} — {len(df_int)} lignes affichées sur {total} au total (50 maximum par page).")
+                st.dataframe(df_int, use_container_width=True)
+            elif total:
+                st.info(f"Page sans résultat ; {total} interactions disponibles. Choisissez une page antérieure.")
             else:
                 st.info("Aucun historique disponible.")
 
