@@ -191,7 +191,7 @@ def show_documents_page():
             if widget_key.startswith("ng_line_") or widget_key in (
                 "doc_number", "doc_date", "doc_tiers", "doc_address",
                 "doc_subject", "doc_lines", "ng_doc_taxes",
-                "ng_party_choice", "ng_sku_choice",
+                "ng_party_choice", "ng_sku_choice", "ng_material_choice",
             ):
                 st.session_state.pop(widget_key, None)
         st.session_state[doc_key] = new_draft(kind)
@@ -223,8 +223,9 @@ def show_documents_page():
     # Les référentiels ne sont lus qu'à la demande, via les droits de lecture
     # serveur du service ERP (aucun accès direct avec service_role).
     from modules.documents.prefill import (
-        CLIENT_TYPES, SUPPLIER_TYPES, PRODUCT_TYPES,
-        list_parties, list_skus, apply_party, append_sku,
+        CLIENT_TYPES, SUPPLIER_TYPES, PRODUCT_TYPES, MATERIAL_TYPES,
+        list_parties, list_skus, list_materials,
+        apply_party, append_sku, append_material,
     )
     with st.expander("Préremplir depuis les référentiels (lecture seule)", expanded=False):
         st.caption("Les données restent modifiables. Aucun document, tarif ou taxe n'est validé automatiquement.")
@@ -232,12 +233,14 @@ def show_documents_page():
             try:
                 parties = list_parties(kind)
                 skus = list_skus(kind)
+                materials = list_materials(kind)
             except (PermissionError, ValueError, RuntimeError, OSError) as exc:
                 st.session_state.pop("ng_ref_catalog", None)
                 st.error("Lecture des référentiels indisponible ou non autorisée.")
             else:
                 st.session_state["ng_ref_catalog"] = {
-                    "type": kind, "parties": parties, "skus": skus
+                    "type": kind, "parties": parties, "skus": skus,
+                    "materials": materials
                 }
         catalog = st.session_state.get("ng_ref_catalog")
         if isinstance(catalog, dict) and catalog.get("type") == kind:
@@ -290,6 +293,32 @@ def show_documents_page():
                             st.rerun()
                 else:
                     st.info("Aucun SKU actif accessible.")
+            materials = catalog.get("materials", [])
+            if kind in MATERIAL_TYPES:
+                if materials:
+                    by_material = {m["id"]: m for m in materials}
+                    selected_mp = st.selectbox(
+                        "Matière première",
+                        options=[""] + list(by_material),
+                        format_func=lambda key: "Sélectionner..." if not key else
+                                    by_material[key]["designation"] + " — " + key,
+                        key="ng_material_choice",
+                    )
+                    if st.button("Ajouter cette matière au brouillon",
+                                 key="ng_apply_material", disabled=not selected_mp):
+                        try:
+                            st.session_state[doc_key] = append_material(
+                                doc, by_material[selected_mp])
+                        except ValueError as exc:
+                            st.error(str(exc))
+                        else:
+                            for key in list(st.session_state):
+                                if key.startswith("ng_line_") and key not in (
+                                    "ng_line_add", "ng_line_remove"):
+                                    st.session_state.pop(key, None)
+                            st.rerun()
+                else:
+                    st.info("Aucune matière première active accessible.")
     doc["numero"] = st.text_input("Numéro / référence", value=doc["numero"], key="doc_number")
     doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date"))
     doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers")
