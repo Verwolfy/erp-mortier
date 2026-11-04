@@ -628,6 +628,20 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
 
 def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
     st.subheader("Factures et workflow")
+    if not can_write:
+        st.caption("Consultation paginée des factures : 50 lignes au maximum.")
+        page = st.number_input("Page des factures", min_value=1, max_value=1000,
+                               value=1, step=1, key="ng_ventes_invoice_history_page")
+        if st.button("Afficher les factures", key="ng_ventes_invoice_history_load",
+                     on_click=_mark_ventes_activity):
+            from core.strict_reads import fetch_history_page_strict
+            rows, total = fetch_history_page_strict("factures", page=int(page))
+            st.caption(f"Page {int(page)} : {len(rows)} factures sur {total}.")
+            if rows:
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune facture sur cette page.")
+        return
     if factures.empty:
         st.info("Aucune facture")
         return
@@ -663,7 +677,9 @@ def show_ventes_page() -> None:
     st.caption(f"Version interface Ventes : {_UI_REVISION}")
     # Ces lectures doivent intervenir APRES validation fraîche de l'identité.
     try:
-        invoices = get_factures()
+        # La totalité des factures reste réservée au workflow de validation.
+        # Un lecteur n'a besoin que de la page sélectionnée dans le suivi.
+        invoices = get_factures() if can_write else pd.DataFrame()
         tab_draft, tab_order, tab_ship, tab_workflow, tab_tva = st.tabs([
             "Facture / Avoir", "Commandes clients", "Bons de livraison",
             "Suivi factures", "TVA par SKU (contrôle)",
