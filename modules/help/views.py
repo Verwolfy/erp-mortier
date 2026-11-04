@@ -71,6 +71,10 @@ absent. Les inactifs sont comptés séparément (pas des erreurs).
 Le rapport ne révèle ni coordonnées ni données individuelles. Les droits
 de lecture serveur sont vérifiés sur chaque table : si une lecture est
 refusée ou incomplète, aucun bilan partiel n'est présenté.
+Le bouton « Analyser les liens métier autorisés » ajoute un contrôle des
+Commandes Ventes ↔ Clients, Commandes Achats ↔ Fournisseurs, et
+Ordres de fabrication ↔ Produits. Les liens absents sont signalés comme
+éléments à vérifier, sans suppression ni correction automatique.
 Ce contrôle ne corrige aucune ligne automatiquement.
 
 Les onglets de référentiels permettent de consulter les listes de choix,
