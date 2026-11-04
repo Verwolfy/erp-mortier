@@ -27,8 +27,9 @@ lignes puis télécharger PDF, Word modifiable ou JSON.
 
 Les exports sont des **BROUILLONS NON VALABLES** et ne créent aucune pièce dans
 Supabase. La saisie reste libre ; le bouton « Charger les référentiels autorisés »
-permet désormais de reprendre un client/fournisseur actif ou un SKU actif sous
-réserve des droits de lecture ERP. Aucune opération métier n'est créée.
+permet désormais de reprendre un client/fournisseur actif, un SKU actif
+(Ventes) ou une matière première active (Stocks/Production), sous réserve des
+droits de lecture ERP. Aucune opération métier ni aucun mouvement de stock n'est créé.
 Le prix catalogue est uniquement indicatif et ne renseigne pas le devis
 automatiquement. La quantité et le prix sont confirmés manuellement.
 Les montants de lignes et le total HT sont calculés en Decimal ; le TTC
