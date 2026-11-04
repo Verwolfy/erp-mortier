@@ -260,6 +260,7 @@ def show_documents_page():
     doc["observations"] = st.text_area("Observations", value=doc["observations"])
     st.code(doc["trace_id"], language=None)
     st.subheader("Identité visuelle")
+    st.caption("Logo officiel HD NEXTGEN installé par défaut (2048 × 868 pixels).")
     uploaded_logo = st.file_uploader(
         "Logo officiel haute définition (JPG ou PNG, 4 Mo maximum)",
         type=["jpg", "jpeg", "png"], key="ng_brand_logo_upload",
@@ -276,7 +277,7 @@ def show_documents_page():
         st.warning("Corrige les montants avant tout export.")
         return
     try:
-        logo = logo_override or "assets/nextgen_logo.jpg"
+        logo = logo_override or "assets/nextgen_logo_hd.jpg"
         pdf = export_pdf(doc, logo)
         word = export_docx(doc, logo)
     except (ValueError, RuntimeError, ImportError) as exc:
