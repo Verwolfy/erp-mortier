@@ -83,6 +83,11 @@ et la cohérence éventuelle des lots associés. Les résultats sont agrégés ;
 aucun mouvement ou solde n'est modifié. Il n'effectue pas de rapprochement
 comptable automatique des soldes avec les mouvements historiques.
 
+L'audit **Analyser les flux Achats et Ventes autorisés** vérifie les
+lignes de commande, livraisons, réceptions et factures : parents et
+articles absents/introuvables, quantités invalides ou non positives.
+Les factures hors commande restent possibles, sans être classées comme
+erreurs. Il ne recalcule pas les taxes, remises ou soldes.
 Ce contrôle ne corrige aucune ligne automatiquement.
 
 Les onglets de référentiels permettent de consulter les listes de choix,
