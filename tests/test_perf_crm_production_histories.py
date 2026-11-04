@@ -5,15 +5,15 @@ from pathlib import Path
 def test_crm_historique_a_la_demande():
     content = Path("modules/crm/views.py").read_text(encoding="utf-8")
     assert 'if st.button("Afficher l\'historique CRM"' in content
-    assert content.index('if st.button("Afficher l\'historique CRM"') < content.index("df_int = get_interactions()")
+    assert content.index('if st.button("Afficher l\'historique CRM"') < content.index("df_int, total = get_interactions_page(page=int(page_crm))")
     assert "df_clients = get_clients_actifs() if can_write else pd.DataFrame()" in content
 
 
 def test_production_historique_a_la_demande():
     content = Path("modules/production/views.py").read_text(encoding="utf-8")
     assert 'if st.button("Afficher l\'historique Production"' in content
-    assert content.index('if st.button("Afficher l\'historique Production"') < content.index("consumed = get_consommations_of()")
-    assert content.index('if st.button("Afficher l\'historique Production"') < content.index("controls = get_controles_qualite()")
+    assert content.index('if st.button("Afficher l\'historique Production"') < content.index("consumed, total_consumed = get_consommations_of_page(page=int(page_production))")
+    assert content.index('if st.button("Afficher l\'historique Production"') < content.index("controls, total_controls = get_controles_qualite_page(page=int(page_production))")
 
 
 def test_historiques_conservent_les_lecteurs_autorises():
