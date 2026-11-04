@@ -178,7 +178,7 @@ def show_documents_page():
         for widget_key in list(st.session_state):
             if widget_key.startswith("ng_line_") or widget_key in (
                 "doc_number", "doc_date", "doc_tiers", "doc_address",
-                "doc_subject", "doc_lines",
+                "doc_subject", "doc_lines", "ng_doc_taxes",
             ):
                 st.session_state.pop(widget_key, None)
         st.session_state[doc_key] = new_draft(kind)
@@ -213,6 +213,8 @@ def show_documents_page():
             groups = st.columns(2)
             values = {}
             for col_index, (field, label) in enumerate(columns):
+                if kind in FINANCIAL_KINDS and field == "total_ht":
+                    continue  # colonne dérivée ; jamais de saisie manuelle
                 widget_key = f"ng_line_{index}_{field}"
                 with groups[col_index % 2]:
                     values[field] = st.text_input(
@@ -222,15 +224,36 @@ def show_documents_page():
                     )
             updated.append(values)
     doc["items"] = updated
+    financial_errors = []
     if kind in FISCAL:
-        st.error("Document fiscal : aucun taux calculé, émission finale bloquée.")
+        st.warning("Brouillon fiscal uniquement : aucun taux de TVA n'est présumé.")
     if kind in FINANCIAL_KINDS:
-        c1, c2, c3 = st.columns(3)
-        doc["total_ht"] = c1.text_input("Total HT (fourni)", value=doc["total_ht"])
-        doc["total_taxes"] = c2.text_input("Taxes (fournies)", value=doc["total_taxes"])
-        doc["total_ttc"] = c3.text_input("Total TTC (fourni)", value=doc["total_ttc"])
+        from modules.documents.calculations import calculate_financial_draft
+        doc["total_taxes"] = st.text_input(
+            "Montant des taxes validé, en DZD (laisser vide si inconnu)",
+            value=str(doc.get("total_taxes") or ""), key="ng_doc_taxes",
+        )
+        result = calculate_financial_draft(doc["items"], doc["total_taxes"])
+        doc["items"] = result["items"]
+        doc["total_ht"] = result["total_ht"]
+        doc["total_ttc"] = result["total_ttc"]
+        financial_errors = result["errors"]
+        for error in financial_errors:
+            st.error(error)
+        if doc["total_ht"]:
+            st.metric("Total HT calculé", f'{doc["total_ht"]} DZD')
+        else:
+            st.caption("Total HT indisponible tant que les lignes ne sont pas complètes.")
+        if doc["total_ttc"]:
+            st.metric("Total TTC (taxes saisies)", f'{doc["total_ttc"]} DZD')
+        else:
+            st.caption("Total TTC non calculé sans montant de taxes validé.")
+        st.caption("Aucun taux fiscal calculé automatiquement ; brouillon non émis.")
     doc["observations"] = st.text_area("Observations", value=doc["observations"])
     st.code(doc["trace_id"], language=None)
+    if financial_errors:
+        st.warning("Corrige les montants avant tout export.")
+        return
     try:
         logo = "assets/nextgen_logo.jpg"
         pdf = export_pdf(doc, logo)
