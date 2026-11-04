@@ -21,7 +21,7 @@ def get_interactions_page(*, page: int = 1, page_size: int = 50):
     """Page CRM bornée ; aucune interaction au-delà du périmètre demandé."""
     from core.strict_reads import fetch_history_page_strict
     rows, total = fetch_history_page_strict(
-        "interactions", page=page, page_size=page_size)
+        "interactions", page=page, page_size=page_size, date_column="date_creation")
     return pd.DataFrame(rows), total
 
 
