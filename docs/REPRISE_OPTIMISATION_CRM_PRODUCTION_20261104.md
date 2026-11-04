@@ -20,3 +20,11 @@
 - GitHub `Verwolfy/erp-mortier` branche `main`; production Supabase `wenydirqtmkywbxbxfal` non modifiée.
 - Base TEST `ffuhbmcfyexsbjwhryvj` demeure en pause.
 - Les contrôles d'audit transversaux Stocks, Ventes, Achats, Finance, RH sont disponibles via Administration > Qualité référentiels.
+
+
+## Correction de régression CI
+- Sur commit initial `9ff0c3c`, le workflow `41912435709` a échoué sur deux assertions historiques : huit boutons d'activité Production attendus alors que le bouton historique ajoute une neuvième interaction ; trois erreurs de chargement CRM attendues alors que la consultation sans droits d'écriture et le chargement manuel n'interrogent désormais que Pipeline au rendu initial.
+- `tests/test_010A_02D_02_production_activity.py` mis à jour pour neuf callbacks de bouton (commit `781ff42`).
+- `tests/test_strict_reads_ui.py` adapté à une seule erreur CRM attendue dans le scénario de permissions restreintes (commit `77d1e79`).
+- Ces adaptations documentent les changements fonctionnels volontaires, sans neutraliser les tests des refus ni divulguer les données.
+- Vérifier les workflows de `77d1e79` avant de déclarer le lot validé.
