@@ -459,10 +459,10 @@ def show_achats_page():
                      on_click=_mark_achats_activity):
             from core.strict_reads import fetch_history_page_strict
             rows_commandes, total_commandes = fetch_history_page_strict(
-                "commandes_achats", page=int(page_achats)
+                "commandes_achats", page=int(page_achats), date_column="date_commande"
             )
             rows_receptions, total_receptions = fetch_history_page_strict(
-                "bons_reception", page=int(page_achats)
+                "bons_reception", page=int(page_achats), date_column="date_reception"
             )
             st.caption(
                 f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
