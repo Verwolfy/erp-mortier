@@ -112,15 +112,18 @@ def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
     validate_draft(doc)
     from docx import Document
     from docx.shared import Cm, Pt, RGBColor
+    from modules.documents.branding_images import branded_images
     document = Document()
     sec = document.sections[0]
-    sec.header_distance = Cm(1)
-    sec.footer_distance = Cm(1)
+    sec.top_margin = Cm(5.3)
+    sec.bottom_margin = Cm(3.4)
+    sec.left_margin = Cm(1.1)
+    sec.right_margin = Cm(1.1)
+    sec.header_distance = Cm(0)
+    sec.footer_distance = Cm(0.25)
+    header_png, footer_png = branded_images(_verified_logo(logo_path))
     header = sec.header.paragraphs[0]
-    valid_logo = _verified_logo(logo_path)
-    if valid_logo:
-        header.add_run().add_picture(valid_logo, width=Cm(3))
-    header.add_run("  " + COMPANY).bold = True
+    header.add_run().add_picture(BytesIO(header_png), width=Cm(18.8))
     document.add_heading(doc["type"].upper(), 0)
     p = document.add_paragraph("BROUILLON - NON VALABLE / NON EMIS")
     p.runs[0].font.color.rgb = RGBColor(190, 37, 38)
@@ -154,8 +157,7 @@ def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
     for label in signature_labels(doc["type"]):
         document.add_paragraph(label + " : __________________________")
     foot = sec.footer.paragraphs[0]
-    foot.text = ADDRESS + "\nRC: " + RC + " | NIF: " + NIF + " | " + EMAIL
-    foot.style = document.styles["Normal"]
+    foot.add_run().add_picture(BytesIO(footer_png), width=Cm(18.8))
     out = BytesIO()
     document.save(out)
     return out.getvalue()
@@ -173,9 +175,12 @@ def show_documents_page():
     kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind")
     doc_key = "nextgen_doc_draft"
     if st.session_state.get("nextgen_doc_type") != kind:
-        for widget_key in ("doc_number", "doc_date", "doc_tiers", "doc_address",
-                           "doc_subject", "doc_lines"):
-            st.session_state.pop(widget_key, None)
+        for widget_key in list(st.session_state):
+            if widget_key.startswith("ng_line_") or widget_key in (
+                "doc_number", "doc_date", "doc_tiers", "doc_address",
+                "doc_subject", "doc_lines",
+            ):
+                st.session_state.pop(widget_key, None)
         st.session_state[doc_key] = new_draft(kind)
         st.session_state["nextgen_doc_type"] = kind
     doc = st.session_state[doc_key]
@@ -184,21 +189,39 @@ def show_documents_page():
     doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers")
     doc["tiers_adresse"] = st.text_input("Adresse", value=doc["tiers_adresse"], key="doc_address")
     doc["objet"] = st.text_input("Objet", value=doc["objet"], key="doc_subject")
-    import pandas as pd
     from modules.documents.layout_nextgen import columns_for, FINANCIAL_KINDS
     columns = columns_for(kind)
     if not doc["items"]:
         doc["items"] = [{key: "" for key, _ in columns}]
-    df = pd.DataFrame(doc["items"])
-    for key, _ in columns:
-        if key not in df:
-            df[key] = ""
-    df = df[[key for key, _ in columns]]
     st.subheader("Lignes")
-    edited = st.data_editor(df, num_rows="dynamic", hide_index=True, key="doc_lines",
-                            column_config={key: st.column_config.TextColumn(label)
-                                           for key, label in columns})
-    doc["items"] = edited.fillna("").to_dict("records")
+    st.caption("Saisie simplifiée, sans composant DataFrame.")
+    actions = st.columns(2)
+    if actions[0].button("➕ Ajouter une ligne", key="ng_line_add"):
+        if len(doc["items"]) < 200:
+            doc["items"].append({key: "" for key, _ in columns})
+        st.rerun()
+    if actions[1].button("➖ Supprimer la dernière ligne", key="ng_line_remove",
+                         disabled=len(doc["items"]) <= 1):
+        last = len(doc["items"]) - 1
+        for field, _ in columns:
+            st.session_state.pop(f"ng_line_{last}_{field}", None)
+        doc["items"].pop()
+        st.rerun()
+    updated = []
+    for index, item in enumerate(doc["items"]):
+        with st.expander(f"Ligne {index + 1}", expanded=index == 0):
+            groups = st.columns(2)
+            values = {}
+            for col_index, (field, label) in enumerate(columns):
+                widget_key = f"ng_line_{index}_{field}"
+                with groups[col_index % 2]:
+                    values[field] = st.text_input(
+                        label,
+                        value=str(item.get(field, "") or ""),
+                        key=widget_key,
+                    )
+            updated.append(values)
+    doc["items"] = updated
     if kind in FISCAL:
         st.error("Document fiscal : aucun taux calculé, émission finale bloquée.")
     if kind in FINANCIAL_KINDS:
