@@ -8,6 +8,7 @@ from __future__ import annotations
 CLIENT_TYPES = frozenset({"Devis", "Bon de commande client", "Facture", "Avoir", "Bon de livraison"})
 SUPPLIER_TYPES = frozenset({"Demande d'achat", "Bon de commande fournisseur", "Bon de réception", "Contrôle facture fournisseur"})
 PRODUCT_TYPES = frozenset({"Devis", "Bon de commande client", "Facture", "Avoir", "Bon de livraison"})
+MATERIAL_TYPES = frozenset({"Bon de consommation", "Bon de sortie", "Transfert de stock", "Inventaire", "Ordre de fabrication", "Rapport de fabrication", "Contrôle qualité"})
 
 
 def _active(value: object) -> bool:
@@ -85,4 +86,34 @@ def append_sku(doc: dict, sku: dict) -> dict:
         "prix_unitaire": "",
         "total_ht": "",
     })
+    return out
+
+
+def list_materials(kind: str, *, reader=None) -> list[dict]:
+    """Catalogue matières actives sans prix, stock ni état des lots."""
+    if kind not in MATERIAL_TYPES:
+        return []
+    fetch = reader or _read
+    return sorted([
+        {"id": str(x["mp_id"]), "designation": str(x.get("nom") or ""),
+         "unite": str(x.get("unite_stock") or "")}
+        for x in fetch("matieres_premieres")
+        if isinstance(x, dict) and x.get("mp_id") and _active(x.get("actif"))
+    ], key=lambda x: (x["designation"], x["id"]))
+
+
+def append_material(doc: dict, material: dict) -> dict:
+    from copy import deepcopy
+    from modules.documents.layout_nextgen import columns_for
+    if doc.get("type") not in MATERIAL_TYPES:
+        raise ValueError("Matière non applicable à ce type de document")
+    out = deepcopy(doc)
+    rows = out.setdefault("items", [])
+    if len(rows) >= 200:
+        raise ValueError("200 lignes maximum")
+    new_line = {key: "" for key, _ in columns_for(out["type"])}
+    new_line.update(reference=material["id"],
+                    designation=material["designation"],
+                    unite=material["unite"])
+    rows.append(new_line)
     return out
