@@ -58,20 +58,42 @@ def branded_images(logo_path: str | bytes | None = None) -> tuple[bytes, bytes]:
             source = BytesIO(logo_path) if isinstance(logo_path, bytes) else Path(logo_path)
             with Image.open(source) as original:
                 logo = original.convert("RGB")
-                # Nouveau logo HD : supprimer la bande de slogan du bas, qui
-                # devient illisible dans les petits en-têtes imprimés.
                 if logo.width > 2 * logo.height and logo.height > 450:
-                    logo = logo.crop((0, 0, logo.width, int(logo.height * 0.84)))
-                mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))
-                mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)
-                bounds = mask.getbbox()
-                if bounds:
-                    logo = logo.crop(bounds)
-                # Une véritable source HD est seulement réduite, jamais
-                # agrandie à partir d'un petit bitmap dégradé.
-                logo.thumbnail((385, 270), Image.Resampling.LANCZOS)
-                header.paste(logo, (75 + (410 - logo.width)//2,
-                                    15 + (275 - logo.height)//2))
+                    # JPEG officiel 2048x868 : utiliser uniquement le symbole
+                    # géométrique. Le mot-symbole reste du texte haute netteté,
+                    # et non une image de 385 px redimensionnée.
+                    symbol = logo.crop((
+                        round(logo.width * 0.273),
+                        round(logo.height * 0.017),
+                        round(logo.width * 0.684),
+                        round(logo.height * 0.428),
+                    ))
+                    symbol.thumbnail((310, 150), Image.Resampling.LANCZOS)
+                    header.paste(symbol, (125 + (310 - symbol.width) // 2,
+                                          19 + (150 - symbol.height) // 2))
+                    word = "NEXTGEN"
+                    subtitle = "BUILDING SOLUTIONS"
+                    word_font = _font(56, True)
+                    sub_font = _font(24, True)
+                    bounds = d.textbbox((0, 0), word, font=word_font)
+                    bounds2 = d.textbbox((0, 0), subtitle, font=sub_font)
+                    d.text((280 - (bounds[2] - bounds[0]) / 2, 174),
+                           word, font=word_font, fill=NAVY)
+                    d.text((280 - (bounds2[2] - bounds2[0]) / 2, 244),
+                           subtitle, font=sub_font, fill=NAVY)
+                else:
+                    # Ancien format, conservé pour les exports personnalisés
+                    # quand l'utilisateur téléverse un autre logo.
+                    mask = ImageChops.difference(
+                        logo, Image.new("RGB", logo.size, WHITE))
+                    mask = mask.convert("L").point(
+                        lambda pixel: 255 if pixel > 42 else 0)
+                    bounds = mask.getbbox()
+                    if bounds:
+                        logo = logo.crop(bounds)
+                    logo.thumbnail((385, 270), Image.Resampling.LANCZOS)
+                    header.paste(logo, (75 + (410 - logo.width)//2,
+                                        15 + (275 - logo.height)//2))
         except (OSError, ValueError, UnidentifiedImageError):
             pass
     d.line((514, 67, 514, 277), fill=NAVY, width=3)
