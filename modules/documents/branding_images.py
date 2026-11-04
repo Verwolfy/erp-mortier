@@ -49,27 +49,29 @@ def _png(image: Image.Image) -> bytes:
 
 
 @lru_cache(maxsize=8)
-def branded_images(logo_path: str | None = None) -> tuple[bytes, bytes]:
+def branded_images(logo_path: str | bytes | None = None) -> tuple[bytes, bytes]:
     """Images A4 bord à bord ; l'en-tête reproduit la structure approuvée."""
     header = Image.new("RGB", (1500, 330), WHITE)
     d = ImageDraw.Draw(header)
-    if logo_path and Path(logo_path).is_file():
+    if logo_path:
         try:
-            with Image.open(logo_path) as logo:
-                logo = logo.convert("RGB")
+            source = BytesIO(logo_path) if isinstance(logo_path, bytes) else Path(logo_path)
+            with Image.open(source) as original:
+                logo = original.convert("RGB")
+                # Nouveau logo HD : supprimer la bande de slogan du bas, qui
+                # devient illisible dans les petits en-têtes imprimés.
+                if logo.width > 2 * logo.height and logo.height > 450:
+                    logo = logo.crop((0, 0, logo.width, int(logo.height * 0.78)))
                 mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))
                 mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)
                 bounds = mask.getbbox()
                 if bounds:
                     logo = logo.crop(bounds)
-                # thumbnail() n’agrandit jamais : notre JPEG de marque est petit.
-                # Utiliser aussi un agrandissement proportionnel pour conserver
-                # la taille visuelle approuvée dans le bandeau A4.
-                factor = min(360 / logo.width, 256 / logo.height)
-                logo = logo.resize((max(1, round(logo.width * factor)),
-                                    max(1, round(logo.height * factor))),
-                                   Image.Resampling.LANCZOS)
-                header.paste(logo, (105 + (360 - logo.width)//2, 20 + (264 - logo.height)//2))
+                # Une véritable source HD est seulement réduite, jamais
+                # agrandie à partir d'un petit bitmap dégradé.
+                logo.thumbnail((385, 270), Image.Resampling.LANCZOS)
+                header.paste(logo, (75 + (410 - logo.width)//2,
+                                    15 + (275 - logo.height)//2))
         except (OSError, ValueError, UnidentifiedImageError):
             pass
     d.line((514, 67, 514, 277), fill=NAVY, width=3)
