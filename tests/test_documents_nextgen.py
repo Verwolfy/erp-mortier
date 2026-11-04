@@ -419,3 +419,33 @@ def test_ui_prefill_lecture_seule_et_sans_prix_force():
     service = Path("modules/documents/prefill.py").read_text(encoding="utf-8")
     assert "fetch_data_paginated" in service
     assert "insert_hybrid" not in service and "update_hybrid" not in service
+
+
+def test_prefill_matieres_stock_production_lecture_seule():
+    from modules.documents.prefill import list_materials, append_material
+    catalogue = [
+        {"mp_id": "MP-1", "nom": "Résine", "unite_stock": "KG", "actif": "OUI"},
+        {"mp_id": "MP-2", "nom": "Inactive", "unite_stock": "KG", "actif": "NON"},
+    ]
+    result = list_materials("Bon de consommation", reader=lambda table: catalogue)
+    assert [x["id"] for x in result] == ["MP-1"]
+    assert list_materials("Facture", reader=lambda table: catalogue) == []
+    source = new_draft("Bon de consommation")
+    filled = append_material(source, result[0])
+    assert source["items"] == []
+    assert filled["items"][0]["reference"] == "MP-1"
+    assert filled["items"][0]["unite"] == "KG"
+    assert "prix_unitaire" not in filled["items"][0]
+    assert export_pdf(filled).startswith(b"%PDF")
+    assert export_docx(filled).startswith(b"PK")
+    with pytest.raises(ValueError):
+        append_material(new_draft("Facture"), result[0])
+
+
+def test_ui_matiere_premiere_sans_mouvement_stock():
+    from pathlib import Path
+    code = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    assert "list_materials(kind)" in code
+    assert "Ajouter cette matière au brouillon" in code
+    source = Path("modules/documents/prefill.py").read_text(encoding="utf-8")
+    assert "insert_hybrid" not in source and "update_hybrid" not in source
