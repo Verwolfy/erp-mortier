@@ -22,3 +22,12 @@ def test_historiques_conservent_les_lecteurs_autorises():
     assert 'with tab3, read_section("Historique CRM"):' in crm
     assert "access = _production_access()" in prod
     assert 'if access is None:' in prod
+
+
+def test_production_referentiels_non_charges_en_lecture_seule():
+    content = Path("modules/production/views.py").read_text(encoding="utf-8")
+    assert "products = get_produits_actifs() if can_write else pd.DataFrame()" in content
+    assert "materials = get_mp_actives() if can_write else pd.DataFrame()" in content
+    assert "skus = get_skus_actifs() if can_write else pd.DataFrame()" in content
+    # En lecture seule, le suivi des OF est accessible, sans leur clôture.
+    assert 'orders = get_ordres_fabrication()' in content
