@@ -689,6 +689,10 @@ def show_admin_page():
                     st.success("Aucune incohérence structurelle détectée sur les flux analysés.")
                 st.caption("Les liens commande facultatifs sont tolérés ; aucun montant fiscal ni solde n'est recalculé.")
 
+    with tab_qualite:
+        from modules.admin.finance_rh_quality_view import render_finance_rh_quality
+        render_finance_rh_quality()
+
     # --- CLIENTS ---
     with tab1:
         st.subheader("Gestion des Clients")
