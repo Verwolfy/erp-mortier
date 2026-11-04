@@ -17,6 +17,14 @@ def get_interactions() -> pd.DataFrame:
     """Récupère l'historique des interactions CRM."""
     return pd.DataFrame(fetch_data("interactions"))
 
+def get_interactions_page(*, page: int = 1, page_size: int = 50):
+    """Page CRM bornée ; aucune interaction au-delà du périmètre demandé."""
+    from core.strict_reads import fetch_history_page_strict
+    rows, total = fetch_history_page_strict(
+        "interactions", page=page, page_size=page_size)
+    return pd.DataFrame(rows), total
+
+
 def create_opportunite(prospect_nom: str, contact: str, statut: str, commercial_id: str, valeur_estimee: float, probabilite_pct: float):
     """
     Crée une nouvelle opportunité dans le Pipeline.
