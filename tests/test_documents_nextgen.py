@@ -303,3 +303,52 @@ def test_montants_excessifs_refuses_avec_erreur_metier():
         "prix_unitaire": "999999999999",
     }])
     assert result["errors"] and "excessif" in result["errors"][0]
+
+
+def test_import_json_brouillon_rond_trip():
+    import json
+    from modules.documents.draft_io import read_draft_json
+    draft = new_draft("Bon de livraison")
+    draft["numero"] = "BL-DEMO-01"
+    draft["tiers_nom"] = "Client essai"
+    draft["items"] = [{"reference": "P1", "designation": "Produit",
+                       "unite": "SAC", "quantite": "10",
+                       "quantite_livree": "8", "observation": "2 en attente"}]
+    result = read_draft_json(json.dumps(draft).encode("utf-8"), "Bon de livraison")
+    assert result["trace_id"] == draft["trace_id"]
+    assert result["numero"] == draft["numero"]
+    assert result["items"][0]["quantite_livree"] == "8"
+    assert export_pdf(result).startswith(b"%PDF")
+    assert export_docx(result).startswith(b"PK")
+
+
+def test_import_refuse_type_statut_trace_et_limites():
+    import json
+    from modules.documents.draft_io import read_draft_json
+    draft = new_draft("Facture")
+    def decode(value, kind="Facture"):
+        return read_draft_json(json.dumps(value).encode("utf-8"), kind)
+    with pytest.raises(ValueError, match="même type"):
+        decode(draft, "Devis")
+    draft["statut"] = "EMIS"
+    with pytest.raises(ValueError, match="BROUILLON"):
+        decode(draft)
+    draft["statut"] = "BROUILLON"
+    draft["trace_id"] = "NG-INVALID"
+    with pytest.raises(ValueError, match="QR"):
+        decode(draft)
+    draft["trace_id"] = new_draft("Facture")["trace_id"]
+    draft["items"] = [{}] * 201
+    with pytest.raises(ValueError, match="200"):
+        decode(draft)
+    with pytest.raises(ValueError, match="volumineux"):
+        read_draft_json(b"x" * 300001, "Facture")
+    with pytest.raises(ValueError, match="invalide"):
+        read_draft_json(b"{", "Facture")
+
+
+def test_ui_import_json_existe_sans_stockage_supabase():
+    from pathlib import Path
+    source = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    assert "ng_draft_import_button" in source
+    assert "read_draft_json(" in source
