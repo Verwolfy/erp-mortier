@@ -58,7 +58,7 @@ def show_crm_page():
 
     with tab2, read_section("Clients CRM"):
         st.subheader("Consigner une Interaction")
-        df_clients = get_clients_actifs()
+        df_clients = get_clients_actifs() if can_write else pd.DataFrame()
 
         if not can_write:
             st.info("🔒 Mode lecture seule.")
