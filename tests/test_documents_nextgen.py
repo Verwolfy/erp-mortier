@@ -85,3 +85,34 @@ def test_logo_officiel_est_lisible_et_exportable():
     doc = new_draft("Facture")
     assert export_pdf(doc, str(logo)).startswith(b"%PDF")
     assert export_docx(doc, str(logo)).startswith(b"PK")
+
+
+def test_colonnes_et_signatures_par_metier():
+    from modules.documents.layout_nextgen import columns_for, signature_labels, FINANCIAL_KINDS
+    assert "quantite_livree" in dict(columns_for("Bon de livraison"))
+    assert "visa" in dict(columns_for("Bon de consommation"))
+    assert "prix_unitaire" not in dict(columns_for("Bon de consommation"))
+    assert "Bon pour accord" in signature_labels("Devis")[1]
+    assert "Facture" in FINANCIAL_KINDS
+
+
+def test_exports_brouillons_tous_documents():
+    from modules.documents.layout_nextgen import columns_for
+    for kinds in DOCUMENTS.values():
+        for kind in kinds:
+            draft = new_draft(kind)
+            draft["items"] = [{key: "Test" if key == "designation" else ""
+                               for key, _ in columns_for(kind)}]
+            assert export_pdf(draft, None).startswith(b"%PDF")
+            assert export_docx(draft, None).startswith(b"PK")
+
+
+def test_pdf_multilignes_longues_sans_exception():
+    from modules.documents.layout_nextgen import columns_for
+    doc = new_draft("Bon de livraison")
+    doc["items"] = [
+        dict([(key, ("Désignation très longue de matériau industriel " * 5)
+               if key == "designation" else "1") for key, _ in columns_for(doc["type"])])
+        for _ in range(55)
+    ]
+    assert export_pdf(doc, None).startswith(b"%PDF")
