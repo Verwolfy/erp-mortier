@@ -62,20 +62,28 @@ def _safe(value: object) -> str:
     return str(value if value is not None else "").encode("latin-1", "replace").decode("latin-1")[:250]
 
 
-def _verified_logo(logo_path: str | None) -> str | None:
+def _verified_logo(logo_path: str | bytes | None) -> str | bytes | None:
     """Un logo absent ou endommagé ne doit jamais empêcher un export."""
     if not logo_path:
         return None
     from pathlib import Path
     from PIL import Image, UnidentifiedImageError
-    path = Path(logo_path)
-    if not path.is_file():
-        return None
     try:
+        if isinstance(logo_path, bytes):
+            if len(logo_path) > 4 * 1024 * 1024:
+                return None
+            with Image.open(BytesIO(logo_path)) as picture:
+                if picture.width < 400 or picture.height < 200:
+                    return None
+                picture.verify()
+            return logo_path
+        path = Path(logo_path)
+        if not path.is_file():
+            return None
         with Image.open(path) as picture:
             picture.verify()
         return str(path)
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (UnidentifiedImageError, OSError, ValueError, TypeError):
         return None
 
 
@@ -97,7 +105,7 @@ def _draw_qr_vector(pdf, doc: dict, x: float, y: float, size: float = 36) -> Non
                          step + 0.01, step + 0.01, style="F")
 
 
-def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
+def export_pdf(doc: dict, logo_path: str | bytes | None = None) -> bytes:
     """PDF harmonisé NEXTGEN, brouillon non émis et QR hors ligne."""
     validate_draft(doc)
     from modules.documents.layout_nextgen import render_pdf
@@ -108,7 +116,7 @@ def export_pdf(doc: dict, logo_path: str | None = None) -> bytes:
     )
 
 
-def export_docx(doc: dict, logo_path: str | None = None) -> bytes:
+def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
     validate_draft(doc)
     from docx import Document
     from docx.shared import Cm, Pt, RGBColor
@@ -251,11 +259,24 @@ def show_documents_page():
         st.caption("Aucun taux fiscal calculé automatiquement ; brouillon non émis.")
     doc["observations"] = st.text_area("Observations", value=doc["observations"])
     st.code(doc["trace_id"], language=None)
+    st.subheader("Identité visuelle")
+    uploaded_logo = st.file_uploader(
+        "Logo officiel haute définition (JPG ou PNG, 4 Mo maximum)",
+        type=["jpg", "jpeg", "png"], key="ng_brand_logo_upload",
+        help="Utilisé uniquement pour les exports de cette session ; aucune écriture Supabase.",
+    )
+    logo_override = None
+    if uploaded_logo is not None:
+        logo_override = _verified_logo(uploaded_logo.getvalue())
+        if logo_override is None:
+            st.error("Image invalide : utilisez un logo d'au moins 400 × 200 pixels, inférieur à 4 Mo.")
+        else:
+            st.caption("Logo haute définition chargé pour les PDF et Word de cette session.")
     if financial_errors:
         st.warning("Corrige les montants avant tout export.")
         return
     try:
-        logo = "assets/nextgen_logo.jpg"
+        logo = logo_override or "assets/nextgen_logo.jpg"
         pdf = export_pdf(doc, logo)
         word = export_docx(doc, logo)
     except (ValueError, RuntimeError, ImportError) as exc:
