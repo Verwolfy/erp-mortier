@@ -216,3 +216,20 @@ def test_interface_logo_hd_disponible():
     source = Path("modules/documents/views.py").read_text(encoding="utf-8")
     assert "ng_brand_logo_upload" in source
     assert "logo_override or" in source
+
+
+def test_logo_original_hd_installe_et_exportable():
+    from pathlib import Path
+    from PIL import Image
+    logo = Path("assets/nextgen_logo_hd.jpg")
+    assert logo.is_file()
+    with Image.open(logo) as source:
+        assert source.size == (2048, 868)
+        source.verify()
+    draft = new_draft("Facture")
+    assert export_pdf(draft, str(logo)).startswith(b"%PDF")
+    assert export_docx(draft, str(logo)).startswith(b"PK")
+    from modules.documents.branding_images import branded_images
+    header, footer = branded_images(str(logo))
+    assert header.startswith(b"\\x89PNG")
+    assert footer.startswith(b"\\x89PNG")
