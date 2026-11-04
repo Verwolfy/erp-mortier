@@ -28,3 +28,14 @@
 - `tests/test_strict_reads_ui.py` adapté à une seule erreur CRM attendue dans le scénario de permissions restreintes (commit `77d1e79`).
 - Ces adaptations documentent les changements fonctionnels volontaires, sans neutraliser les tests des refus ni divulguer les données.
 - Vérifier les workflows de `77d1e79` avant de déclarer le lot validé.
+
+
+## Extension — pagination historique (04/11/2026)
+- `core/strict_reads.py` : `fetch_history_page_strict`, bornée à 1–100 lignes/page (défaut 50), pages 1–1000, maximum 100 000 lignes annoncées. Contrôle serveur RBAC à chaque requête, sélection de colonnes autorisées, tri décroissant par clé primaire, `count=exact`, rejet de résultats incomplets/ambigus. Pas de cache ni écriture.
+- `modules/crm/service.py` : `get_interactions_page`. `modules/crm/views.py` : page CRM choisie par `number_input`, affichage à la demande des 50 lignes et du total.
+- `modules/production/service.py` : `get_consommations_of_page`, `get_controles_qualite_page`. `modules/production/views.py` : numéro de page commun aux deux registres, 50 lignes chacun au maximum ; aucun chargement historique sans clic.
+- Les anciennes fonctions d'accès complètes restent intactes pour les autres appels ; changement limité aux vues d'historique.
+- Tests `tests/test_history_page_strict.py` et adaptations `tests/test_perf_crm_production_histories.py` : limites, permissions, pages incomplètes, compte exact, compatibilité des vues.
+- Commits : `076fd33`, `b0d479b`, `2ac2f68`, `df3640c`, `9a9cd12`, `732694d`, `fc50714`. GitHub Actions lancées ; valider leur conclusion.
+- Limitation explicite : pagination par offset, **pas de snapshot PostgreSQL transactionnel**. En cas d'insertions entre consultations, une ligne peut changer de page ; ceci ne remplace pas un journal immuable. Le nombre annoncé reste celui de la requête courante.
+- Pas de migration SQL, de changement de fiscalité, d'émission de document ou de modification de données de production.
