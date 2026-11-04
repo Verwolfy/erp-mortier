@@ -92,6 +92,59 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
         raise DataReadError("Lecture indisponible ; aucun résultat complet") from None
 
 
+
+def fetch_history_page_strict(table_name, *, page=1, page_size=50,
+                              max_total=100000):
+    """Charge uniquement une page historique et annonce son total exact.
+
+    Tri déterministe par clé technique décroissante. Pas un snapshot SQL :
+    une mutation concurrente entre pages peut modifier la composition.
+    Aucune page partielle n'est rendue comme résultat complet.
+    """
+    if (type(page) is not int or page < 1 or page > 1000 or
+            type(page_size) is not int or not 1 <= page_size <= 100 or
+            type(max_total) is not int or max_total < page_size):
+        raise ValueError("Pagination historique invalide")
+    columns = db._readable_columns(table_name)
+    key = db._PRIMARY_KEY_OVERRIDES.get(
+        table_name, db.SCHEMA_CONFIG[table_name]["cols"][0])
+    if key not in columns:
+        raise ValueError("Clé de lecture non autorisée")
+    start = (page - 1) * page_size
+    if start >= max_total:
+        raise ValueError("Page hors de la limite autorisée")
+    try:
+        db._require_read_permission(table_name)
+        response = (db.get_supabase_client().table(table_name)
+                    .select(db._read_projection(table_name), count="exact")
+                    .order(key, desc=True)
+                    .range(start, start + page_size - 1)
+                    .execute())
+        batch, count = response.data, response.count
+        if (not isinstance(batch, list) or type(count) is not int or
+                count < 0 or count > max_total or len(batch) > page_size):
+            raise DataReadError("Pagination historique non vérifiable")
+        expected = min(page_size, max(0, count - start))
+        if len(batch) != expected:
+            raise DataReadError("Page historique incomplète ou périmée")
+        seen = set()
+        for row in batch:
+            if not isinstance(row, dict):
+                raise DataReadError("Ligne historique invalide")
+            identifier = row.get(key)
+            if (type(identifier) not in (int, str) or
+                    (isinstance(identifier, str) and not identifier.strip()) or
+                    identifier in seen):
+                raise DataReadError("Clé historique absente ou répétée")
+            seen.add(identifier)
+        return batch, count
+    except (PermissionError, DataReadError):
+        raise
+    except Exception as exc:
+        _LOG.warning("Page historique indisponible (%s)", type(exc).__name__)
+        raise DataReadError("Page historique indisponible") from None
+
+
 def fetch_data_by_date_range_strict(table_name, date_column, start_date, end_date):
     return fetch_data_strict(table_name, date_column=date_column,
                              start_date=start_date, end_date=end_date)
