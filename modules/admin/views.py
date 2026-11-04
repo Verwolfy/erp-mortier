@@ -649,6 +649,24 @@ def show_admin_page():
                 else:
                     st.success("Aucune anomalie de structure Stocks détectée.")
                 st.caption("Audit indicatif : aucun rapprochement automatique des soldes avec les lots historiques.")
+        if st.button("Analyser les mouvements de stock autorisés", key="ng_admin_audit_moves"):
+            from modules.admin.stock_quality import audit_stock_movements_autorise
+            try:
+                moves = audit_stock_movements_autorise()
+            except (PermissionError, ValueError, RuntimeError, OSError):
+                st.error("Contrôle des mouvements indisponible : accès ou lecture incomplète.")
+            else:
+                st.table(moves)
+                errors_moves = sum(
+                    item["Articles introuvables"] + item["Lots absents ou incompatibles"] +
+                    item["Quantités invalides"] + item["Quantités non positives"] +
+                    item["Types inconnus"] for item in moves
+                )
+                if errors_moves:
+                    st.warning(f"{errors_moves} incohérences potentielles dans les mouvements.")
+                else:
+                    st.success("Aucune incohérence structurelle de mouvement détectée.")
+                st.caption("Ne reconstitue pas les soldes historiques : les mouvements antérieurs peuvent être incomplets.")
 
     # --- CLIENTS ---
     with tab1:
