@@ -386,6 +386,14 @@ def show_documents_page():
         st.caption("Aucun taux fiscal calculé automatiquement ; brouillon non émis.")
     doc["observations"] = st.text_area("Observations", value=doc["observations"])
     st.code(doc["trace_id"], language=None)
+    from modules.documents.trace_integrity import draft_sha256
+    try:
+        fingerprint = draft_sha256(doc)
+    except ValueError:
+        st.caption("Empreinte SHA-256 indisponible : renseigner un brouillon valide.")
+    else:
+        st.caption("Empreinte SHA-256 locale (sans preuve d'émission ou de certification) :")
+        st.code(fingerprint, language=None)
     st.subheader("Identité visuelle")
     st.caption("Logo officiel HD NEXTGEN installé par défaut (2048 × 868 pixels).")
     uploaded_logo = st.file_uploader(
