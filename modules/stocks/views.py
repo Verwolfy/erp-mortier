@@ -285,8 +285,8 @@ def show_stocks_page():
                      on_click=_mark_stocks_activity):
             from core.strict_reads import fetch_history_page_strict, DataReadError
             try:
-                mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock))
-                pf_rows, pf_total = fetch_history_page_strict("mouvements_pf", page=int(page_stock))
+                mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock), date_column="date")
+                pf_rows, pf_total = fetch_history_page_strict("mouvements_pf", page=int(page_stock), date_column="date")
                 df_mouv = pd.DataFrame(mp_rows)
                 df_mouv_pf = pd.DataFrame(pf_rows)
             except (PermissionError, DataReadError, ValueError):
