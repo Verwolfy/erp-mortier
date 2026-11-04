@@ -72,6 +72,22 @@ def get_controles_qualite(of_id: str = None) -> pd.DataFrame:
         return pd.DataFrame(fetch_data_filtered("controle_qualite", "of_id", of_id))
     return pd.DataFrame(fetch_data("controle_qualite"))
 
+def get_consommations_of_page(*, page: int = 1, page_size: int = 50):
+    """Page historique des consommations, sans lecture de tout l'historique."""
+    from core.strict_reads import fetch_history_page_strict
+    rows, total = fetch_history_page_strict(
+        "consommations_of", page=page, page_size=page_size)
+    return pd.DataFrame(rows), total
+
+
+def get_controles_qualite_page(*, page: int = 1, page_size: int = 50):
+    """Page historique des contrôles qualité, bornée et protégée par RBAC."""
+    from core.strict_reads import fetch_history_page_strict
+    rows, total = fetch_history_page_strict(
+        "controle_qualite", page=page, page_size=page_size)
+    return pd.DataFrame(rows), total
+
+
 class ProductionCreationError(RuntimeError):
     """La transaction a pu réussir malgré une erreur réseau. Utiliser le même ID."""
 
