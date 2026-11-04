@@ -196,6 +196,29 @@ def show_documents_page():
         st.session_state[doc_key] = new_draft(kind)
         st.session_state["nextgen_doc_type"] = kind
     doc = st.session_state[doc_key]
+    st.subheader("Reprendre un brouillon")
+    import_file = st.file_uploader(
+        "Importer un brouillon JSON exporté précédemment (300 Ko maximum)",
+        type=["json"], key="ng_draft_import",
+        help="Lecture locale : aucune création de pièce dans Supabase.",
+    )
+    if st.button("Charger le brouillon JSON", key="ng_draft_import_button",
+                 disabled=import_file is None):
+        from modules.documents.draft_io import read_draft_json
+        try:
+            imported = read_draft_json(import_file.getvalue(), kind)
+        except ValueError as exc:
+            st.error(str(exc))
+        else:
+            for state_key in list(st.session_state):
+                if state_key.startswith("ng_line_") or state_key in (
+                    "doc_number", "doc_date", "doc_tiers", "doc_address",
+                    "doc_subject", "doc_lines", "ng_doc_taxes",
+                ):
+                    st.session_state.pop(state_key, None)
+            st.session_state[doc_key] = imported
+            st.success("Brouillon importé. Identifiant QR conservé.")
+            st.rerun()
     doc["numero"] = st.text_input("Numéro / référence", value=doc["numero"], key="doc_number")
     doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date"))
     doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers")
