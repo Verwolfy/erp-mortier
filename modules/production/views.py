@@ -616,15 +616,18 @@ def show_production_page() -> None:
         _followup_tab(user_id, can_write, can_stock, skus, materials, products)
     with tab_history:
         st.subheader("Historique des consommations et contrôles qualité")
-        consumed = get_consommations_of()
-        controls = get_controles_qualite()
-        if not consumed.empty:
-            st.dataframe(consumed.sort_values(by="consommation_id", ascending=False),
-                         use_container_width=True, hide_index=True)
-        else:
-            st.info("Aucune consommation")
-        if not controls.empty:
-            st.dataframe(controls.sort_values(by="date", ascending=False),
-                         use_container_width=True, hide_index=True)
-        else:
-            st.info("Aucun contrôle qualité")
+        st.caption("Chargement manuel pour éviter les requêtes historiques inutiles.")
+        if st.button("Afficher l'historique Production", key="ng_production_load_history",
+                     on_click=_mark_production_activity):
+            consumed = get_consommations_of()
+            controls = get_controles_qualite()
+            if not consumed.empty:
+                st.dataframe(consumed.sort_values(by="consommation_id", ascending=False),
+                             use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune consommation")
+            if not controls.empty:
+                st.dataframe(controls.sort_values(by="date", ascending=False),
+                             use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucun contrôle qualité")
