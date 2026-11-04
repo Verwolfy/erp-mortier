@@ -36,7 +36,10 @@ def _font(size: int, bold: bool = False):
             return ImageFont.truetype(path, size)
         except OSError:
             continue
-    # Les images sont imprimées à taille fixe : un bitmap 10 px rendait les\n    # mentions presque illisibles sur Streamlit Cloud quand les TTF système\n    # étaient absents. Pillow fournit une fonte intégrée redimensionnable.\n    return ImageFont.load_default(size=size)
+    # Les images sont imprimées à taille fixe : un bitmap 10 px rendait les
+    # mentions presque illisibles sur Streamlit Cloud quand les TTF système
+    # étaient absents. Pillow fournit une fonte intégrée redimensionnable.
+    return ImageFont.load_default(size=size)
 
 
 def _png(image: Image.Image) -> bytes:
@@ -54,7 +57,18 @@ def branded_images(logo_path: str | None = None) -> tuple[bytes, bytes]:
         try:
             with Image.open(logo_path) as logo:
                 logo = logo.convert("RGB")
-                mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))\n                mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)\n                bounds = mask.getbbox()\n                if bounds:\n                    logo = logo.crop(bounds)\n                # thumbnail() n’agrandit jamais : notre JPEG de marque est petit.\n                # Utiliser aussi un agrandissement proportionnel pour conserver\n                # la taille visuelle approuvée dans le bandeau A4.\n                factor = min(360 / logo.width, 256 / logo.height)\n                logo = logo.resize((max(1, round(logo.width * factor)),\n                                    max(1, round(logo.height * factor))),\n                                   Image.Resampling.LANCZOS)
+                mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))
+                mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)
+                bounds = mask.getbbox()
+                if bounds:
+                    logo = logo.crop(bounds)
+                # thumbnail() n’agrandit jamais : notre JPEG de marque est petit.
+                # Utiliser aussi un agrandissement proportionnel pour conserver
+                # la taille visuelle approuvée dans le bandeau A4.
+                factor = min(360 / logo.width, 256 / logo.height)
+                logo = logo.resize((max(1, round(logo.width * factor)),
+                                    max(1, round(logo.height * factor))),
+                                   Image.Resampling.LANCZOS)
                 header.paste(logo, (105 + (360 - logo.width)//2, 20 + (264 - logo.height)//2))
         except (OSError, ValueError, UnidentifiedImageError):
             pass
