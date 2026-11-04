@@ -61,7 +61,7 @@ def branded_images(logo_path: str | bytes | None = None) -> tuple[bytes, bytes]:
                 # Nouveau logo HD : supprimer la bande de slogan du bas, qui
                 # devient illisible dans les petits en-têtes imprimés.
                 if logo.width > 2 * logo.height and logo.height > 450:
-                    logo = logo.crop((0, 0, logo.width, int(logo.height * 0.78)))
+                    logo = logo.crop((0, 0, logo.width, int(logo.height * 0.84)))
                 mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))
                 mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)
                 bounds = mask.getbbox()
