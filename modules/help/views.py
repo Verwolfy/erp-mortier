@@ -75,6 +75,14 @@ Le bouton « Analyser les liens métier autorisés » ajoute un contrôle des
 Commandes Ventes ↔ Clients, Commandes Achats ↔ Fournisseurs, et
 Ordres de fabrication ↔ Produits. Les liens absents sont signalés comme
 éléments à vérifier, sans suppression ni correction automatique.
+Le contrôle **Analyser les stocks autorisés** vérifie les références
+articles, les quantités disponibles et les lots (quantité restante,
+quantité initiale, liens MP/PF). **Analyser les mouvements de stock
+autorisés** vérifie les articles, les types ENTREE/SORTIE, les quantités
+et la cohérence éventuelle des lots associés. Les résultats sont agrégés ;
+aucun mouvement ou solde n'est modifié. Il n'effectue pas de rapprochement
+comptable automatique des soldes avec les mouvements historiques.
+
 Ce contrôle ne corrige aucune ligne automatiquement.
 
 Les onglets de référentiels permettent de consulter les listes de choix,
