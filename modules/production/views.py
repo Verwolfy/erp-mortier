@@ -602,9 +602,12 @@ def show_production_page() -> None:
         st.error("Accès au module Production refusé ou compte inactif.")
         return
     user_id, can_write, can_stock = access
-    products = get_produits_actifs()
-    materials = get_mp_actives()
-    skus = get_skus_actifs()
+    # En lecture seule, les écrans de création retournent immédiatement et
+    # le suivi des OF n'utilise pas les catalogues après son contrôle d'accès.
+    # Éviter trois requêtes non nécessaires pour les profils consultatifs.
+    products = get_produits_actifs() if can_write else pd.DataFrame()
+    materials = get_mp_actives() if can_write else pd.DataFrame()
+    skus = get_skus_actifs() if can_write else pd.DataFrame()
     tab_recipe, tab_of, tab_follow, tab_history = st.tabs([
         "📝 Recettes", "⚙️ OF", "📊 Production et CQ", "🔍 Consommations et contrôles",
     ])
