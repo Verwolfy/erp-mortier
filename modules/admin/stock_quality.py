@@ -108,3 +108,65 @@ def audit_stocks_autorise(*, reader=None) -> list[dict]:
         reader = lambda table: fetch_data_paginated(
             table, page_size=200, max_rows=5000)
     return audit_stocks({table: reader(table) for table in REQUIRED})
+
+
+def audit_stock_movements(rows_by_table: dict) -> list[dict]:
+    """Audit de références mouvements et lots, sans rapprochement de soldes."""
+    for table in ("matieres_premieres", "sku_conditionnement", "lots",
+                  "mouvements", "mouvements_pf"):
+        value = rows_by_table[table]
+        if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
+            raise ValueError(f"Lecture {table} invalide")
+    mp = _ids(rows_by_table["matieres_premieres"], "mp_id")
+    sku = _ids(rows_by_table["sku_conditionnement"], "sku_id")
+    lot_map = {
+        str(row["lot_id"]).strip(): (
+            str(row.get("type_item") or "").strip().upper(),
+            str(row.get("item_id") or "").strip(),
+        )
+        for row in rows_by_table["lots"]
+        if row.get("lot_id") is not None and str(row.get("lot_id")).strip()
+    }
+    result = []
+    for section, table, reference_field, acceptable, type_item in (
+        ("Mouvements MP", "mouvements", "mp_id", mp, "MP"),
+        ("Mouvements PF", "mouvements_pf", "sku_id", sku, "PF"),
+    ):
+        records = rows_by_table[table]
+        absent = wrong_lot = wrong_qty = negatives = unexpected_kind = 0
+        for row in records:
+            identifier = str(row.get(reference_field) or "").strip()
+            if not identifier or identifier not in acceptable:
+                absent += 1
+            qty = _decimal(row.get("quantite"))
+            if qty is None:
+                wrong_qty += 1
+            elif qty <= 0:
+                negatives += 1
+            if str(row.get("type_mouvement") or "").strip().upper() not in (
+                "ENTREE", "SORTIE"
+            ):
+                unexpected_kind += 1
+            lot_id = str(row.get("lot_id") or "").strip()
+            if lot_id and lot_map.get(lot_id) != (type_item, identifier):
+                wrong_lot += 1
+        result.append({
+            "Section": section, "Enregistrements": len(records),
+            "Articles introuvables": absent,
+            "Lots absents ou incompatibles": wrong_lot,
+            "Quantités invalides": wrong_qty,
+            "Quantités non positives": negatives,
+            "Types inconnus": unexpected_kind,
+        })
+    return result
+
+
+def audit_stock_movements_autorise(*, reader=None) -> list[dict]:
+    """Aucun rapport si la lecture d'une table est refusée ou partielle."""
+    if reader is None:
+        from core.db_service import fetch_data_paginated
+        reader = lambda table: fetch_data_paginated(
+            table, page_size=200, max_rows=5000)
+    selected = ("matieres_premieres", "sku_conditionnement", "lots",
+                "mouvements", "mouvements_pf")
+    return audit_stock_movements({name: reader(name) for name in selected})
