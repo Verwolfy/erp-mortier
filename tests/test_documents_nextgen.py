@@ -116,3 +116,31 @@ def test_pdf_multilignes_longues_sans_exception():
         for _ in range(55)
     ]
     assert export_pdf(doc, None).startswith(b"%PDF")
+
+
+def test_images_entete_pied_nextgen():
+    from PIL import Image
+    from modules.documents.branding_images import branded_images
+    header, footer = branded_images("assets/nextgen_logo.jpg")
+    for data, expected in ((header, (1500, 330)), (footer, (1500, 174))):
+        with Image.open(BytesIO(data)) as image:
+            assert image.format == "PNG"
+            assert image.size == expected
+
+
+def test_pdf_images_reelles_et_une_page():
+    from modules.documents.branding_images import branded_images
+    doc = new_draft("Devis")
+    pdf = export_pdf(doc, "assets/nextgen_logo.jpg")
+    assert pdf.startswith(b"%PDF")
+    assert b"/Subtype /Image" in pdf
+    assert len(__import__("re").findall(rb"/Type\s*/Page\b", pdf)) == 1
+
+
+def test_editeur_documents_sans_dataframe_js():
+    from pathlib import Path
+    source = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    section = source.split("def show_documents_page():", 1)[1]
+    assert "st.data_editor(" not in section
+    assert "st.text_input(" in section
+    assert "ng_line_add" in section
