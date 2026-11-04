@@ -9,7 +9,7 @@ from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, ImageFont, UnidentifiedImageError
 
 NAVY = (12, 43, 80)
 GREEN = (4, 139, 91)
@@ -36,7 +36,7 @@ def _font(size: int, bold: bool = False):
             return ImageFont.truetype(path, size)
         except OSError:
             continue
-    return ImageFont.load_default()
+    # Les images sont imprimées à taille fixe : un bitmap 10 px rendait les\n    # mentions presque illisibles sur Streamlit Cloud quand les TTF système\n    # étaient absents. Pillow fournit une fonte intégrée redimensionnable.\n    return ImageFont.load_default(size=size)
 
 
 def _png(image: Image.Image) -> bytes:
@@ -54,7 +54,7 @@ def branded_images(logo_path: str | None = None) -> tuple[bytes, bytes]:
         try:
             with Image.open(logo_path) as logo:
                 logo = logo.convert("RGB")
-                logo.thumbnail((360, 256), Image.Resampling.LANCZOS)
+                mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))\n                mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)\n                bounds = mask.getbbox()\n                if bounds:\n                    logo = logo.crop(bounds)\n                logo.thumbnail((360, 256), Image.Resampling.LANCZOS)
                 header.paste(logo, (105 + (360 - logo.width)//2, 20 + (264 - logo.height)//2))
         except (OSError, ValueError, UnidentifiedImageError):
             pass
