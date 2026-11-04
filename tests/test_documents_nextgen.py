@@ -233,3 +233,23 @@ def test_logo_original_hd_installe_et_exportable():
     header, footer = branded_images(str(logo))
     assert header.startswith(b"\x89PNG")
     assert footer.startswith(b"\x89PNG")
+
+
+def test_symbole_hd_et_typographie_decomposee():
+    """Le JPEG horizontal ne doit plus être réduit en un seul mot-symbole flou."""
+    from pathlib import Path
+    from PIL import Image
+    from modules.documents.branding_images import branded_images
+    logo = Path("assets/nextgen_logo_hd.jpg")
+    with Image.open(logo) as source:
+        assert source.width > 2 * source.height
+    header, _ = branded_images(str(logo))
+    with Image.open(BytesIO(header)) as image:
+        # Le mot NEXTGEN reconstruit doit être une zone foncée,
+        # distincte du symbole géométrique en haut.
+        import numpy as np
+        pixel_array = np.asarray(image.convert("RGB"))
+        word = pixel_array[180:243, 100:465]
+        symbol = pixel_array[23:163, 135:450]
+        assert int(((word[:,:,0] < 120) & (word[:,:,2] < 160)).sum()) > 700
+        assert int(((symbol[:,:,0] < 120) & (symbol[:,:,1] < 185)).sum()) > 400
