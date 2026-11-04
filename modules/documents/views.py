@@ -191,6 +191,7 @@ def show_documents_page():
             if widget_key.startswith("ng_line_") or widget_key in (
                 "doc_number", "doc_date", "doc_tiers", "doc_address",
                 "doc_subject", "doc_lines", "ng_doc_taxes",
+                "ng_party_choice", "ng_sku_choice",
             ):
                 st.session_state.pop(widget_key, None)
         st.session_state[doc_key] = new_draft(kind)
@@ -219,6 +220,76 @@ def show_documents_page():
             st.session_state[doc_key] = imported
             st.success("Brouillon importé. Identifiant QR conservé.")
             st.rerun()
+    # Les référentiels ne sont lus qu'à la demande, via les droits de lecture
+    # serveur du service ERP (aucun accès direct avec service_role).
+    from modules.documents.prefill import (
+        CLIENT_TYPES, SUPPLIER_TYPES, PRODUCT_TYPES,
+        list_parties, list_skus, apply_party, append_sku,
+    )
+    with st.expander("Préremplir depuis les référentiels (lecture seule)", expanded=False):
+        st.caption("Les données restent modifiables. Aucun document, tarif ou taxe n'est validé automatiquement.")
+        if st.button("Charger les référentiels autorisés", key="ng_load_refs"):
+            try:
+                parties = list_parties(kind)
+                skus = list_skus(kind)
+            except (PermissionError, ValueError, RuntimeError, OSError) as exc:
+                st.session_state.pop("ng_ref_catalog", None)
+                st.error("Lecture des référentiels indisponible ou non autorisée.")
+            else:
+                st.session_state["ng_ref_catalog"] = {
+                    "type": kind, "parties": parties, "skus": skus
+                }
+        catalog = st.session_state.get("ng_ref_catalog")
+        if isinstance(catalog, dict) and catalog.get("type") == kind:
+            parties = catalog.get("parties", [])
+            if kind in CLIENT_TYPES or kind in SUPPLIER_TYPES:
+                if parties:
+                    by_id = {party["id"]: party for party in parties}
+                    choice = st.selectbox(
+                        "Client / fournisseur",
+                        options=[""] + list(by_id),
+                        format_func=lambda k: "Sélectionner..." if not k else
+                                    by_id[k]["nom"] + " (" + k + ")",
+                        key="ng_party_choice",
+                    )
+                    if st.button("Reprendre les coordonnées du tiers",
+                                 key="ng_apply_party", disabled=not choice):
+                        st.session_state[doc_key] = apply_party(doc, by_id[choice])
+                        for k in ("doc_tiers", "doc_address"):
+                            st.session_state.pop(k, None)
+                        st.rerun()
+                else:
+                    st.info("Aucun tiers actif accessible.")
+            skus = catalog.get("skus", [])
+            if kind in PRODUCT_TYPES:
+                if skus:
+                    by_sku = {sku["id"]: sku for sku in skus}
+                    selected = st.selectbox(
+                        "Produit / conditionnement",
+                        options=[""] + list(by_sku),
+                        format_func=lambda k: "Sélectionner..." if not k else
+                                    by_sku[k]["designation"] + " — " + k,
+                        key="ng_sku_choice",
+                    )
+                    if selected:
+                        st.caption(
+                            "Prix catalogue indicatif : " +
+                            (by_sku[selected]["prix_vente_defaut"] or "non renseigné") +
+                            " DZD. Prix à saisir et confirmer manuellement."
+                        )
+                    if st.button("Ajouter ce SKU au brouillon", key="ng_apply_sku",
+                                 disabled=not selected):
+                        try:
+                            st.session_state[doc_key] = append_sku(doc, by_sku[selected])
+                        except ValueError as exc:
+                            st.error(str(exc))
+                        else:
+                            for key in list(st.session_state):
+                                if key.startswith("ng_line_") and key != "ng_line_add" and key != "ng_line_remove":
+                                    st.session_state.pop(key, None)
+                            st.rerun()
+                else:
+                    st.info("Aucun SKU actif accessible.")
     doc["numero"] = st.text_input("Numéro / référence", value=doc["numero"], key="doc_number")
     doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date"))
     doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers")
