@@ -144,3 +144,11 @@ def test_editeur_documents_sans_dataframe_js():
     assert "st.data_editor(" not in section
     assert "st.text_input(" in section
     assert "ng_line_add" in section
+
+
+def test_polices_corporate_tailles_reelles():
+    from modules.documents.branding_images import _font
+    company_font = _font(49, bold=True)
+    footer_font = _font(20)
+    assert company_font.getbbox("NEXTGEN")[3] - company_font.getbbox("NEXTGEN")[1] >= 23
+    assert footer_font.getbbox("BOUIRA")[3] - footer_font.getbbox("BOUIRA")[1] >= 11
