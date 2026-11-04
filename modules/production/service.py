@@ -84,7 +84,7 @@ def get_controles_qualite_page(*, page: int = 1, page_size: int = 50):
     """Page historique des contrôles qualité, bornée et protégée par RBAC."""
     from core.strict_reads import fetch_history_page_strict
     rows, total = fetch_history_page_strict(
-        "controle_qualite", page=page, page_size=page_size)
+        "controle_qualite", page=page, page_size=page_size, date_column="date")
     return pd.DataFrame(rows), total
 
 
