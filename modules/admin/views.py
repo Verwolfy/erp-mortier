@@ -610,6 +610,24 @@ def show_admin_page():
                 else:
                     st.success("Aucune anomalie de structure détectée sur les référentiels contrôlés.")
                 st.caption("Les statuts inactifs sont affichés séparément, sans être considérés comme des erreurs.")
+        st.divider()
+        st.caption("Ventes, Achats et Production : relations avec leurs référentiels.")
+        if st.button("Analyser les liens métier autorisés", key="ng_admin_audit_links"):
+            from modules.admin.data_quality import audit_operations_autorise
+            try:
+                bilan_m = audit_operations_autorise()
+            except (PermissionError, ValueError, RuntimeError, OSError):
+                st.error("Contrôle métier indisponible : accès interdit ou lecture incomplète.")
+            else:
+                st.table(bilan_m)
+                total_links = sum(
+                    item["Liens manquants"] + item["Liens introuvables"]
+                    for item in bilan_m
+                )
+                if total_links:
+                    st.warning(f"{total_links} liens métier à vérifier dans les modules concernés.")
+                else:
+                    st.success("Aucun lien métier absent dans les périmètres contrôlés.")
 
     # --- CLIENTS ---
     with tab1:
