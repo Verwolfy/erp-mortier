@@ -34,3 +34,15 @@ Les historiques ne sont plus visibles spontanément ; clic nécessaire. Les num�
 - Commits correctifs : `ca3a1f7` et `811a804`.
 - CI de validation des correctifs : tests `41916595600`, audit `41916595967` (verdict à confirmer).
 - Cette modification concerne les écrans de consultation uniquement. Aucun taux fiscal, droit SQL, solde, commande, facture ou stock modifié.
+
+
+## Extension — tri chronologique contrôlé (04/11/2026)
+- `core/strict_reads.fetch_history_page_strict` accepte désormais un `date_column` **facultatif** et autorisé par la projection de lecture. Ordre SQL : date métier décroissante (`nullsfirst=False`), puis clé technique décroissante pour départager les mêmes dates. Sans date, conserve l'ordre par identifiant technique. Aucun tri client après récupération ne sert à reconstituer des pages.
+- Historique Stocks : `mouvements.date`, `mouvements_pf.date`.
+- Achats : `commandes_achats.date_commande`, `bons_reception.date_reception`.
+- Ventes (consultation lecture seule) : `factures.date`.
+- CRM : `interactions.date_creation`.
+- Production : `controle_qualite.date`. `consommations_of` n'a **pas de date métier** dans le schéma exploité ; conserve le tri technique et n'invente aucune date.
+- `tests/test_history_page_strict.py` : test double ordre SQL, dates nulles en dernier, rejet des colonnes non accessibles, rétrocompatibilité des historiques sans date, présence des paramètres par module.
+- Commits : `5b4d31e`, `87d4989`, `9a1d89f`, `93fe951`, `7f06f7f`, `500d168`, `3e3aaf8`.
+- Attention : pagination par **offset** sans snapshot transactionnel, une insertion concurrente peut toujours décaler les pages. Un curseur `(date,id)` devra être évalué distinctement. Aucun changement Supabase ni fiscal.
