@@ -57,7 +57,10 @@ def calculate_financial_draft(items: list[dict], taxes: str = "") -> dict:
             try:
                 quantity = decimal_value(item.get("quantite"), f"Ligne {number} : quantité")
                 price = decimal_value(item.get("prix_unitaire"), f"Ligne {number} : prix unitaire")
-                line_amount = (quantity * price).quantize(MONEY, rounding=ROUND_HALF_UP)
+                raw_amount = quantity * price
+                if raw_amount > MAX_AMOUNT:
+                    raise ValueError(f"Ligne {number} : montant excessif")
+                line_amount = raw_amount.quantize(MONEY, rounding=ROUND_HALF_UP)
                 if line_amount > MAX_AMOUNT:
                     raise ValueError(f"Ligne {number} : montant excessif")
                 line["total_ht"] = amount_string(line_amount)
@@ -84,3 +87,57 @@ def calculate_financial_draft(items: list[dict], taxes: str = "") -> dict:
             ttc = amount_string(total + tax_amount)
     return {"items": updated, "total_ht": ht, "total_ttc": ttc,
             "errors": errors, "priced_rows": priced_rows}
+
+
+def normalize_financial_export(doc: dict) -> dict:
+    """Copie défensive : tous les montants imprimés doivent être cohérents.
+
+    Un modèle vide/non chiffré reste exportable en BROUILLON. À la première
+    quantité/prix/taxe saisie, les valeurs monétaires doivent être complètes,
+    et aucun total fourni ne peut contredire les calculs.
+    """
+    from modules.documents.layout_nextgen import FINANCIAL_KINDS
+
+    if doc.get("type") not in FINANCIAL_KINDS:
+        return dict(doc)
+
+    clean = dict(doc)
+    original_items = doc.get("items", [])
+    if not isinstance(original_items, list):
+        raise ValueError("Lignes invalides")
+    # Des descriptions seules peuvent être exportées comme maquette.
+    # En revanche une quantité ou un prix engage un contrôle chiffré.
+    has_pricing = any(
+        isinstance(line, dict) and any(
+            str(line.get(key) or "").strip()
+            for key in ("quantite", "prix_unitaire", "total_ht")
+        )
+        for line in original_items
+    )
+    declared = any(str(doc.get(key) or "").strip() for key in (
+        "total_ht", "total_taxes", "total_ttc"
+    ))
+    if not has_pricing and not declared:
+        return clean
+
+    computed = calculate_financial_draft(original_items, str(doc.get("total_taxes") or ""))
+    if computed["errors"]:
+        raise ValueError("Montants incomplets ou invalides : " + "; ".join(computed["errors"]))
+    if not computed["total_ht"]:
+        raise ValueError("Aucune ligne chiffrée valide")
+
+    # Ne pas faire confiance aux montants d'une ancienne session ou d'un JSON.
+    from decimal import Decimal
+    for field in ("total_ht", "total_ttc"):
+        supplied = str(doc.get(field) or "").strip()
+        actual = computed[field]
+        if supplied and (not actual or decimal_value(supplied, field).quantize(MONEY) != Decimal(actual)):
+            raise ValueError(f"{field} incohérent avec les lignes et taxes")
+    for index, (given, calculated) in enumerate(zip(original_items, computed["items"]), 1):
+        old = str(given.get("total_ht") or "").strip()
+        if old and decimal_value(old, f"Ligne {index} : HT").quantize(MONEY) != Decimal(calculated["total_ht"]):
+            raise ValueError(f"Ligne {index} : montant HT incohérent")
+    clean["items"] = computed["items"]
+    clean["total_ht"] = computed["total_ht"]
+    clean["total_ttc"] = computed["total_ttc"]
+    return clean
