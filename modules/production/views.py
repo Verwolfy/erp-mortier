@@ -620,17 +620,25 @@ def show_production_page() -> None:
     with tab_history:
         st.subheader("Historique des consommations et contrôles qualité")
         st.caption("Chargement manuel pour éviter les requêtes historiques inutiles.")
+        page_production = st.number_input(
+            "Page des historiques Production", min_value=1, max_value=1000,
+            value=1, step=1, key="ng_production_history_page")
         if st.button("Afficher l'historique Production", key="ng_production_load_history",
                      on_click=_mark_production_activity):
-            consumed = get_consommations_of()
-            controls = get_controles_qualite()
+            from modules.production.service import (
+                get_consommations_of_page, get_controles_qualite_page,
+            )
+            consumed, total_consumed = get_consommations_of_page(page=int(page_production))
+            controls, total_controls = get_controles_qualite_page(page=int(page_production))
+            st.caption(
+                f"Page {int(page_production)} — consommations : {len(consumed)}/{total_consumed}, "
+                f"contrôles qualité : {len(controls)}/{total_controls} (50 maximum par registre)."
+            )
             if not consumed.empty:
-                st.dataframe(consumed.sort_values(by="consommation_id", ascending=False),
-                             use_container_width=True, hide_index=True)
+                st.dataframe(consumed, use_container_width=True, hide_index=True)
             else:
-                st.info("Aucune consommation")
+                st.info("Aucune consommation sur cette page")
             if not controls.empty:
-                st.dataframe(controls.sort_values(by="date", ascending=False),
-                             use_container_width=True, hide_index=True)
+                st.dataframe(controls, use_container_width=True, hide_index=True)
             else:
-                st.info("Aucun contrôle qualité")
+                st.info("Aucun contrôle qualité sur cette page")
