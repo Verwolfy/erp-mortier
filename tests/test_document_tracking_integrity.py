@@ -59,3 +59,10 @@ def test_canonical_ne_contient_pas_de_champs_non_contractuels():
     payload = canonical_draft(doc)
     assert b"token_secret" not in payload
     assert b"ne-doit-pas-apparaitre" not in payload
+
+
+def test_ui_annonce_empreinte_locale_non_certifiee():
+    from pathlib import Path
+    source = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    assert "draft_sha256(doc)" in source
+    assert "sans preuve d'émission ou de certification" in source
