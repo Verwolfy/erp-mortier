@@ -628,6 +628,27 @@ def show_admin_page():
                     st.warning(f"{total_links} liens métier à vérifier dans les modules concernés.")
                 else:
                     st.success("Aucun lien métier absent dans les périmètres contrôlés.")
+        st.divider()
+        st.caption("Stocks MP/PF et lots : anomalies de quantités et de références.")
+        if st.button("Analyser les stocks autorisés", key="ng_admin_audit_stocks"):
+            from modules.admin.stock_quality import audit_stocks_autorise
+            try:
+                bilan_s = audit_stocks_autorise()
+            except (PermissionError, ValueError, RuntimeError, OSError):
+                st.error("Contrôle des stocks indisponible : lecture ou permission insuffisante.")
+            else:
+                st.table(bilan_s)
+                anomalies_stock = sum(
+                    item["ID manquants"] + item["ID en doublon"] +
+                    item["Références introuvables"] + item["Quantités invalides"] +
+                    item["Quantités négatives"] + item["Lots au-delà de l'initial"]
+                    for item in bilan_s
+                )
+                if anomalies_stock:
+                    st.warning(f"{anomalies_stock} anomalies potentielles à examiner dans Stocks.")
+                else:
+                    st.success("Aucune anomalie de structure Stocks détectée.")
+                st.caption("Audit indicatif : aucun rapprochement automatique des soldes avec les lots historiques.")
 
     # --- CLIENTS ---
     with tab1:
