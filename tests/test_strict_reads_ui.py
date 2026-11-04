@@ -58,7 +58,9 @@ with patch('modules.crm.views.has_permission', return_value=False), \\
     show_crm_page()
 """).run(timeout=20)
 assert not app.exception, app.exception
-assert len(app.error) == 3
+# Sans droit d'écriture CRM, pas de lecture Clients ; l'historique se lit
+# uniquement sur clic. Seule la lecture Pipeline échoue au rendu initial.
+assert len(app.error) == 1
 assert not app.success
 assert all('private-data-sentinel' not in e.value for e in app.error)
 assert not any('Aucune opportunité' in e.value or 'Aucun historique' in e.value for e in app.info)
