@@ -91,3 +91,58 @@ def test_service_wrappers_keep_total(monkeypatch):
     assert total == 37 and len(frame) == 1
     frame, total = prod.get_consommations_of_page(page=3)
     assert total == 37 and len(frame) == 1
+
+
+def test_chronological_order_uses_date_then_primary_key(monkeypatch):
+    queries, guards = [], []
+    class HistoryQuery(FakeQuery):
+        def __init__(self):
+            super().__init__(SimpleNamespace(
+                data=[{"mouvement_id": "M2", "date": "2026-11-04"}], count=1), queries)
+            self.orders = []
+        def order(self, key, *, desc=False, nullsfirst=None):
+            self.orders.append((key, desc, nullsfirst))
+            return self
+        def execute(self):
+            queries.append((tuple(self.orders), self.bounds))
+            return self.response
+    monkeypatch.setattr(reads.db, "_require_read_permission", lambda table: guards.append(table))
+    monkeypatch.setattr(reads.db, "get_supabase_client",
+                        lambda: SimpleNamespace(table=lambda _: HistoryQuery()))
+    rows, total = reads.fetch_history_page_strict(
+        "mouvements", date_column="date")
+    assert total == 1 and rows[0]["mouvement_id"] == "M2"
+    assert queries == [((("date", True, False),
+                         ("mouvement_id", True, None)), (0, 49))]
+    assert guards == ["mouvements"]
+
+
+@pytest.mark.parametrize("date_column", ["hash_mdp", "not_a_column", "", 42])
+def test_invalid_chronological_column_rejected_without_network(monkeypatch, date_column):
+    monkeypatch.setattr(
+        reads.db, "get_supabase_client",
+        lambda: (_ for _ in ()).throw(AssertionError("Ne doit pas contacter la DB")))
+    with pytest.raises(ValueError):
+        reads.fetch_history_page_strict("mouvements", date_column=date_column)
+
+
+def test_technical_order_remains_available_for_undated_history():
+    from pathlib import Path
+    production = Path("modules/production/service.py").read_text(encoding="utf-8")
+    assert '"consommations_of", page=page, page_size=page_size)' in production
+
+
+def test_business_date_sort_is_explicit_in_historical_views():
+    from pathlib import Path
+    cases = {
+        "modules/stocks/views.py": ['date_column="date"'],
+        "modules/achats/views.py": [
+            'date_column="date_commande"', 'date_column="date_reception"'],
+        "modules/ventes/views.py": ['date_column="date"'],
+        "modules/crm/service.py": ['date_column="date_creation"'],
+        "modules/production/service.py": ['date_column="date"'],
+    }
+    for path, examples in cases.items():
+        text = Path(path).read_text(encoding="utf-8")
+        for expected in examples:
+            assert expected in text, f"{path} sans {expected}"
