@@ -253,3 +253,53 @@ def test_symbole_hd_et_typographie_decomposee():
         symbol = pixel_array[23:163, 135:450]
         assert int(((word[:,:,0] < 120) & (word[:,:,2] < 160)).sum()) > 700
         assert int(((symbol[:,:,0] < 120) & (symbol[:,:,1] < 185)).sum()) > 400
+
+
+def test_exports_financiers_recalculent_ht_et_refusent_incoherence():
+    from copy import deepcopy
+    doc = new_draft("Facture")
+    doc["items"] = [{
+        "reference": "P1", "designation": "Produit démo", "unite": "SAC",
+        "quantite": "10", "prix_unitaire": "300",
+    }]
+    original = deepcopy(doc)
+    # Totaux manquants : le moteur les déduit sur la copie d'impression.
+    pdf = export_pdf(doc)
+    word = export_docx(doc)
+    assert pdf.startswith(b"%PDF")
+    assert word.startswith(b"PK")
+    assert doc == original
+    from zipfile import ZipFile
+    with ZipFile(BytesIO(word)) as zf:
+        xml = zf.read("word/document.xml").decode("utf-8")
+        assert "3000.00" in xml
+
+    doc["items"][0]["total_ht"] = "2999"
+    with pytest.raises(ValueError, match="incohérent"):
+        export_pdf(doc)
+    with pytest.raises(ValueError, match="incohérent"):
+        export_docx(doc)
+
+
+def test_exports_refusent_ttc_incoherent_et_taxes_sans_ligne():
+    doc = new_draft("Devis")
+    doc["items"] = [{"designation": "Produit", "quantite": "2",
+                     "prix_unitaire": "100"}]
+    doc["total_taxes"] = "10"
+    doc["total_ttc"] = "999"
+    with pytest.raises(ValueError, match="total_ttc incohérent"):
+        export_pdf(doc)
+    doc["total_ttc"] = "210.00"
+    assert export_pdf(doc).startswith(b"%PDF")
+    doc["items"] = [{"designation": "Maquette non chiffrée"}]
+    with pytest.raises(ValueError):
+        export_docx(doc)
+
+
+def test_montants_excessifs_refuses_avec_erreur_metier():
+    from modules.documents.calculations import calculate_financial_draft
+    result = calculate_financial_draft([{
+        "designation": "Excès", "quantite": "999999999999",
+        "prix_unitaire": "999999999999",
+    }])
+    assert result["errors"] and "excessif" in result["errors"][0]
