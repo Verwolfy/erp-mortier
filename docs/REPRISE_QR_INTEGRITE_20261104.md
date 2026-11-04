@@ -22,3 +22,14 @@
 - Sur Streamlit, vérifier empreinte et exports (Devis, Facture brouillon, BL, Bon de consommation) avec données de test fictives.
 - Ne pas présenter un QR local non enregistré comme preuve d'authenticité.
 - Aucun taux fiscal inventé, aucune émission officielle, aucune écriture de production effectuée dans cette intervention.
+
+## Mise à jour — 4 novembre 2026, révision sécurité et versions
+
+- Vérification SQL production **en lecture seule** : `public.users.user_id` est de type TEXT et porte une clé primaire ; le projet peut référencer les acteurs ERP sans déduire leur identité de `auth.users`.
+- `sql/033_document_trace_registry_PREPARATION.sql` corrigé : séparation `erp_document_trace` (état courant), `erp_document_trace_version` (empreintes par version avec clé composite), `erp_document_trace_event` (événements liés à une version réelle). L'ancienne contrainte UNIQUE(trace_id, version_no) adossée à trace_id PRIMARY KEY n'historisait aucune version.
+- Déclencheurs `BEFORE UPDATE OR DELETE` sur les tables de versions et événements ; fonction privée `SECURITY INVOKER`. RLS/FORCE RLS sur les trois tables, aucun GRANT API ni politique permissive, révocations explicites.
+- Tests statiques adaptés dans `tests/test_document_tracking_sql.py` pour vérifier les trois tables, liens de versions, immutabilité et restrictions.
+- Commits `e69baaa`, `5940cd6`. GitHub Actions en cours au moment de cette note.
+- **Pas de migration exécutée** sur Supabase PRODUCTION. Un registre SQL fermé n'est pas encore exploitable par l'ERP ; RPC transactionnel, contrôles d'état, droits de l'acteur et audit de concurrence sont toujours obligatoires avant activation.
+- Aucune écriture métier ni changement d'authentification. Base TEST reste en pause.
+
