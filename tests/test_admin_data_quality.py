@@ -56,3 +56,35 @@ def test_interface_qualite_ne_fait_pas_decriture():
     assert "audit_autorise()" in view
     assert "fetch_data_paginated" in code
     assert "insert_hybrid" not in code and "update_hybrid" not in code
+
+
+def test_liens_ventes_achats_production_sans_donnees_personnelles():
+    from modules.admin.data_quality import audit_operations, audit_operations_autorise
+    data = {
+        "clients": [{"client_id": "C1"}],
+        "fournisseurs": [{"fournisseur_id": "F1"}],
+        "produits": [{"pf_id": "P1"}],
+        "commandes_ventes": [
+            {"commande_vente_id": "V1", "client_id": "C1"},
+            {"commande_vente_id": "V2", "client_id": "CX"},
+        ],
+        "commandes_achats": [{"commande_achat_id": "A1", "fournisseur_id": ""}],
+        "ordres_fabrication": [{"of_id": "OF1", "pf_id": "P1"}],
+    }
+    rows = audit_operations(data)
+    assert rows[0]["Liens introuvables"] == 1
+    assert rows[1]["Liens manquants"] == 1
+    assert rows[2]["Liens introuvables"] == 0
+    assert all("client_id" not in row and "fournisseur_id" not in row
+               for row in rows)
+    assert audit_operations_autorise(reader=lambda table: data[table]) == rows
+
+
+def test_liens_metier_refusent_une_lecture_partielle():
+    from modules.admin.data_quality import audit_operations_autorise
+    def denied(table):
+        if table == "ordres_fabrication":
+            raise PermissionError("Accès interdit")
+        return []
+    with pytest.raises(PermissionError):
+        audit_operations_autorise(reader=denied)
