@@ -188,3 +188,31 @@ def test_ui_montants_non_editables_et_calcules():
     assert 'field == "total_ht"' in section
     assert "calculate_financial_draft(" in section
     assert "Montant des taxes validé" in section
+
+
+def test_logo_hd_bytes_compatible_pdf_docx():
+    """Image HD importée dans Streamlit sans écriture Supabase."""
+    from PIL import Image
+    from modules.documents.views import _verified_logo
+    from modules.documents.branding_images import branded_images
+    image = Image.new("RGB", (2048, 868), "white")
+    output = BytesIO()
+    image.save(output, format="JPEG", quality=90)
+    logo_bytes = output.getvalue()
+    assert _verified_logo(logo_bytes) == logo_bytes
+    header, footer = branded_images(logo_bytes)
+    with Image.open(BytesIO(header)) as picture:
+        assert picture.size == (1500, 330)
+    assert footer.startswith(b"\\x89PNG")
+    draft = new_draft("Devis")
+    assert export_pdf(draft, logo_bytes).startswith(b"%PDF")
+    assert export_docx(draft, logo_bytes).startswith(b"PK")
+    assert _verified_logo(b"invalid-picture") is None
+    assert _verified_logo(b"x" * (4 * 1024 * 1024 + 1)) is None
+
+
+def test_interface_logo_hd_disponible():
+    from pathlib import Path
+    source = Path("modules/documents/views.py").read_text(encoding="utf-8")
+    assert "ng_brand_logo_upload" in source
+    assert "logo_override or" in source
