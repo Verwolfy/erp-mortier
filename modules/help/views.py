@@ -26,9 +26,19 @@ Production, Finance et RH). Saisir les données dans le formulaire, corriger les
 lignes puis télécharger PDF, Word modifiable ou JSON.
 
 Les exports sont des **BROUILLONS NON VALABLES** et ne créent aucune pièce dans
-Supabase. Ils n'utilisent pas de données métier automatiquement : le contenu
-reste à vérifier manuellement. Les totaux sont saisis, jamais calculés par un
-taux fiscal supposé. Aucune facture ou aucun avoir officiels ne sont émis.
+Supabase. La saisie reste libre ; le bouton « Charger les référentiels autorisés »
+permet désormais de reprendre un client/fournisseur actif ou un SKU actif sous
+réserve des droits de lecture ERP. Aucune opération métier n'est créée.
+Le prix catalogue est uniquement indicatif et ne renseigne pas le devis
+automatiquement. La quantité et le prix sont confirmés manuellement.
+Les montants de lignes et le total HT sont calculés en Decimal ; le TTC
+nécessite un montant de taxes saisi explicitement. Aucun taux de TVA n'est
+déduit automatiquement. Les exports refusent des montants incohérents.
+Aucune facture ou aucun avoir officiels ne sont émis.
+
+Les brouillons peuvent être exportés en JSON puis réimportés depuis
+« Reprendre un brouillon ». Seuls les JSON BROUILLON du même type sont
+acceptés ; l'identifiant QR est conservé. Aucun historique serveur n'est créé.
 
 Chaque création reçoit un identifiant QR aléatoire. Le QR encode cet identifiant,
 le type, la date et le NIF de l'émetteur, sans données confidentielles.
