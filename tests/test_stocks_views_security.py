@@ -242,7 +242,12 @@ def test_denied_write_cannot_retry_old_pending_operation(ui):
     ui.st.button.return_value = True
     ui.mod.show_stocks_page()
     ui.stocks.enregistrer_entree_mp.assert_not_called()
-    ui.st.button.assert_not_called()
+    # La consultation des historiques reste possible sans droit d'écriture.
+    # Le bouton lecture seule ne doit jamais relancer l'entrée en stock.
+    ui.st.button.assert_called_once_with(
+        "Afficher les mouvements de stock",
+        key="ng_stocks_history_load", on_click=ui.mod._mark_stocks_activity
+    )
 
 
 def test_malformed_state_stays_locked(ui):
