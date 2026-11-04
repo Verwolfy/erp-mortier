@@ -88,11 +88,14 @@ def show_crm_page():
 
     with tab3, read_section("Historique CRM"):
         st.subheader("Historique des Interactions")
-        df_int = get_interactions()
-        if not df_int.empty:
-            st.dataframe(df_int.sort_values(by="date_creation", ascending=False), use_container_width=True)
-        else:
-            st.info("Aucun historique disponible.")
+        st.caption("Chargement à la demande pour éviter une lecture inutile à chaque navigation.")
+        if st.button("Afficher l'historique CRM", key="ng_crm_load_history"):
+            df_int = get_interactions()
+            if not df_int.empty:
+                st.dataframe(df_int.sort_values(by="date_creation", ascending=False),
+                             use_container_width=True)
+            else:
+                st.info("Aucun historique disponible.")
 
     with tab4:
         st.subheader("Demandes reçues du site NextGen")
