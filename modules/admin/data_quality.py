@@ -70,3 +70,48 @@ def audit_autorise(*, reader=None) -> list[dict]:
     for table, _ in TABLES.values():
         readings[table] = reader(table)
     return audit_referentiels(readings)
+
+
+def audit_operations(rows_by_table: dict) -> list[dict]:
+    """Liens métier essentiels, signalés pour revue (pas de correction)."""
+    joins = (
+        ("Commandes Ventes", "commandes_ventes", "client_id", "clients", "client_id"),
+        ("Commandes Achats", "commandes_achats", "fournisseur_id",
+         "fournisseurs", "fournisseur_id"),
+        ("Ordres de fabrication", "ordres_fabrication", "pf_id", "produits", "pf_id"),
+    )
+    results = []
+    for label, table, foreign_key, source, source_id in joins:
+        records = rows_by_table[table]
+        references = rows_by_table[source]
+        if not isinstance(records, list) or not isinstance(references, list):
+            raise ValueError("Lecture métier incomplète")
+        if any(not isinstance(row, dict) for row in records + references):
+            raise ValueError("Lecture métier invalide")
+        reference_ids = {
+            str(row.get(source_id)).strip()
+            for row in references if not _blank(row.get(source_id))
+        }
+        empty_keys = sum(_blank(row.get(foreign_key)) for row in records)
+        orphan_keys = sum(
+            str(row.get(foreign_key)).strip() not in reference_ids
+            for row in records if not _blank(row.get(foreign_key))
+        )
+        results.append({
+            "Section": label, "Enregistrements": len(records),
+            "Liens manquants": empty_keys,
+            "Liens introuvables": orphan_keys,
+        })
+    return results
+
+
+def audit_operations_autorise(*, reader=None) -> list[dict]:
+    """Contrôle Ventes/Achats/Production, fail-closed sur chaque dépendance."""
+    if reader is None:
+        from core.db_service import fetch_data_paginated
+        reader = lambda table: fetch_data_paginated(
+            table, page_size=200, max_rows=5000)
+    selected = ("clients", "fournisseurs", "produits",
+                "commandes_ventes", "commandes_achats", "ordres_fabrication")
+    readings = {table: reader(table) for table in selected}
+    return audit_operations(readings)
