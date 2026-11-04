@@ -54,7 +54,7 @@ def branded_images(logo_path: str | None = None) -> tuple[bytes, bytes]:
         try:
             with Image.open(logo_path) as logo:
                 logo = logo.convert("RGB")
-                mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))\n                mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)\n                bounds = mask.getbbox()\n                if bounds:\n                    logo = logo.crop(bounds)\n                logo.thumbnail((360, 256), Image.Resampling.LANCZOS)
+                mask = ImageChops.difference(logo, Image.new("RGB", logo.size, WHITE))\n                mask = mask.convert("L").point(lambda pixel: 255 if pixel > 42 else 0)\n                bounds = mask.getbbox()\n                if bounds:\n                    logo = logo.crop(bounds)\n                # thumbnail() n’agrandit jamais : notre JPEG de marque est petit.\n                # Utiliser aussi un agrandissement proportionnel pour conserver\n                # la taille visuelle approuvée dans le bandeau A4.\n                factor = min(360 / logo.width, 256 / logo.height)\n                logo = logo.resize((max(1, round(logo.width * factor)),\n                                    max(1, round(logo.height * factor))),\n                                   Image.Resampling.LANCZOS)
                 header.paste(logo, (105 + (360 - logo.width)//2, 20 + (264 - logo.height)//2))
         except (OSError, ValueError, UnidentifiedImageError):
             pass
