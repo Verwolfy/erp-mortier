@@ -75,17 +75,18 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     df_fac_periode = pd.DataFrame(fetch_data_by_date_range("factures", "date", start_str, end_str))
     df_reg_periode = pd.DataFrame(fetch_data_by_date_range("reglements", "date_reglement", start_str, end_str))
 
-    df_lignes_fac = charger_donnees("lignes_facture")
-    df_pf = charger_donnees("stock_actuel_pf")
     df_frn = charger_donnees("fournisseurs")
     df_paie = charger_donnees("fiches_de_paie") # Filtrage mensuel contrôlé ci-dessous
 
-    # Même périmètre de factures validées pour le CA et les lignes de coût.
+    # Ne pas charger les lignes/coûts si aucune facture client validée
+    # n'entre dans la période. Les charges restent prises en compte.
     documents = validated_documents(df_fac_periode)
     invoices = client_invoices(documents)
     ca_ht = invoices["montant_ht"].sum()
     cogs = 0.0
     if not invoices.empty:
+        df_lignes_fac = charger_donnees("lignes_facture")
+        df_pf = charger_donnees("stock_actuel_pf")
         if df_lignes_fac.empty or not {"facture_id", "sku_id", "quantite"}.issubset(df_lignes_fac):
             raise DataReadError("Lignes de facture indisponibles pour le coût")
         lignes_periode = df_lignes_fac[df_lignes_fac["facture_id"].isin(invoices["facture_id"])].copy()
@@ -148,7 +149,8 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
 
     df_cmd = charger_donnees("commandes_achats") # Besoin global pour commandes en retard
     df_periode = pd.DataFrame(fetch_data_by_date_range("commandes_achats", "date_commande", start_str, end_str))
-    df_lignes = charger_donnees("lignes_achats")
+    # Les lignes ne servent qu'à l'évolution des prix sur une période non vide.
+    df_lignes = charger_donnees("lignes_achats") if not df_periode.empty else pd.DataFrame()
 
     montant_total = 0.0
     col_montant = "montant_total_local" if "montant_total_local" in df_periode.columns else "montant_total"
