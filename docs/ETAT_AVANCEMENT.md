@@ -1,3 +1,13 @@
+## 4 novembre 2026 — refonte graphique documentaire selon le modèle approuvé
+
+- **Implémentation sur `main`** : `modules/documents/layout_nextgen.py` (gabarit PDF A4 aux couleurs bleu marine/vert, bloc tiers, signatures par métier, QR vectoriel et tableaux à colonnes adaptées) et `modules/documents/views.py` (édition/Word adaptés aux familles documentaires).
+- **20 modèles** couverts : tableaux financiers uniquement pour les types financiers ; BL/BR avec quantité livrée et réserves ; stock avec quantité sortie, observations et visa ; production avec lot/OF ; RH avec période/activité.
+- **CI** : workflow « ERP - tests lot C facturation » du commit `54c92ea312999d0cb8a911f83a3092f69558179a` **success** (run `41808587362`). Audit de réconciliation distinct encore en cours lors du contrôle.
+- **Limites** : brouillons non émis uniquement ; pas de calcul fiscal automatique, pas de suivi QR public ou registre Supabase, pas de confirmation visuelle du redéploiement Streamlit. Aucune modification de données métier ni de permissions Supabase.
+- **À vérifier** : nouveaux PDF/Word réels pour devis, facture, BL, bon de consommation, cas multipage ; les libellés et champs doivent être affinés avant émission officielle.
+
+---
+
 ## 3 novembre 2026 — Modèles de fiches techniques et FDS NEXTGEN (référence facture)
 
 - Demande : reprendre la charte graphique de la facture fournie (logo, bleu marine, vert, encarts gris, identité société, QR) pour les fiches techniques (FT) et les fiches de données de sécurité (FDS).
