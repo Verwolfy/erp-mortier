@@ -635,7 +635,7 @@ def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None
         if st.button("Afficher les factures", key="ng_ventes_invoice_history_load",
                      on_click=_mark_ventes_activity):
             from core.strict_reads import fetch_history_page_strict
-            rows, total = fetch_history_page_strict("factures", page=int(page))
+            rows, total = fetch_history_page_strict("factures", page=int(page), date_column="date")
             st.caption(f"Page {int(page)} : {len(rows)} factures sur {total}.")
             if rows:
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
