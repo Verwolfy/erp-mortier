@@ -40,6 +40,12 @@ BEGIN
  IF a->>'audit_ok'<>'true' OR (a->>'total_pools_dzd')::numeric<>210
  OR (a->>'total_impute_dzd')::numeric<>210 THEN
  RAISE EXCEPTION 'Audit non conforme %',a; END IF;
+ -- Même avec les assiettes complètes, des pools marqués SIMULATION ne doivent pas être validables.
+ v_rejected:=false;
+ BEGIN PERFORM public.erp_cost_validate_period('IT26_IND_PERIOD');
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Simulation validee a tort'; END IF;
+ UPDATE public.erp_cost_pools SET statut='DOCUMENTE' WHERE period_id='IT26_IND_PERIOD';
  a:=public.erp_cost_validate_period('IT26_IND_PERIOD');
  IF a->>'audit_ok'<>'true' OR
   (SELECT statut FROM public.erp_cost_periods WHERE period_id='IT26_IND_PERIOD')<>'VALIDE'
