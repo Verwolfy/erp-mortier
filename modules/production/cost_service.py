@@ -67,8 +67,10 @@ def get_period_report(period_id: str) -> dict:
     pools = client.table("erp_cost_pools").select("pool_id,nature_code,base_imputation,montant_dzd,justificatif,statut").eq("period_id", key).limit(500).execute().data or []
     drivers = client.table("erp_cost_drivers").select("of_id,base_imputation,valeur,justificatif").eq("period_id", key).limit(2000).execute().data or []
     allocations = client.table("erp_cost_allocations").select("of_id,nature_code,base_imputation,montant_impute_dzd,cout_direct_of_dzd,quantite_produite").eq("period_id", key).limit(2000).execute().data or []
+    summaries = client.table("erp_cost_of_summary").select("of_id,quantite_produite,cout_direct_of_dzd,charges_imputees_dzd,cout_analytique_total_dzd,cout_analytique_par_unite_dzd").eq("period_id", key).limit(1000).execute().data or []
     audit = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
-    return {"pools": pools, "drivers": drivers, "allocations": allocations, "audit": audit}
+    return {"pools": pools, "drivers": drivers, "allocations": allocations,
+            "summaries": summaries, "audit": audit}
 
 
 def create_period(label: str, start: str, end: str) -> str:
@@ -139,3 +141,34 @@ def validate_period(period_id: str) -> dict:
     if not isinstance(result, dict) or result.get("audit_ok") is not True:
         raise RuntimeError("Validation analytique non confirmée")
     return result
+
+def create_nature(code: str, label: str, description: str = "") -> None:
+    """Ajoute une catégorie analytique, sans montant implicite."""
+    _allowed()
+    import re
+    if not isinstance(code, str) or re.fullmatch(r"[A-Z][A-Z0-9_]{1,39}", code) is None:
+        raise ValueError("Code nature attendu en majuscules et chiffres")
+    if not isinstance(label, str) or not 1 <= len(label.strip()) <= 150:
+        raise ValueError("Libellé invalide")
+    if not isinstance(description, str) or len(description) > 1000:
+        raise ValueError("Description trop longue")
+    _client().table("erp_cost_natures").insert({
+        "nature_code": code, "libelle": label.strip(), "description": description,
+        "actif": True,
+    }).execute()
+
+
+def document_pool(period_id: str, pool_id: str, document_reference: str) -> None:
+    """Marque une charge justifiée; exige une référence documentaire explicite."""
+    _editable(period_id)
+    if not isinstance(document_reference, str) or not 3 <= len(document_reference.strip()) <= 500:
+        raise ValueError("Référence de pièce justificative obligatoire")
+    pool_id = _ident(pool_id)
+    client = _client()
+    rows = client.table("erp_cost_pools").select("pool_id,justificatif").eq(
+        "period_id", period_id).eq("pool_id", pool_id).limit(2).execute().data or []
+    if len(rows) != 1:
+        raise ValueError("Charge inconnue")
+    client.table("erp_cost_pools").update({
+        "statut": "DOCUMENTE", "justificatif": document_reference.strip()
+    }).eq("pool_id", pool_id).eq("period_id", period_id).execute()
