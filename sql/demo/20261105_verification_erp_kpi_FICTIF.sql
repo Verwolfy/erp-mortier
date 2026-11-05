@@ -6,6 +6,10 @@ BEGIN
   SELECT count(*) INTO v_bad FROM (
     SELECT 1 WHERE (SELECT count(*) FROM public.clients WHERE client_id LIKE 'DEMO26_%')<>2
     UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.factures WHERE facture_id LIKE 'DEMO26_%')<>2
+    UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.mouvements WHERE mouvement_id='DEMO26_MV2' AND mp_id='DEMO26_MP2' AND type_mouvement='ENTREE' AND quantite=220)<>1
+    UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.mouvements_pf WHERE mouvement_pf_id='DEMO26_MVP2' AND sku_id='DEMO26_SKU2' AND type_mouvement='ENTREE' AND quantite=60)<>1
+    UNION ALL SELECT 1 WHERE (SELECT coalesce(sum(case when type_mouvement='ENTREE' then quantite when type_mouvement='SORTIE' then -quantite else 0 end),0) FROM public.mouvements WHERE mp_id='DEMO26_MP2')<>(SELECT quantite_disponible FROM public.stock_actuel WHERE mp_id='DEMO26_MP2')
+    UNION ALL SELECT 1 WHERE (SELECT coalesce(sum(case when type_mouvement='ENTREE' then quantite when type_mouvement='SORTIE' then -quantite else 0 end),0) FROM public.mouvements_pf WHERE sku_id='DEMO26_SKU2')<>(SELECT quantite_disponible FROM public.stock_actuel_pf WHERE sku_id='DEMO26_SKU2')
     UNION ALL SELECT 1 WHERE (SELECT montant_paye FROM public.factures WHERE facture_id='DEMO26_FAC1')<>3000
     UNION ALL SELECT 1 WHERE (SELECT montant_paye FROM public.factures WHERE facture_id='DEMO26_FAC2')<>0
     UNION ALL SELECT 1 WHERE (SELECT coalesce(sum(montant_applique),0) FROM public.lettrage WHERE document_id='DEMO26_FAC1')<>3000
