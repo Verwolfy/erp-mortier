@@ -46,3 +46,17 @@ Les historiques ne sont plus visibles spontanément ; clic nécessaire. Les num�
 - `tests/test_history_page_strict.py` : test double ordre SQL, dates nulles en dernier, rejet des colonnes non accessibles, rétrocompatibilité des historiques sans date, présence des paramètres par module.
 - Commits : `5b4d31e`, `87d4989`, `9a1d89f`, `93fe951`, `7f06f7f`, `500d168`, `3e3aaf8`.
 - Attention : pagination par **offset** sans snapshot transactionnel, une insertion concurrente peut toujours décaler les pages. Un curseur `(date,id)` devra être évalué distinctement. Aucun changement Supabase ni fiscal.
+
+
+## Extension du 05/11/2026 — filtre temporel côté serveur
+- Le tri chronologique était déjà réalisé et vérifié sur `main` (commit de départ `3162ad70`, CI tests + audit réussis). Ne pas le réimplémenter.
+- `core/strict_reads.py` : `fetch_history_page_strict` accepte maintenant `start_date` + `end_date` facultatifs, **uniquement ensemble** et avec `date_column` préalablement autorisée. Validation ISO stricte et début <= fin, filtres `.gte/.lte` appliqués **avant** le tri et l'offset, donc le total `count=exact` correspond à la période filtrée.
+- `core/history_filters.py` : contrôle UI facultatif de plage, défaut **aucun filtre** ; dates proposées 30 derniers jours quand le filtre est coché ; plage inversée bloquée avant consultation.
+- `modules/stocks/views.py` : filtre sur la date des `mouvements` et `mouvements_pf`.
+- `modules/achats/views.py` : filtre sur `commandes_achats.date_commande` et `bons_reception.date_reception`.
+- `modules/ventes/views.py` : filtre sur `factures.date` **en consultation seule** ; validations et écritures conservées.
+- `tests/test_history_period_filter.py` : essais de dates invalides, requêtes strictes, RBAC et absence de requête avant validation ; `tests/test_perf_histories_stocks_sales_purchases.py` adapté ; tests d'interface isolés Stocks/Achats utilisent un faux `core.history_filters` pour ne contacter aucun service.
+- Commits : `8619bd2`, `46b4023`, `db0f0ec`, `fe40001`, `bc2b527`, `ce84668`, `80c1467`, `035de97`, `522be7a`.
+- CI du dernier commit de code `522be7a` : tests `42006716863`, audit `42006716882`; vérifier leur verdict et corriger toute régression.
+- Aucun changement Supabase ni création de facture, taxe, mouvement de stock, commande ; aucune migration QR ou permission SQL. La pagination reste par offset, sans snapshot transactionnel ; filtre de dates uniquement pour des colonnes de type date compatibles.
+- Suite : valider CI ; tester les nouveaux filtres dans Streamlit (Stocks, Achats, Ventes lecture seule), vérifier comportement des dates et droits RBAC, mesurer ensuite les temps de réponse, envisager curseur stable si nécessaire.
