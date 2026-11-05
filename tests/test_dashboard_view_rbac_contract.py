@@ -82,3 +82,28 @@ def test_read_scope_wraps_complete_page():
     assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                and n.func.id == "_show_dashboards_page_impl"
                for s in with_nodes[0].body for n in ast.walk(s))
+
+
+def test_categorical_dashboard_charts_keep_readable_horizontal_labels():
+    """Les libellés longs ne doivent plus être compressés sous les graphiques."""
+    tree = ast.parse(VIEW.read_text(encoding="utf-8"))
+    page = next(node for node in tree.body
+                if isinstance(node, ast.FunctionDef)
+                and node.name == "_show_dashboards_page_impl")
+    expected = {"df_balance", "df_rep", "kpis_r", "df_pie"}
+    present = set()
+    for node in ast.walk(page):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "bar_chart"):
+            continue
+        source = ast.unparse(node.args[0]) if node.args else ""
+        horizontal = any(keyword.arg == "horizontal"
+                         and isinstance(keyword.value, ast.Constant)
+                         and keyword.value.value is True
+                         for keyword in node.keywords)
+        for target in expected:
+            if target in source:
+                assert horizontal, f"Étiquettes verticales illisibles : {target}"
+                present.add(target)
+    assert present == expected
