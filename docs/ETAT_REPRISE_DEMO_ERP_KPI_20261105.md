@@ -130,3 +130,12 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - **Ne pas confondre cette preuve avec un retour arrière définitif :** les **78 lignes fictives** sont toujours présentes dans Supabase et le rollback versionné n'a pas été exécuté jusqu'au `COMMIT` en production.
 - Cette preuve concerne le retrait des identifiants présents au moment du test ; elle ne garantit pas le retrait si des utilisateurs créent ensuite de nouvelles dépendances externes, ni l'annulation de modifications extérieures au jeu fictif.
 - La validation **visuelle et interactive** des neuf onglets dans une session Streamlit habilitée reste non effectuée. Aucun compte réel n'a été créé ni droit modifié pour forcer cette étape.
+
+## Validation intégrale à blanc du jeu démo (2026-11-05)
+
+- GitHub Actions du commit `1b78e0c8` : [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42078313193) et [audit de réconciliation](https://github.com/Verwolfy/erp-mortier/actions/runs/42078313098), tous deux `success`.
+- Test supplémentaire en base Supabase principale effectué **dans une seule transaction** : (1) lecture de **53 prédicats exacts**, extraits du script `sql/demo/20261105_rollback_erp_kpi_FICTIF.sql`, confirmant **78 lignes** avant opération ; (2) exécution à blanc des **53 DELETE** sans erreur FK ; (3) relecture des mêmes 53 prédicats confirmant **0 ligne** après suppressions dans la transaction ; (4) exécution finale de **ROLLBACK** (et non COMMIT). Résultat `53 tables_controlees, 78 lignes_supprimees_dans_transaction, ROLLBACK_IMMEDIAT`.
+- Une lecture ultérieure, hors transaction d'essai, confirme la persistance de **2 clients, 2 factures, 3 opportunités CRM et 1 pièce SCF fictifs**. Aucune suppression définitive n'a eu lieu.
+- Le **script SQL de rollback versionné n'a pas été modifié**. Sa réversibilité est prouvée pour l'état présent des 53 tables, sous réserve d'absence de nouvelles dépendances utilisateurs après ce contrôle.
+- Limite persistante : pas de validation visuelle des neuf onglets en session Streamlit connectée ; les tests GitHub sont automatisés et reposent sur des données locales simulées, pas sur un navigateur ERP authentifié. Ne pas déclarer ce parcours réalisé.
+- Prochaine priorité : vérifier déploiement accessible et effectuer navigation autorisée sans fabriquer de session ni modifier les permissions ; conserver les données `DEMO26_*` exclues des déclarations et transactions réelles.
