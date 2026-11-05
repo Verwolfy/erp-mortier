@@ -74,3 +74,12 @@ def test_export_scf_normal_reste_possible():
         io.StringIO(exporter_journal_scf_csv([piece()], droit_export=True)),
         delimiter=";"
     ))) == 3
+
+
+@pytest.mark.parametrize("updates", [
+    {"reference": "SIM26_SCF_INTEGRATION"},
+    {"journal": " sim26_journal "},
+])
+def test_export_scf_refuse_scenario_sim26(updates):
+    with pytest.raises(ExportRefuse):
+        exporter_journal_scf_csv([piece(**updates)], droit_export=True)
