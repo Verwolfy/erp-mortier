@@ -608,9 +608,14 @@ def show_production_page() -> None:
     products = get_produits_actifs() if can_write else pd.DataFrame()
     materials = get_mp_actives() if can_write else pd.DataFrame()
     skus = get_skus_actifs() if can_write else pd.DataFrame()
-    tab_recipe, tab_of, tab_follow, tab_history = st.tabs([
+    tab_recipe, tab_of, tab_follow, tab_history, tab_costs = st.tabs([
         "📝 Recettes", "⚙️ OF", "📊 Production et CQ", "🔍 Consommations et contrôles",
+        "💰 Coûts industriels",
     ])
+    with tab_costs:
+        from modules.production.cost_views import show_cost_reference
+        # Le service revalide en plus les habilitations Production ET Finance.
+        show_cost_reference(can_write)
     with tab_recipe:
         _recipe_tab(user_id, can_write, products, materials)
     with tab_of:
