@@ -121,3 +121,12 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - Nouveau contrat statique `tests/test_demo_rollback_contract.py` ajouté au commit `7e1c49c3` : les 53 tables du seed doivent correspondre exactement et en ordre inverse aux 53 commandes de suppression, chaque suppression reste bornée aux identifiants de la démo, sans `CASCADE` ni DDL/DML additionnels. Le test ne supprime aucune donnée.
 - Les 78 données fictives demeurent dans Supabase principale. Le script de rollback n'a pas été exécuté. Tests CI de la nouvelle modification à vérifier.
 - Reste à faire : validation visuelle des neuf onglets avec une session Streamlit réellement habilitée, puis éventuel élargissement des scénarios avec **lot séparé et rollback distinct**. Ne pas déclencher de déclaration/export ou relance réelle depuis les documents fictifs.
+
+## Validation finale du rollback à blanc sur la base déjà alimentée
+
+- CI `50e50108` : [suite ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42077081862) et [audit sans modification](https://github.com/Verwolfy/erp-mortier/actions/runs/42077082215), conclusions `success`.
+- Le **script de rollback versionné réel**, `sql/demo/20261105_rollback_erp_kpi_FICTIF.sql`, a été relu sur `main` puis **exécuté à blanc** sur la base principale déjà alimentée : son `COMMIT` final a été remplacé, pour cet essai uniquement, par une vérification SQL des suppressions et `ROLLBACK`. Résultat interne à la transaction : **0 client, 0 facture, 0 pièce SCF, 0 bulletin V2** parmi les identifiants fictifs testés, sans erreur SQL ni FK.
+- Lecture après `ROLLBACK`, dans une nouvelle requête : **2 clients fictifs, 2 factures fictives, 1 pièce SCF brouillon, 1 bulletin V2 préparé, 3 opportunités CRM** sont toujours présents. La transaction d'essai a donc bien été annulée.
+- **Ne pas confondre cette preuve avec un retour arrière définitif :** les **78 lignes fictives** sont toujours présentes dans Supabase et le rollback versionné n'a pas été exécuté jusqu'au `COMMIT` en production.
+- Cette preuve concerne le retrait des identifiants présents au moment du test ; elle ne garantit pas le retrait si des utilisateurs créent ensuite de nouvelles dépendances externes, ni l'annulation de modifications extérieures au jeu fictif.
+- La validation **visuelle et interactive** des neuf onglets dans une session Streamlit habilitée reste non effectuée. Aucun compte réel n'a été créé ni droit modifié pour forcer cette étape.
