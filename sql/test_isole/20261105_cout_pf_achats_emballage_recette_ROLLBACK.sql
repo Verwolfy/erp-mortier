@@ -46,12 +46,13 @@ BEGIN
  PERFORM public.erp_receive_purchase_order(
  'IT26_PFCOST_REC1_OP','IT26_PFCOST_BR1','IT26_PFCOST_PO1',
  '2026-11-05','OUI','[TEST] Recep matieres vague 1','2027-11-05',
- '[{"ligne_br_id":"IT26_PFCOST_LBR1A","mp_id":"IT26_PFCOST_RAW_A","quantite_recue":100,"prix_unitaire":10},{"ligne_br_id":"IT26_PFCOST_LBR1B","mp_id":"IT26_PFCOST_RAW_B","quantite_recue":60,"prix_unitaire":20}]'::jsonb);
+ '[{"ligne_br_id":"IT26_PFCOST_LBR1A","mp_id":"IT26_PFCOST_RAW_A","quantite_recue":100,"prix_unitaire":999},{"ligne_br_id":"IT26_PFCOST_LBR1B","mp_id":"IT26_PFCOST_RAW_B","quantite_recue":60,"prix_unitaire":20}]'::jsonb);
  PERFORM public.erp_receive_purchase_order(
  'IT26_PFCOST_REC2_OP','IT26_PFCOST_BR2','IT26_PFCOST_PO2',
  '2026-11-05','OUI','[TEST] Recep emballages vague 1','2027-11-05',
- '[{"ligne_br_id":"IT26_PFCOST_LBR2","mp_id":"IT26_PFCOST_PACK","quantite_recue":10,"prix_unitaire":3}]'::jsonb);
+ '[{"ligne_br_id":"IT26_PFCOST_LBR2","mp_id":"IT26_PFCOST_PACK","quantite_recue":10,"prix_unitaire":777}]'::jsonb);
 
+ -- Les prix fictifs manipules dans les lignes BR (999 et 777) ne doivent PAS remplacer les prix des bons de commande.
  -- Couts unitaires de la premiere vague issus du catalogue Achats.
  IF (SELECT cmp_actuel FROM public.stock_actuel WHERE mp_id='IT26_PFCOST_RAW_A') <> 10
  OR (SELECT cmp_actuel FROM public.stock_actuel WHERE mp_id='IT26_PFCOST_RAW_B') <> 20
@@ -77,6 +78,14 @@ BEGIN
  OR (SELECT quantite_disponible FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU')<>4
  THEN RAISE EXCEPTION 'OF1 cout attendu 292, observe %, PF %',v_r1,
  (SELECT row_to_json(s) FROM public.stock_actuel_pf s WHERE sku_id='IT26_PFCOST_SKU'); END IF;
+
+ -- La cloture identique du meme OF ne doit ni doubler la production ni les couts.
+ IF public.erp_close_manufacturing_order(
+    v_of1,'OUI','[TEST] Controle conforme lot 1','[TEST] Qualite',4,'IT26_PFCOST_PACK',4)
+    IS DISTINCT FROM v_r1 THEN
+   RAISE EXCEPTION 'OF1 non idempotent'; END IF;
+ IF (SELECT count(*) FROM public.erp_of_outbox WHERE of_id=v_of1)<>1 THEN
+   RAISE EXCEPTION 'OF1 outbox duplique'; END IF;
 
  -- 2e vague de commandes, receptionnee apres fabrication initiale.
  PERFORM public.erp_create_purchase_order(
@@ -111,6 +120,17 @@ BEGIN
  'IT26_PFCOST_OF2_OP','IT26_PFCOST_PF',v_recipe,'IT26_PFCOST_SKU',
  2,'2026-11-05','[TEST] Second lot 2 sacs apres changement prix'))->>'of_id';
  PERFORM public.erp_start_manufacturing_order(v_of2);
+ -- Tentative de cloture avec un seul sac pour deux SKU : refus 23514 obligatoire.
+ DECLARE
+   v_rejected boolean := false;
+ BEGIN
+   BEGIN
+     PERFORM public.erp_close_manufacturing_order(
+       v_of2,'OUI','[TEST] Emballage insuffisant','[TEST] Qualite',2,'IT26_PFCOST_PACK',1);
+   EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected := true;
+   END;
+   IF NOT v_rejected THEN RAISE EXCEPTION 'Emballage insuffisant accepte'; END IF;
+ END;
  v_r2 := public.erp_close_manufacturing_order(
  v_of2,'OUI','[TEST] Controle conforme lot 2','[TEST] Qualite',2,'IT26_PFCOST_PACK',2);
  v_expected2 := 6*(570::numeric/47) + 4*(560::numeric/23) + 2*4.25;
