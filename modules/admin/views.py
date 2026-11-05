@@ -569,14 +569,19 @@ def show_admin_page():
     if not can_write:
         st.info("🔒 Mode lecture seule : vous n'avez pas les droits d'ajout ou de modification.")
 
-    # Chargement dynamique global depuis les listes expertes import_data.py
-    pays_opts = get_opts("PAYS", PAYS_FALLBACK)
-    wilaya_opts = get_opts("WILAYA", WILAYA_FALLBACK)
-    unite_opts = get_opts("UNITE_MESURE", UNITE_FALLBACK)
-    cat_client_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK)
-    cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK)
-    cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
-    hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
+    # Les listes de choix n'interviennent que dans les formulaires d'écriture.
+    # En lecture seule, aucun appel inutile à listes_reference.
+    if can_write:
+        pays_opts = get_opts("PAYS", PAYS_FALLBACK)
+        wilaya_opts = get_opts("WILAYA", WILAYA_FALLBACK)
+        unite_opts = get_opts("UNITE_MESURE", UNITE_FALLBACK)
+        cat_client_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK)
+        cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK)
+        cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
+        hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
+    else:
+        pays_opts, wilaya_opts, unite_opts = [], [], []
+        cat_client_opts, cat_mp_opts, cat_pf_opts, hs_code_opts = [], [], [], []
 
     tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations, tab_fiscal_sku, tab_documents, tab_qualite = st.tabs([
         "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
@@ -891,7 +896,8 @@ def show_admin_page():
     # --- SKUs ---
     with tab5:
         st.subheader("Conditionnements (SKU)")
-        if can_write:
+        if can_write and st.checkbox("Préparer la création d’un SKU",
+                                     value=False, key="ng_admin_create_sku"):
             df_pf = get_dataframe("Produits", only_active=True)
             df_mp = get_dataframe("MatieresPremieres", only_active=True)
 
