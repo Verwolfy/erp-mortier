@@ -150,3 +150,18 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - Commits `0b9665ca` (correction) et `7299b6fd` (tests). Résultats CI des nouveaux commits encore à contrôler à la rédaction.
 - **78 lignes fictives toujours en base** et **script SQL de rollback inchangé**. La correction du code source GitHub n'est pas une preuve que ce nouveau code est déjà déployé sur l'hôte Streamlit ou sur un autre exécuteur externe.
 - Préalable à toute émission réelle : vérifier que l'automatisation GitHub exécute bien le commit corrigé. Si un autre exécuteur plus ancien est actif, suspendre ses relances jusqu'à sa mise à jour, sans désactiver arbitrairement les workflows sans preuve.
+
+## Complément fictif de réconciliation des stocks — 2026-11-05
+
+- Vérification de l'automatisation `.github/workflows/recalcul_stock.yml` : planification quotidienne à **02:00 UTC** ; le script `scripts/recalculer_stock.py` est un **audit en lecture seule**, ne corrige jamais les écarts. La présence d'écarts fictifs n'aurait pas modifié automatiquement les stocks, mais peut polluer les alertes du job.
+- Contrôle SQL initial des quatre références `DEMO26_` : `MP1 100/100`, `MP2 220/0`, `SKU1 180/180`, `SKU2 60/0` (quantité stock / somme nette des mouvements). **Deux écarts fictifs confirmés**.
+- Lot complémentaire `sql/demo/20261105_stock_opening_lot2_FICTIF.sql` : deux mouvements de stock d'ouverture `DEMO26_MV2` (MP2 : 220) et `DEMO26_MVP2` (SKU2 : 60), sans écriture de stock, sans données fiscales ni pièce réelle. Test transactionnel avec `ROLLBACK` réussi ; **insertion réelle** des deux seules lignes fictives exécutée.
+- Contrôle SQL après insertion : **4/4 références fictives avec écart stock/mouvements = 0**. L'insertion ne garantit pas la réconciliation globale des stocks de production existants et n'affecte pas leurs lignes.
+- Le jeu fictif comporte désormais **80 lignes en 53 tables**, réparties en lot 1 (78) et lot 2 (2).
+- Deux possibilités de retour arrière, **non exécutées définitivement** :
+  - `sql/demo/20261105_rollback_stock_opening_lot2_FICTIF.sql` suivi de `sql/demo/20261105_rollback_erp_kpi_FICTIF.sql` ;
+  - **script unique recommandé** : `sql/demo/20261105_rollback_COMPLET_80_lignes_FICTIF.sql`, qui reprend les mêmes 55 `DELETE` dans une seule transaction, sans `CASCADE`.
+- Vérification du rollback combiné **sur la base déjà chargée**, en remplaçant `COMMIT` par un `SELECT` et `ROLLBACK` : deux mouvements du lot 2, les deux factures et les deux clients fictifs deviennent temporairement absents (0), puis tous les changements d'essai sont annulés. **Ce script n'a PAS été exécuté avec `COMMIT`**.
+- La version initiale du rapport plus haut indique 78 lignes : ce chiffre correspond seulement au lot 1. **Le total actuel est 80**.
+- CI du correctif de relances du commit `f075bf62` : [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42080065900) et [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/42080066225) terminés **success**.
+- L'accès public à `https://nextgent-erp.streamlit.app/` n'a pas permis de valider les écrans authentifiés ; tests UI Streamlit en session réelle restant à faire.
