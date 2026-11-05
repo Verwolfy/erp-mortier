@@ -59,3 +59,17 @@ def test_sku_read_only_and_creation_disabled_have_no_catalog_reads():
     ]
     assert len(editors) == 1
     assert 'render_editable_dataframe("SkuConditionnement"' in ast.unparse(editors[0])
+
+
+def test_les_listes_de_reference_ne_chargent_pas_par_defaut():
+    page = _page()
+    sections = [
+        n for n in ast.walk(page)
+        if isinstance(n, ast.With)
+        and any(ast.unparse(item.context_expr) == "tab_listes" for item in n.items)
+    ]
+    assert len(sections) == 1
+    code = ast.unparse(sections[0])
+    assert "ng_admin_open_reference_lists" in code
+    assert code.index("ng_admin_open_reference_lists") < code.index("gerer_listes_reference()")
+    assert "if can_write:" in code
