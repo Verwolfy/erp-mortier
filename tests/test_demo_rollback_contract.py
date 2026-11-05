@@ -8,7 +8,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1] / "sql" / "demo"
 SEED = ROOT / "20261105_seed_erp_kpi_FICTIF.sql"
 UNDO = ROOT / "20261105_rollback_erp_kpi_FICTIF.sql"
-INSERT = re.compile(r"^INSERT INTO public\.([a-z_][a-z_0-9]*)\s+\(", re.M)
+INSERT = re.compile(r"^INSERT INTO public\.([a-z_][a-z_0-9]*)\s*\(", re.M)
 DELETE = re.compile(r"^DELETE FROM public\.([a-z_][a-z_0-9]*)\s+WHERE\s+([^;]+);", re.M)
 
 
