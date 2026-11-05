@@ -84,3 +84,21 @@ Ces valeurs sont la **contribution du jeu de test** ; le tableau de bord peut af
 - Le script de rollback original reste applicable : il supprime ces deux factures par identifiant, indépendamment de `montant_paye`. Il **n'a pas été exécuté**.
 - Le correctif P&L a été publié (`e05169c3`) avec tests (`4908b673`). Les tests de la toute dernière branche principale doivent être confirmés après les commits de documentation/données.
 - Aucune validation visuelle des neuf onglets Streamlit depuis une session connectée n'est attestée.
+
+## Vérification des neuf familles KPI — données fictives isolées
+
+Comparaison réalisée en SQL **sur Supabase principale**, après correction des montants payés fictifs. Les valeurs sont calculées uniquement à partir des identifiants DEMO et constituent des contrôles de cohérence des agrégats **pas un test de rendu Streamlit ni du RBAC**.
+
+| Onglet | Mesure contrôlée | Observé | Attendu | Verdict |
+|---|---|---:|---:|---|
+| Direction | Facturation HT novembre | 16 000 DZD | 16 000 DZD | OK |
+| Rentabilité P&L | Solde estimatif novembre, y compris coûts, paiement OPEX et net fictif | -49 000 DZD | -49 000 DZD | OK |
+| Ventes | Factures clients validées novembre | 1 | 1 | OK |
+| Achats | Montant commandes novembre | 80 000 DZD | 80 000 DZD | OK |
+| Stocks | Valeur MP + PF démo | 333 000 DZD | 333 000 DZD | OK |
+| Production | OF planifiés en novembre | 2 | 2 | OK |
+| CRM | Pipeline pondéré ouvert | 300 000 DZD | 300 000 DZD | OK |
+| RH | Effectifs actifs fictifs | 2 | 2 | OK |
+| Finance | Encaissements fictifs validés novembre | 3 000 DZD | 3 000 DZD | OK |
+
+**9/9 contrôles SQL = OK**. La requête ne prétend pas reproduire intégralement les neuf fonctions Python ; elle vérifie une mesure représentative par panneau. Les agrégats affichés pour toute la base peuvent différer des seuls agrégats fictifs. Le test interactif Streamlit reste non réalisé.
