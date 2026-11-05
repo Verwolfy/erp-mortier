@@ -22,3 +22,12 @@
 
 ## Consignes de continuation
 Exécuter automatiquement les modifications non critiques sur GitHub `main`, vérifier les actions CI et corriger les échecs, ne solliciter approbation que pour changement critique. Résumé concis en français : résultat précédent, prochaine action, pourquoi, comment, rien à faire côté utilisateur sauf nécessité.
+
+
+## Extension chargement à la demande — même journée
+- `modules/admin/views.py` : création des cinq types (Client, Fournisseur, Matière première, Produit, SKU) maintenant accessible via cases « Préparer » ; ces cases limitent notamment les lectures Wilayas et les deux référentiels utilisés à la création d'un SKU.
+- Les sept `get_opts` sont désormais déclenchés séparément selon le formulaire ou éditeur ouvert : aucune requête de liste experte par simple affichage initial, même pour un profil autorisé à écrire.
+- La rubrique « Listes de choix » est désormais consultée/modifiée uniquement lorsque l'utilisateur coche « Ouvrir la gestion des listes de choix » : plus de lecture globale `listes_reference` au chargement de la page pour cette rubrique.
+- `tests/test_admin_conditional_form_reads.py` adapté pour garantir les conditions par AST.
+- Commits complémentaires : `99df515`, `ee35992`, `b5ec164`, `d58ff37`. Vérifier CI du commit le plus récent avant clôture.
+- Attention : nouvelle étape de navigation nécessaire avant de créer ou éditer des données. La logique de validation des champs, les droits et les services d'écriture n'ont pas été modifiés. Mesure réelle des requêtes/latence non réalisée.
