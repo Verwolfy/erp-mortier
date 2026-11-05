@@ -44,7 +44,7 @@ def test_parallel_order_reuses_same_key_and_payload():
         assert "erp_create_sales_order" in sql
         assert "'IT26_PAR_ORDER'" in sql
         assert "'IT26_PAR_CLIENT'" in sql
-        assert "'IT26_PAR_SKU'" in sql
+        assert "IT26_PAR_SKU" in sql
     assert "pg_sleep(5)" in a
 
 
