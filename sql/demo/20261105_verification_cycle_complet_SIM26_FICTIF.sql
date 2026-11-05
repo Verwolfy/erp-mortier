@@ -101,4 +101,7 @@ SELECT
   (SELECT montant_ttc FROM public.factures WHERE facture_id='SIM26_INV') AS invoice_total,
   (SELECT montant_paye FROM public.factures WHERE facture_id='SIM26_INV') AS paid_amount,
   (SELECT sum(montant_applique) FROM public.lettrage WHERE document_id='SIM26_INV') AS allocated,
-  (SELECT montant_total FROM public.reglements WHERE reglement_id='SIM26_PAY') AS settlement_total;
+  (SELECT montant_total FROM public.reglements WHERE reglement_id='SIM26_PAY') AS settlement_total,
+  (SELECT statut FROM public.commandes_achats WHERE commande_achat_id='SIM26_PO') AS statut_reception_achat,
+  (SELECT statut FROM public.commandes_ventes WHERE commande_vente_id='SIM26_SO') AS statut_commande_client,
+  (SELECT statut FROM public.bons_livraison WHERE bl_id='SIM26_DN') AS statut_livraison;
