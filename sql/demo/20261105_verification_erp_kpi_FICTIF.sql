@@ -6,6 +6,9 @@ BEGIN
   SELECT count(*) INTO v_bad FROM (
     SELECT 1 WHERE (SELECT count(*) FROM public.clients WHERE client_id LIKE 'DEMO26_%')<>2
     UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.factures WHERE facture_id LIKE 'DEMO26_%')<>2
+    UNION ALL SELECT 1 WHERE (SELECT montant_paye FROM public.factures WHERE facture_id='DEMO26_FAC1')<>3000
+    UNION ALL SELECT 1 WHERE (SELECT montant_paye FROM public.factures WHERE facture_id='DEMO26_FAC2')<>0
+    UNION ALL SELECT 1 WHERE (SELECT coalesce(sum(montant_applique),0) FROM public.lettrage WHERE document_id='DEMO26_FAC1')<>3000
     UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.pipeline WHERE opportunite_id LIKE 'DEMO26_%')<>3
     UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.reglements WHERE reglement_id LIKE 'DEMO26_%')<>2
     UNION ALL SELECT 1 WHERE (SELECT count(*) FROM public.scf_pieces WHERE reference LIKE 'DEMO26_%' AND statut='BROUILLON')<>1
