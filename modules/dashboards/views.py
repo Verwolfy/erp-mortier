@@ -57,7 +57,8 @@ def _show_dashboards_page_impl():
         st.caption("Trésorerie : Banque/Caisse, soldes initiaux + règlements validés jusqu’à aujourd’hui ; hors autres écritures et rapprochement bancaire.")
         kpis = get_kpis_direction()
 
-        col1, col2, col3, col4 = st.columns(4)
+        # Allouer plus de largeur aux montants de trésorerie et aux impayés.
+        col1, col2, col3, col4 = st.columns([1.05, 1.50, 1.25, 0.60])
         col1.metric("Facturation brute HT du mois", f"{kpis['ca_mois']:,.2f} DZD")
         col2.metric("Trésorerie indicative", f"{kpis['tresorerie']:,.2f} DZD")
         col3.metric("Impayés (> 30 jours)", f"{kpis['impayes_30j']:,.2f} DZD", delta="À recouvrer", delta_color="inverse")
