@@ -37,3 +37,20 @@ def test_cout_pf_purchase_recipe_campaign():
     pf_cmp = (first_cost + second_cost) / Decimal(6)
     assert abs(pf_cmp - Decimal("78.44287696577243")) < Decimal("1e-12")
     assert abs((Decimal(182)*a_cmp + Decimal(88)*b_cmp + Decimal(14)*pack_cmp + Decimal(6)*pf_cmp) - Decimal(4880)) < Decimal("1e-20")
+
+    # Simulation analytique fictive, non imputee aux stocks.
+    assert "INDIRECT_COST_OK" in text
+    assert "CREATE TEMP TABLE pg_temp.it26_pf_indirect_costs" in text
+    assert "ON COMMIT DROP" in text
+    for nature in ("MAIN_OEUVRE", "ENERGIE", "AMORTISSEMENT",
+                   "FRAIS_INDIRECTS", "FRAIS_APPROCHE"):
+        assert nature in text
+    assert "v_scrap_sensitivity" in text
+    overhead1 = sum(map(Decimal, (40, 20, 12, 8, 16)))
+    overhead2 = sum(map(Decimal, (25, 15, 10, 5, 9)))
+    assert overhead1 == Decimal(96)
+    assert overhead2 == Decimal(64)
+    analytic_total = first_cost + second_cost + overhead1 + overhead2
+    assert analytic_total.quantize(Decimal("0.01")) == Decimal("630.66")
+    assert (analytic_total / 6).quantize(Decimal("0.0001")) == Decimal("105.1095")
+    assert analytic_total > first_cost + second_cost
