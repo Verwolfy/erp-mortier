@@ -18,7 +18,7 @@ VALUES ('IT26_SKU','IT26_PF','SAC 1KG',1,'SAC',1,'IT26_PACK',20,'OUI');
 SET LOCAL ROLE service_role;
 DO $test$
 DECLARE
-  a jsonb; b jsonb; recipe_id text; v_of_id text;
+  a jsonb; b jsonb; recipe_id text; v_of_id text; v_reject_id text;
   q numeric;
   lines jsonb:='[{"mp_id":"IT26_RAW","quantite_par_unite":"1"}]'::jsonb;
 BEGIN
@@ -56,6 +56,19 @@ BEGIN
     RAISE EXCEPTION 'Re-démarrage d un OF clos accepté';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
+  -- Branche contrôle qualité NON : transition vers REJETE sans produire ni prélever.
+  a:=public.erp_create_manufacturing_order('IT26_OP_OF_REJECT','IT26_PF',recipe_id,
+                                           'IT26_SKU',1,'2026-11-05','[TEST] OF rejet');
+  v_reject_id:=a->>'of_id';
+  PERFORM public.erp_start_manufacturing_order(v_reject_id);
+  a:=public.erp_close_manufacturing_order(v_reject_id,'NON',
+                                          '[TEST] contrôle rejeté','TESTEUR',0,NULL,0);
+  b:=public.erp_close_manufacturing_order(v_reject_id,'NON',
+                                          '[TEST] contrôle rejeté','TESTEUR',0,NULL,0);
+  IF a IS DISTINCT FROM b OR a->>'statut'<>'REJETE'
+     OR (SELECT count(*) FROM public.controle_qualite WHERE of_id=v_reject_id)<>1
+     OR (SELECT statut FROM public.ordres_fabrication WHERE of_id=v_reject_id)<>'REJETE'
+  THEN RAISE EXCEPTION 'OF rejeté non idempotent ou non tracé'; END IF;
   IF (SELECT quantite_disponible FROM public.stock_actuel WHERE mp_id='IT26_RAW') IS DISTINCT FROM 8
     OR (SELECT quantite_disponible FROM public.stock_actuel WHERE mp_id='IT26_PACK') IS DISTINCT FROM 3
     OR (SELECT quantite_disponible FROM public.stock_actuel_pf WHERE sku_id='IT26_SKU') IS DISTINCT FROM 2
