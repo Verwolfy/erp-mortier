@@ -39,6 +39,13 @@ BEGIN
     FROM public.stock_actuel WHERE mp_id='IT26_CUMP_MP_A';
   IF v_qty<>30 OR v_cmp<>120 THEN RAISE EXCEPTION 'A2 CUMP observe=%, qte=%; attendu 120,30',v_cmp,v_qty; END IF;
 
+  -- Ordre FIFO deterministe : les horodatages d'insertion en test peuvent etre identiques.
+  UPDATE public.lots SET date_creation='2026-11-01 08:00:00'
+   WHERE lot_id=(SELECT lot_id FROM public.mouvements
+                  WHERE mp_id='IT26_CUMP_MP_A' AND reference='[TEST] CUMP A IN1');
+  UPDATE public.lots SET date_creation='2026-11-02 08:00:00'
+   WHERE lot_id=(SELECT lot_id FROM public.mouvements
+                  WHERE mp_id='IT26_CUMP_MP_A' AND reference='[TEST] CUMP A IN2');
   -- A3: sortie 12: valeur 1440; CUMP INCHANGE 120; stock 18
   v_result := public.erp_apply_stock_movement('IT26_CUMP_A_OUT1','MP','SORTIE','IT26_CUMP_MP_A',12,NULL,'[TEST] CUMP A OUT1',NULL);
   SELECT quantite_disponible,cmp_actuel INTO STRICT v_qty,v_cmp
