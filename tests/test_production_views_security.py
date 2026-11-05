@@ -57,18 +57,21 @@ def ui(monkeypatch):
                  'get_controles_qualite'):
         getattr(production, name).return_value = pd.DataFrame()
     modules = types.ModuleType('modules')
+    cost_views = types.ModuleType('modules.production.cost_views')
+    cost_views.show_cost_reference = MagicMock()
     for key, value in {
         'streamlit': st, 'config': types.ModuleType('config'), 'config.roles': roles,
         'core': types.ModuleType('core'), 'core.db_service': db, 'core.utils': utils,
         'modules': modules, 'modules.production': types.ModuleType('modules.production'),
         'modules.production.service': production,
+        'modules.production.cost_views': cost_views,
     }.items():
         monkeypatch.setitem(sys.modules, key, value)
     spec = importlib.util.spec_from_file_location('production_views_under_test', VIEW_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return types.SimpleNamespace(mod=mod, st=st, client=client, query=query,
-                                 db=db, roles=roles, prod=production)
+                                 db=db, roles=roles, prod=production, costs=cost_views)
 
 
 def _products():
@@ -150,6 +153,7 @@ def test_read_only_user_sees_history_without_mutations(ui):
     ui.prod.create_ordre_fabrication.assert_not_called()
     ui.prod.enregistrer_controle_qualite.assert_not_called()
     ui.st.form.assert_not_called()
+    ui.costs.show_cost_reference.assert_called_once_with(False)
 
 
 def test_access_reads_live_role_and_checks_stocks(ui):
