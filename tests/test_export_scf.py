@@ -49,3 +49,28 @@ def test_export_refuse_si_non_autorise():
 def test_refus_donnees_invalides(change):
     with pytest.raises(ExportRefuse):
         exporter_journal_scf_csv([piece(**change)],droit_export=True)
+
+
+@pytest.mark.parametrize("updates", [
+    {"reference": "DEMO26_SCFPIECE"},
+    {"reference": " demo26_scfpiece "},
+    {"journal": "DEMO26_JRN"},
+    {"lignes": [
+        {"compte": "41199926", "debit": "10.00", "credit": "0"},
+        {"compte": "701001", "debit": "0", "credit": "10.00"},
+    ]},
+    {"lignes": [
+        {"compte": "411001", "debit": "10.00", "credit": "0"},
+        {"compte": "70199926", "debit": "0", "credit": "10.00"},
+    ]},
+])
+def test_export_scf_refuse_les_pieces_fictives_meme_validees(updates):
+    with pytest.raises(ExportRefuse):
+        exporter_journal_scf_csv([piece(**updates)], droit_export=True)
+
+
+def test_export_scf_normal_reste_possible():
+    assert len(list(csv.reader(
+        io.StringIO(exporter_journal_scf_csv([piece()], droit_export=True)),
+        delimiter=";"
+    ))) == 3
