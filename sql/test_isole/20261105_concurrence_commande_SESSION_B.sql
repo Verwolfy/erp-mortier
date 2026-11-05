@@ -1,3 +1,4 @@
+-- EXCLUSIVEMENT projet TEST : ffuhbmcfyexsbjwhryvj.
 -- SESSION B : lancer en parallèle à SESSION A, même operation_id / même payload.
 -- Un seul document commande doit être créé.
 BEGIN;
