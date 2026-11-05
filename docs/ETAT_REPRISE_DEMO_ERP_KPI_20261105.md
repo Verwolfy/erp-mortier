@@ -102,3 +102,13 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 | Finance | Encaissements fictifs validés novembre | 3 000 DZD | 3 000 DZD | OK |
 
 **9/9 contrôles SQL = OK**. La requête ne prétend pas reproduire intégralement les neuf fonctions Python ; elle vérifie une mesure représentative par panneau. Les agrégats affichés pour toute la base peuvent différer des seuls agrégats fictifs. Le test interactif Streamlit reste non réalisé.
+
+## Contrats Python des neuf modules Dashboard — 2026-11-05
+
+- Nouvelle suite `tests/test_dashboard_nine_demo_scenarios.py`, construite avec des tables en mémoire et des lectures `fetch_data` / `fetch_data_by_date_range` remplacées, **sans accès ni mutation Supabase**.
+- Les **neuf fonctions Python réelles** du module `modules.dashboards.service` sont exercées : Direction, Rentabilité P&L, Ventes, Achats, Stocks, Production, CRM, RH, Finance.
+- Valeurs attendues : Direction (CA HT 16 000, trésorerie 1 023 000, impayés > 30j 11 900, une alerte de stock), P&L -49 000, Ventes 1 facture, Achats 80 000 et 1 retard, Stocks 63 000 + 270 000, Production 2 OF / rejet 100 %, CRM 300 000 / conversion 50 %, RH 2 actifs / 1 congé, Finance +3 000 / -5 000 / lettrage 100 %.
+- Dans ce jeu, la facture du 1er septembre 2026 échue le 30 septembre 2026 présente **36 jours de retard au 5 novembre 2026** et relève de la tranche **31 à 60 jours** ; le test le vérifie explicitement.
+- Commits : `ab787d70` (suite créée) et `224419ec` (attente de tranche ajustée).
+- Les résultats CI des nouveaux tests doivent être contrôlés ; aucune validation Streamlit interactive ni nouvelle écriture dans Supabase ne sont attestées.
+- Le rollback SQL des 78 lignes fictives **n'a pas changé**, et ne doit pas être exécuté avant la fin des essais.
