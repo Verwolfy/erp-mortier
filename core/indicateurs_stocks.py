@@ -22,18 +22,38 @@ def stock_value(frame, cost_column):
     return (quantity.loc[held.index] * costs).sum()
 
 
-def below_threshold(stock, references):
+def threshold_status(stock, references):
+    """Seuils configurés uniquement : l'absence de seuil n'est pas un seuil nul.
+
+    Renvoie (alertes fiables, références sans seuil). Refuse les identifiants
+    ambigus, l'absence de référence et les seuils renseignés mais invalides.
+    """
     if stock.empty:
-        return 0
-    if 'mp_id' not in stock or not {'mp_id','stock_mini'}.issubset(references):
+        return 0, 0
+    if 'mp_id' not in stock or not {'mp_id', 'stock_mini'}.issubset(references):
         raise DataReadError('Référentiel de seuils incomplet')
-    if not stock['mp_id'].map(lambda v:isinstance(v,str) and bool(v.strip())).all():
+    if not stock['mp_id'].map(lambda v: isinstance(v, str) and bool(v.strip())).all():
         raise DataReadError('Référence stock invalide')
     relevant = references.loc[references['mp_id'].isin(stock['mp_id'])]
     if relevant['mp_id'].duplicated().any() or stock['mp_id'].duplicated().any():
         raise DataReadError('Référence stock ambiguë')
-    merged = stock.merge(relevant[['mp_id','stock_mini']],on='mp_id',how='left')
-    return int((nonnegative(merged,'quantite_disponible') < nonnegative(merged,'stock_mini')).sum())
+    merged = stock.merge(relevant[['mp_id', 'stock_mini']], on='mp_id',
+                         how='left', indicator=True)
+    if (merged['_merge'] != 'both').any():
+        raise DataReadError('Matière première sans référentiel')
+    quantities = nonnegative(merged, 'quantite_disponible')
+    missing = merged['stock_mini'].isna() | merged['stock_mini'].astype(str).str.strip().eq('')
+    known = merged.loc[~missing]
+    if known.empty:
+        return 0, int(missing.sum())
+    limits = nonnegative(known, 'stock_mini')
+    alerts = int((quantities.loc[known.index] < limits).sum())
+    return alerts, int(missing.sum())
+
+
+def below_threshold(stock, references):
+    """Nombre d'alertes évaluables ; pour les seuils absents, voir threshold_status."""
+    return threshold_status(stock, references)[0]
 
 
 def expiry_alerts(lots, today, days):
