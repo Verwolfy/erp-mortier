@@ -1,0 +1,71 @@
+-- TEST UNIQUEMENT : ffuhbmcfyexsbjwhryvj. Fixtures ephemeres, aucune persistance.
+BEGIN;
+SET LOCAL statement_timeout='45s';
+DO $case$
+DECLARE
+ a jsonb; v_a numeric; v_b numeric; v_count integer; v_rejected boolean;
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.ordres_fabrication WHERE of_id IN ('IT26_IND_OF1','IT26_IND_OF2'))
+ OR EXISTS(SELECT 1 FROM public.erp_cost_periods WHERE period_id='IT26_IND_PERIOD')
+ THEN RAISE EXCEPTION 'Fixture deja presente'; END IF;
+
+ -- OF fictifs uniquement pour validation du referentiel, PAS des fabrications reelles.
+ INSERT INTO public.ordres_fabrication(of_id,quantite_prevue,quantite_produite,date_planification,date_fin,statut,cout_total,notes)
+ VALUES ('IT26_IND_OF1',10,10,'2026-11-05','2026-11-05','TERMINE',300,'[TEST] OF fictif cout direct'),
+        ('IT26_IND_OF2',5,5,'2026-11-05','2026-11-05','TERMINE',200,'[TEST] OF fictif cout direct');
+ INSERT INTO public.erp_cost_periods(period_id,libelle,date_debut,date_fin,statut)
+ VALUES ('IT26_IND_PERIOD','[TEST] Periode analytique','2026-11-01','2026-11-30','BROUILLON');
+ INSERT INTO public.erp_cost_pools(pool_id,period_id,nature_code,base_imputation,montant_dzd,justificatif,statut)
+ VALUES ('IT26_IND_POOL_E','IT26_IND_PERIOD','ENERGIE','HOURS_MACHINE',120,'[TEST] facture hypothetique','SIMULATION'),
+        ('IT26_IND_POOL_M','IT26_IND_PERIOD','MAIN_OEUVRE','HOURS_LABOR',90,'[TEST] feuille hypothetique','SIMULATION');
+ -- Validation avant les assiettes : fail-closed.
+ v_rejected:=false;
+ BEGIN PERFORM public.erp_cost_validate_period('IT26_IND_PERIOD');
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Validation incomplete acceptee'; END IF;
+
+ INSERT INTO public.erp_cost_drivers(period_id,of_id,base_imputation,valeur,justificatif) VALUES
+ ('IT26_IND_PERIOD','IT26_IND_OF1','HOURS_MACHINE',2,'[TEST] heures machine'),
+ ('IT26_IND_PERIOD','IT26_IND_OF2','HOURS_MACHINE',4,'[TEST] heures machine'),
+ ('IT26_IND_PERIOD','IT26_IND_OF1','HOURS_LABOR',1,'[TEST] heures main oeuvre'),
+ ('IT26_IND_PERIOD','IT26_IND_OF2','HOURS_LABOR',2,'[TEST] heures main oeuvre');
+ SELECT coalesce(sum(montant_impute_dzd),0) INTO v_a FROM public.erp_cost_allocations
+ WHERE period_id='IT26_IND_PERIOD' AND of_id='IT26_IND_OF1';
+ SELECT coalesce(sum(montant_impute_dzd),0) INTO v_b FROM public.erp_cost_allocations
+ WHERE period_id='IT26_IND_PERIOD' AND of_id='IT26_IND_OF2';
+ IF v_a<>70 OR v_b<>140 THEN
+ RAISE EXCEPTION 'Imputation incorrecte OF1 %, OF2 %',v_a,v_b; END IF;
+
+ a:=public.erp_cost_period_audit('IT26_IND_PERIOD');
+ IF a->>'audit_ok'<>'true' OR (a->>'total_pools_dzd')::numeric<>210
+ OR (a->>'total_impute_dzd')::numeric<>210 THEN
+ RAISE EXCEPTION 'Audit non conforme %',a; END IF;
+ a:=public.erp_cost_validate_period('IT26_IND_PERIOD');
+ IF a->>'audit_ok'<>'true' OR
+  (SELECT statut FROM public.erp_cost_periods WHERE period_id='IT26_IND_PERIOD')<>'VALIDE'
+ THEN RAISE EXCEPTION 'Validation non confirmee'; END IF;
+
+ -- Toute mutation de pools, assiettes et periode validee doit etre refusee.
+ v_rejected:=false;
+ BEGIN UPDATE public.erp_cost_pools SET montant_dzd=121 WHERE pool_id='IT26_IND_POOL_E';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Montant apres validation modifiable'; END IF;
+ v_rejected:=false;
+ BEGIN UPDATE public.erp_cost_drivers SET valeur=5 WHERE period_id='IT26_IND_PERIOD' AND of_id='IT26_IND_OF1' AND base_imputation='HOURS_MACHINE';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Assiette apres validation modifiable'; END IF;
+ v_rejected:=false;
+ BEGIN UPDATE public.erp_cost_periods SET libelle='Change' WHERE period_id='IT26_IND_PERIOD';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Periode validee modifiable'; END IF;
+
+ SELECT count(*) INTO v_count FROM public.erp_cost_allocations WHERE period_id='IT26_IND_PERIOD';
+ IF v_count<>4 THEN RAISE EXCEPTION 'Lignes de repartition incorrectes: %',v_count; END IF;
+ RAISE NOTICE 'COST_REFERENCE_OK OF1 allocation 70 (total 370), OF2 allocation 140 (total 340)';
+END $case$;
+SELECT 'COST_REFERENCE_OK' AS verdict,
+  70::numeric AS imputation_of1_dzd,
+  140::numeric AS imputation_of2_dzd,
+  210::numeric AS total_impute_dzd,
+  'ROLLBACK' AS persistance;
+ROLLBACK;
