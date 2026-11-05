@@ -18,7 +18,7 @@ VALUES ('IT26_SKU','IT26_PF','SAC 1KG',1,'SAC',1,'IT26_PACK',20,'OUI');
 SET LOCAL ROLE service_role;
 DO $test$
 DECLARE
-  a jsonb; b jsonb; recipe_id text; of_id text;
+  a jsonb; b jsonb; recipe_id text; v_of_id text;
   q numeric;
   lines jsonb:='[{"mp_id":"IT26_RAW","quantite_par_unite":"1"}]'::jsonb;
 BEGIN
@@ -36,32 +36,32 @@ BEGIN
   a:=public.erp_create_manufacturing_order('IT26_OP_OF','IT26_PF',recipe_id,'IT26_SKU',2,'2026-11-05','[TEST] OF');
   b:=public.erp_create_manufacturing_order('IT26_OP_OF','IT26_PF',recipe_id,'IT26_SKU',2,'2026-11-05','[TEST] OF');
   IF a IS DISTINCT FROM b THEN RAISE EXCEPTION 'OF non idempotent'; END IF;
-  of_id:=a->>'of_id';
+  v_of_id:=a->>'of_id';
   IF a->>'statut' <> 'PLANIFIE' THEN RAISE EXCEPTION 'Création OF non planifiée'; END IF;
-  a:=public.erp_start_manufacturing_order(of_id);
-  b:=public.erp_start_manufacturing_order(of_id);
+  a:=public.erp_start_manufacturing_order(v_of_id);
+  b:=public.erp_start_manufacturing_order(v_of_id);
   IF a IS DISTINCT FROM b OR a->>'statut'<>'EN_COURS' THEN
      RAISE EXCEPTION 'Démarrage OF non idempotent'; END IF;
-  a:=public.erp_close_manufacturing_order(of_id,'OUI','[TEST] conforme','TESTEUR',2,'IT26_PACK',2);
-  b:=public.erp_close_manufacturing_order(of_id,'OUI','[TEST] conforme','TESTEUR',2,'IT26_PACK',2);
+  a:=public.erp_close_manufacturing_order(v_of_id,'OUI','[TEST] conforme','TESTEUR',2,'IT26_PACK',2);
+  b:=public.erp_close_manufacturing_order(v_of_id,'OUI','[TEST] conforme','TESTEUR',2,'IT26_PACK',2);
   IF a IS DISTINCT FROM b OR a->>'statut'<>'TERMINE'
     THEN RAISE EXCEPTION 'Clôture qualité non idempotente'; END IF;
   BEGIN
-    PERFORM public.erp_close_manufacturing_order(of_id,'NON','[TEST] contradictoire','TESTEUR',0,NULL,0);
+    PERFORM public.erp_close_manufacturing_order(v_of_id,'NON','[TEST] contradictoire','TESTEUR',0,NULL,0);
     RAISE EXCEPTION 'Clôture contradictoire acceptée';
   EXCEPTION WHEN unique_violation THEN NULL;
   END;
   BEGIN
-    PERFORM public.erp_start_manufacturing_order(of_id);
+    PERFORM public.erp_start_manufacturing_order(v_of_id);
     RAISE EXCEPTION 'Re-démarrage d un OF clos accepté';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   IF (SELECT quantite_disponible FROM public.stock_actuel WHERE mp_id='IT26_RAW') IS DISTINCT FROM 8
     OR (SELECT quantite_disponible FROM public.stock_actuel WHERE mp_id='IT26_PACK') IS DISTINCT FROM 3
     OR (SELECT quantite_disponible FROM public.stock_actuel_pf WHERE sku_id='IT26_SKU') IS DISTINCT FROM 2
-    OR (SELECT count(*) FROM public.controle_qualite WHERE of_id=of_id)<>1
-    OR (SELECT count(*) FROM public.erp_of_closures WHERE erp_of_closures.of_id=of_id)<>1
-    OR (SELECT statut FROM public.ordres_fabrication WHERE ordres_fabrication.of_id=of_id)<>'TERMINE'
+    OR (SELECT count(*) FROM public.controle_qualite WHERE of_id=v_of_id)<>1
+    OR (SELECT count(*) FROM public.erp_of_closures WHERE erp_of_closures.of_id=v_of_id)<>1
+    OR (SELECT statut FROM public.ordres_fabrication WHERE ordres_fabrication.of_id=v_of_id)<>'TERMINE'
   THEN RAISE EXCEPTION 'Stocks/qualité/états OF incohérents'; END IF;
 END
 $test$;
