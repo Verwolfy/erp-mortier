@@ -632,10 +632,13 @@ def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None
         st.caption("Consultation paginée des factures : 50 lignes au maximum.")
         page = st.number_input("Page des factures", min_value=1, max_value=1000,
                                value=1, step=1, key="ng_ventes_invoice_history_page")
-        if st.button("Afficher les factures", key="ng_ventes_invoice_history_load",
-                     on_click=_mark_ventes_activity):
+        from core.history_filters import history_period_inputs
+        period = history_period_inputs("ng_ventes_history")
+        if period is not None and st.button(
+                "Afficher les factures", key="ng_ventes_invoice_history_load",
+                on_click=_mark_ventes_activity):
             from core.strict_reads import fetch_history_page_strict
-            rows, total = fetch_history_page_strict("factures", page=int(page), date_column="date")
+            rows, total = fetch_history_page_strict("factures", page=int(page), date_column="date", **period)
             st.caption(f"Page {int(page)} : {len(rows)} factures sur {total}.")
             if rows:
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
