@@ -163,6 +163,65 @@ BEGIN
  RAISE NOTICE 'PF_COST_OK: OF1=292 (73/sac), OF2=%, PF_CUMP=%, MP_RESTANT=%, PF_VAL=%, GRAND_TOTAL=%',
  round(v_expected2,2),v_cmp_pf,v_val_mp,v_val_pf,v_val_mp+v_val_pf;
 END $scenario$;
+-- Simulation analytique autonome de frais indirects fictifs, non comptabilises.
+-- Ne change ni le cout_total OF ni le CUMP du stock PF.
+CREATE TEMP TABLE pg_temp.it26_pf_indirect_costs
+ (lot text NOT NULL, nature text NOT NULL,
+  montant_dzd numeric NOT NULL CHECK (montant_dzd>=0),
+  hypothese text NOT NULL,
+  PRIMARY KEY(lot,nature)) ON COMMIT DROP;
+INSERT INTO pg_temp.it26_pf_indirect_costs(lot,nature,montant_dzd,hypothese) VALUES
+ ('OF1','MAIN_OEUVRE',40,'[TEST] cout fictif de main oeuvre'),
+ ('OF1','ENERGIE',20,'[TEST] energie fictive'),
+ ('OF1','AMORTISSEMENT',12,'[TEST] dotation analytique fictive'),
+ ('OF1','FRAIS_INDIRECTS',8,'[TEST] frais indirects fictifs'),
+ ('OF1','FRAIS_APPROCHE',16,'[TEST] frais approche fictifs non imputes aux stocks MP'),
+ ('OF2','MAIN_OEUVRE',25,'[TEST] cout fictif de main oeuvre'),
+ ('OF2','ENERGIE',15,'[TEST] energie fictive'),
+ ('OF2','AMORTISSEMENT',10,'[TEST] dotation analytique fictive'),
+ ('OF2','FRAIS_INDIRECTS',5,'[TEST] frais indirects fictifs'),
+ ('OF2','FRAIS_APPROCHE',9,'[TEST] frais approche fictifs non imputes aux stocks MP');
+
+DO $analytique$
+DECLARE
+ v_direct_pf numeric; v_extra numeric; v_analytic numeric;
+ v_theory numeric; v_per_sac numeric; v_of1_extra numeric; v_of2_extra numeric;
+ v_scrap_sensitivity numeric;
+BEGIN
+ SELECT quantite_disponible*cout_revient INTO STRICT v_direct_pf
+   FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU';
+ SELECT sum(montant_dzd) INTO v_extra FROM pg_temp.it26_pf_indirect_costs;
+ SELECT sum(montant_dzd) INTO v_of1_extra FROM pg_temp.it26_pf_indirect_costs WHERE lot='OF1';
+ SELECT sum(montant_dzd) INTO v_of2_extra FROM pg_temp.it26_pf_indirect_costs WHERE lot='OF2';
+ v_theory := 292 + (6*(570::numeric/47) + 4*(560::numeric/23) + 2*4.25);
+ v_analytic := v_direct_pf + v_extra;
+ v_per_sac := v_analytic/6;
+ IF abs(v_direct_pf-v_theory)>0.00000001
+ OR v_of1_extra<>96 OR v_of2_extra<>64 OR v_extra<>160
+ OR abs(v_analytic-(v_theory+160))>0.00000001
+ OR abs(v_per_sac-(v_theory+160)/6)>0.00000001
+ THEN RAISE EXCEPTION 'Ecart cout industriel test direct %, indirect %, complet %, unitaire %',
+ v_direct_pf,v_extra,v_analytic,v_per_sac; END IF;
+ IF abs((SELECT cout_revient FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU')
+       -(v_theory/6))>0.00000001
+ THEN RAISE EXCEPTION 'CUMP officiel a ete pollue par la simulation analytique'; END IF;
+ -- Sensibilite purement hypothetique: 1 unite supplementaire consommee mais rebut,
+ -- sans sortie commerciale ni modification du stock, et 2 sacs conformes OF2.
+ v_scrap_sensitivity := ((v_theory+160) +
+       (3*(570::numeric/47)+2*(560::numeric/23)+4.25)) / 6;
+ IF v_scrap_sensitivity<=v_per_sac THEN RAISE EXCEPTION 'Sensibilite rebut incorrecte'; END IF;
+ RAISE NOTICE 'INDIRECT_COST_OK: cout direct %, charges simulation %, total analytique %, cout par sac %, rebut test %',
+ v_direct_pf,v_extra,v_analytic,v_per_sac,v_scrap_sensitivity;
+END $analytique$;
+
+SELECT 'INDIRECT_COST_OK' AS verdict,
+ round(sum(montant_dzd),2) AS frais_fictifs_dzd,
+ round((SELECT quantite_disponible*cout_revient FROM public.stock_actuel_pf
+        WHERE sku_id='IT26_PFCOST_SKU')+sum(montant_dzd),2) AS cout_industriel_analytique_dzd,
+ round(((SELECT quantite_disponible*cout_revient FROM public.stock_actuel_pf
+         WHERE sku_id='IT26_PFCOST_SKU')+sum(montant_dzd))/6,4) AS cout_analytique_par_sac_dzd
+FROM pg_temp.it26_pf_indirect_costs;
+
 SELECT 'PF_COST_OK' AS verdict,
        '2 fournisseurs, 3 MP dont emballage, 4 achats, 4 receptions, 1 recette, 2 OF, 6 sacs' AS campagne,
        'ROLLBACK - fixtures non conservees' AS persistance;
