@@ -971,7 +971,11 @@ def show_admin_page():
     # --- LISTES DE CHOIX ---
     with tab_listes:
         if can_write:
-            gerer_listes_reference()
+            if st.checkbox("Ouvrir la gestion des listes de choix",
+                           value=False, key="ng_admin_open_reference_lists"):
+                gerer_listes_reference()
+            else:
+                st.caption("Ouvrez la gestion pour consulter ou modifier les listes autorisées.")
         else:
             st.info("🔒 Mode lecture seule : vous ne pouvez pas modifier les listes.")
 
