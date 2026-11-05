@@ -245,3 +245,12 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - Tests automatisés de correspondance exactes du seed SIM26 (40 INSERT), rollback SIM26 (40 DELETE), et rollback global (95 DELETE), plus lectures de vérification ; inspecter et réparer les éventuels échecs CI.
 - Ne jamais déduire de la seule CI que l'interface Streamlit sur `https://nextgent-erp.streamlit.app/` a été redéployée ou que ses transitions transactionnelles ont été exécutées : **les lignes ont été insérées par SQL pour simuler le résultat**, pas par les boutons des écrans. L'utilisateur veut pouvoir les visualiser et tester les parcours.
 - **Próchaine action :** vérifier les deux workflows du commit le plus récent, corriger tout test échoué, ensuite faire le contrôle visuel authentifié si une session est disponible. Ne pas ajouter des utilisateurs réels, des permissions, des règles fiscales ou des messages externes pour étendre la démonstration.
+
+### Correction métier de l'état SIM26 et verdict CI
+
+- Comparaison avec les statuts utilisés par l'application : le scénario reçu comportait des libellés non concordants (`RECEPTIONNEE`, `LIVREE`, `LIVRE`).
+- Modification **exclusivement sur trois lignes fictives** en production Supabase après vérification de leur état préalable : commande fournisseur `SIM26_PO` = `RECEPTIONNE`, commande client `SIM26_SO` = `TERMINE`, bon de livraison `SIM26_DN` = `EXPEDIE`. Aucune autre ligne ou stock modifié.
+- Seed `sql/demo/20261105_seed_cycle_complet_SIM26_FICTIF.sql` modifié pour utiliser directement ces trois libellés pour un prochain rejeu **après éventuel rollback** ; pas de nouveau seed exécuté.
+- Vérification SQL de l'état actuel réexécutée : **40 lignes sur 37 tables, 0 identifiant manquant, stocks nets MP/PF à 0, réception/consommation 100, production/livraison 10, qualité OUI, TTC/encaissement/lettrage 2 380**, statuts `RECEPTIONNE/TERMINE/EXPEDIE`.
+- Dernier commit technique avec suite GitHub **doublement verte** : `d996c895`, [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/42088907271) et [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/42088907169). Les commits de correction des statuts et documentation suivants doivent encore recevoir leur propre verdict CI.
+- Précaution : le scénario a été inséré directement en SQL, **et non en appelant les services d'écritures transactionnelles Streamlit**, et ne prouve pas à lui seul la conformité réglementaire ou que les boutons de l'ERP exécutent les transitions sans erreur.
