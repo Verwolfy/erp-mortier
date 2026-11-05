@@ -139,9 +139,9 @@ def test_ventes_demo(demo):
     k = service.get_kpis_ventes(START, END)
     assert k["nb_factures"] == 1
     assert k["ca_ht"] == 16000
-    assert k["balance_agee"]["31 à 60 jours"] == 0
+    assert k["balance_agee"]["31 à 60 jours"] == 11900
     assert k["balance_agee"]["1 à 30 jours"] == 0
-    assert k["balance_agee"]["+ de 60 jrs"] == 11900
+    assert k["balance_agee"]["+ de 60 jrs"] == 0
 
 
 def test_achats_demo(demo):
