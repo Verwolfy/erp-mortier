@@ -45,7 +45,7 @@ def exporter_journal_scf_csv(ecritures: Iterable[Mapping[str, Any]], *, droit_ex
         # leur statut est modifié après les essais.
         reference = piece.get("reference")
         journal = piece.get("journal")
-        if any(isinstance(value, str) and value.strip().upper().startswith("DEMO26_")
+        if any(isinstance(value, str) and value.strip().upper().startswith(("DEMO26_", "SIM26_"))
                for value in (reference, journal)):
             raise ExportRefuse("Pièce fictive exclue")
         lignes = piece.get("lignes")
