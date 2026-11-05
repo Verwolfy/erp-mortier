@@ -49,3 +49,10 @@ Les migrations **036 et 037** ont été appliquées avec succès sur **TEST** `f
 
 ## Prochaine étape recommandée
 Vérifier une vraie session navigateur Streamlit avec un compte habilité et un compte limité, puis intégrer une vérification d'existence/référence documentaire avant DOCUMENTE. Exiger qu'aucune validation simulée ne devienne une valeur stock/comptable sans approbation.
+
+## Vérification terminale
+- Supabase TEST : état **INACTIVE** confirmé après suspension.
+- Workflows associés au commit du rapport `8c9e0e7500abc14bbbf422a3cca5740316e6fe00` : tous deux **success** :
+  - [Tests ERP complets](https://github.com/Verwolfy/erp-mortier/actions/runs/42122645172)
+  - [Audit de réconciliation](https://github.com/Verwolfy/erp-mortier/actions/runs/42122644991)
+- Une vraie connexion utilisateur à l'interface Streamlit n'a pas été testée : seulement les tests applicatifs simulés et les tests SQL des rôles.
