@@ -13,6 +13,15 @@ from modules.dashboards.service import (
     get_kpis_rh, get_kpis_finance
 )
 
+def _current_month_end(today: datetime.date) -> datetime.date:
+    """P&L mensuel : la période par défaut couvre toujours un mois entier.
+
+    Les nets de paie enregistrés sont mensuels et non proratisables.
+    """
+    next_month = (today.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+    return next_month - datetime.timedelta(days=1)
+
+
 def _mark_dashboards_activity() -> None:
     """Signale une selection sans renouveler directement la session."""
     st.session_state["_erp_dashboards_interacted"] = True
@@ -61,7 +70,7 @@ def _show_dashboards_page_impl():
         st.caption("Facturation brute validée hors avoirs et coûts produits actuels, non historiques. OPEX = décaissements validés classés OPEX. Paie = nets enregistrés des mois sélectionnés, tous statuts de paiement, sans cotisations employeur ni preuve de validation. Choisir des mois complets si des fiches existent ; aucun prorata journalier. Ce solde mélange facturation et décaissements : il ne constitue pas un résultat comptable.")
         c_deb_pnl, c_fin_pnl = st.columns(2)
         date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
-        date_fin_pnl = c_fin_pnl.date_input("Date de fin", datetime.date.today(), key="f_pnl", on_change=_mark_dashboards_activity)
+        date_fin_pnl = c_fin_pnl.date_input("Date de fin", _current_month_end(datetime.date.today()), key="f_pnl", on_change=_mark_dashboards_activity)
 
         if date_deb_pnl <= date_fin_pnl:
             ts_deb_pnl, ts_fin_pnl = pd.Timestamp(date_deb_pnl), pd.Timestamp(date_fin_pnl) + pd.Timedelta(days=1, seconds=-1)
