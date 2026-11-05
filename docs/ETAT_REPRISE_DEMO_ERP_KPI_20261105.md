@@ -112,3 +112,12 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - Commits : `ab787d70` (suite créée) et `224419ec` (attente de tranche ajustée).
 - Les résultats CI des nouveaux tests doivent être contrôlés ; aucune validation Streamlit interactive ni nouvelle écriture dans Supabase ne sont attestées.
 - Le rollback SQL des 78 lignes fictives **n'a pas changé**, et ne doit pas être exécuté avant la fin des essais.
+
+## Vérification du 5 novembre — CI, permissions et réversibilité
+
+- Les workflows GitHub du commit `86fe6ce1` ont tous deux terminé en `success` : [suite de tests](https://github.com/Verwolfy/erp-mortier/actions/runs/42076603179) et [audit de réconciliation](https://github.com/Verwolfy/erp-mortier/actions/runs/42076603144).
+- Lecture seule du référentiel `public.permissions` de Supabase principale : **9 entrées, toutes pour `ADMIN`**, couvrant les neuf modules métier dont `Dashboards`, lecture et écriture à `OUI`. **Aucun autre rôle n'a une permission dédiée actuellement**. Le module Streamlit vérifie `has_permission(role, 'Dashboards', 'lecture')` avant de créer les onglets ; les neuf onglets sont enveloppés dans des sections `read_section`, et le rendu global dans `dashboard_read_scope`.
+- La présente vérification ne prouve pas une authentification bout en bout sur l'application Streamlit. Ne pas ajouter d'utilisateurs ou de privilèges de démonstration sans revue de sécurité.
+- Nouveau contrat statique `tests/test_demo_rollback_contract.py` ajouté au commit `7e1c49c3` : les 53 tables du seed doivent correspondre exactement et en ordre inverse aux 53 commandes de suppression, chaque suppression reste bornée aux identifiants de la démo, sans `CASCADE` ni DDL/DML additionnels. Le test ne supprime aucune donnée.
+- Les 78 données fictives demeurent dans Supabase principale. Le script de rollback n'a pas été exécuté. Tests CI de la nouvelle modification à vérifier.
+- Reste à faire : validation visuelle des neuf onglets avec une session Streamlit réellement habilitée, puis éventuel élargissement des scénarios avec **lot séparé et rollback distinct**. Ne pas déclencher de déclaration/export ou relance réelle depuis les documents fictifs.
