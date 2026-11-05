@@ -116,3 +116,19 @@ def test_sim26_verification_is_read_only_and_has_full_identity_coverage():
     assert "received_mp" in sql and "delivered_pf" in sql
     assert "allocated" in sql and "settlement_total" in sql
     assert not re.search(r"(?im)^\s*(DELETE|UPDATE|INSERT|TRUNCATE|ALTER|DROP)\s+", sql)
+
+
+def test_integrated_cycle_audit_is_read_only_and_covers_17_business_invariants():
+    """Le contrôle réexécutable du parcours métier ne doit jamais modifier la base."""
+    sql = (ROOT / "20261105_audit_chaine_17_etapes_SIM26_LECTURE_SEULE.sql").read_text(encoding="utf-8")
+    named = re.findall(r"^\('([a-z_0-9]+)',\s*\(SELECT", sql, flags=re.M)
+    assert len(named) == len(set(named)) == 17
+    assert all(token in named for token in (
+        "achat_100_kg", "reception_100_kg", "recette_10_kg_unite",
+        "of_termine_10_unites", "controle_qualite_conforme",
+        "stock_mp_equilibre", "stock_pf_equilibre", "livraison_10_unites",
+        "facture_client_validee", "paiement_client_valide",
+        "lettrage_facture_integral", "tracabilite_achat_vers_vente"
+    ))
+    assert not re.search(r"(?im)^\s*(DELETE|UPDATE|INSERT|TRUNCATE|ALTER|DROP|CALL|DO)\s+", sql)
+    assert "CASE WHEN ok IS TRUE THEN 'OK' ELSE 'ECART' END" in sql
