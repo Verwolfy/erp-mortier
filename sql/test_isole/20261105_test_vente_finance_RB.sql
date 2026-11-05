@@ -122,7 +122,7 @@ BEGIN
     OR (SELECT montant_paye FROM public.factures WHERE facture_id=v_invoice_id) IS DISTINCT FROM 47.60
     OR (SELECT montant_alloue FROM public.reglements WHERE reglement_id=v_pay_id) IS DISTINCT FROM 47.60
     OR (SELECT count(*) FROM public.lettrage WHERE reglement_id=v_pay_id)<>1
-    OR (SELECT count(*) FROM public.ecritures_comptables WHERE reglement_id=v_pay_id)<>2
+    OR (SELECT count(*) FROM public.ecritures_comptables WHERE document_source_id=v_pay_id)<>2
   THEN RAISE EXCEPTION 'État final vente / règlement / lettrage incorrect'; END IF;
 END
 $test$;
