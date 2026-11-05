@@ -122,6 +122,12 @@ def main() -> int:
     df_clients = get_clients(supabase)
     count = 0
     for _, facture in df_echues.iterrows():
+        # Les scénarios DEMO26 sont des pièces fictives dans la base principale.
+        # Exclusion avant la recherche du contact, le comptage et tout envoi SMTP.
+        facture_id = str(facture.get("facture_id") or "").strip().upper()
+        client_id = str(facture.get("client_id") or "").strip().upper()
+        if facture_id.startswith("DEMO26_") or client_id.startswith("DEMO26_"):
+            continue
         client_info = df_clients[df_clients["client_id"] == facture["client_id"]]
         if client_info.empty:
             continue
