@@ -11,22 +11,28 @@ def _page():
                 and node.name == "show_admin_page")
 
 
-def test_listes_de_choix_ignorees_en_lecture_seule():
+def test_listes_de_choix_chargees_seulement_si_utilisees():
     page = _page()
-    guards = [
-        n for n in page.body if isinstance(n, ast.If)
-        and ast.unparse(n.test) == "can_write"
-        and any(isinstance(child, ast.Assign)
-                and any("get_opts(" in ast.unparse(x) for x in child.value.elts)
-                if isinstance(child.value, ast.Tuple) else
-                "get_opts(" in ast.unparse(child)
-                for child in n.body if isinstance(child, ast.Assign))
-    ]
-    assert len(guards) == 1
-    code = ast.unparse(guards[0])
-    assert 'get_opts("PAYS", PAYS_FALLBACK)' in code
-    assert 'get_opts("HS_CODE", HS_CODE_FALLBACK)' in code
-    assert "pays_opts, wilaya_opts, unite_opts = ([], [], [])" in code
+    source = ast.unparse(page)
+    assert "def _active(*keys):" in source
+    assert "st.session_state.get(key) is True" in source
+    assert "return can_write and any(" in source
+    assert 'get_opts("PAYS", PAYS_FALLBACK)' in source
+    assert 'get_opts("HS_CODE", HS_CODE_FALLBACK)' in source
+    # Les options ne doivent plus être chargées sans condition.
+    assigns = [n for n in page.body if isinstance(n, ast.Assign)]
+    for node in assigns:
+        if any(isinstance(x, ast.Name) and x.id.endswith("_opts")
+               for target in node.targets for x in ast.walk(target)):
+            if "get_opts(" in ast.unparse(node.value):
+                assert isinstance(node.value, ast.IfExp)
+
+
+def test_formulaires_creation_sont_declenches_explicitement():
+    source = ast.unparse(_page())
+    for name in ("client", "fournisseur", "mp", "product", "sku"):
+        assert f"ng_admin_create_{name}" in source
+    assert source.count("if can_write and st.checkbox(") == 5
 
 
 def test_sku_read_only_and_creation_disabled_have_no_catalog_reads():
