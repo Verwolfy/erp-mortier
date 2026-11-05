@@ -75,7 +75,10 @@ def ui(monkeypatch):
     achats.get_lignes_achats.return_value = pd.DataFrame()
     achats.get_lignes_bons_reception.return_value = pd.DataFrame()
 
+    history = types.ModuleType("core.history_filters")
+    history.history_period_inputs = MagicMock(return_value={})
     for key, obj in {
+        "core.history_filters": history,
         "streamlit": st,
         "config": types.ModuleType("config"),
         "config.roles": roles,
