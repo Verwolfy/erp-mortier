@@ -49,7 +49,10 @@ def ui(monkeypatch):
             self.operation_id = operation_id
     stocks.StockOperationError = StockOperationError
 
+    history = types.ModuleType("core.history_filters")
+    history.history_period_inputs = MagicMock(return_value={})
     for key, obj in {
+        "core.history_filters": history,
         "streamlit": st,
         "config": types.ModuleType("config"),
         "config.roles": roles,
