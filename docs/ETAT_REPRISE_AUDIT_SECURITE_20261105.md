@@ -32,3 +32,9 @@
 
 ## État courant
 Audit lecture seule réalisé. Candidat SQL committé sur `main`, **non exécuté** ; aucune modification Supabase, aucune suppression de branche.
+
+## Complément audit index et test (2026-11-05)
+- Nouvelle requête de contrôle en lecture seule : **39 contraintes FK**, dont **24 couvertes** par un index ayant les colonnes FK en préfixe et **15 non couvertes**, exactement les 15 proposées. Vérification via `pg_constraint`, `pg_index` et `pg_attribute` sur la base principale.
+- Statistiques estimées PostgreSQL `pg_stat_user_tables` : les 14 tables ciblées totalisent environ **159 lignes vivantes estimées** (à ne pas confondre avec un `COUNT(*)` exact). Les index restent des choix de performance, pas des réparations fonctionnelles obligatoires.
+- Ajout de `tests/test_fk_indexes_candidate_contract.py` : vérifie la liste blanche de 15 couples table/colonne, les noms d'index distincts, l'absence de SQL hors des `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, et le statut non exécuté. Les tests sur le commit `e5755454` sont en cours lors de la rédaction.
+- Le dernier commit précédemment testé (`2388b728`) avait ses deux workflows GitHub conclus `success` ; aucun index n'a été appliqué à Supabase.
