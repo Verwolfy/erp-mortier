@@ -200,3 +200,24 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - URL documentée : `https://nextgent-erp.streamlit.app/`. Tentative d'ouverture publique par le navigateur externe non concluante ; **aucune authentification ni validation visuelle des neuf onglets n'a été réalisée**.
 - Prochain cycle : confirmer les deux workflows GitHub de `6126aff3` et des éventuels commits documentaires, examiner les erreurs réelles s'il en existe ; vérifier le déploiement depuis la console de l'hébergeur quand elle est autorisée ; tester les neuf onglets avec le rôle `ADMIN` sans créer de nouveaux accès.
 - Conserver les deux lots distincts pour traçabilité. Aucun rollback COMMIT avant la fin des essais.
+
+## Cycle autonome en lots — validation du 5 novembre 2026
+
+### Lot 1 — CI de référence
+- La suite ERP complète du commit `090e9d28` a terminé en **success** : [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/42083120637) et [audit sans modification](https://github.com/Verwolfy/erp-mortier/actions/runs/42083120566).
+- Ce verdict inclut la correction de refus d'export SCF des pièces ou comptes fictifs. Le parcours Streamlit connecté reste une limite indépendante.
+
+### Lot 2 — Contrôle exhaustif des lignes fictives
+- Nouveau SQL lecture seule `sql/demo/20261105_verification_EXACTE_80_lignes_FICTIF.sql`, dérivé des **55 prédicats exacts** de `sql/demo/20261105_rollback_COMPLET_80_lignes_FICTIF.sql` (commit `e1f14b98`).
+- Exécution sur Supabase principale : `CONTROLE_80_LIGNES_OK`, **55 prédicats**, **53 tables**, **80 attendues**, **80 observées**, **0 anomalie**. Il s'agit d'un comptage précis, pas d'une mutation.
+- Test de cohérence versionnée `test_exact_80_line_verification_matches_every_rollback_predicate` ajouté dans `tests/test_demo_rollback_contract.py` (commit `631c744c`) : le contrôle SQL doit rester aligné sur le rollback, et aucune opération d'écriture n'est autorisée dans le SQL de contrôle.
+
+### Lot 3 — Sécurité / réversibilité
+- Protection déjà en code : relances `DEMO26_` ignorées avant SMTP ; exports SCF fictifs refusés ; audit des stocks lecture seule.
+- Les **80 lignes démo** sont toujours en production Supabase ; **aucun retour arrière définitif exécuté**, aucun nouvel utilisateur, aucune correction fiscale ni modification des autorisations.
+- Rollback principal complet : `sql/demo/20261105_rollback_COMPLET_80_lignes_FICTIF.sql`. Un essai transactionnel avec `ROLLBACK` avait été validé précédemment. Ce test ne garantit pas le succès futur si des dépendances utilisateur sont ajoutées entre-temps.
+
+### Lot 4 — Continuité
+- Vérifier les deux GitHub Actions du dernier commit, résoudre tout échec confirmé avant de poursuivre les lots de code.
+- Le navigateur Streamlit authentifié `https://nextgent-erp.streamlit.app/` n'a pas été testé dans cette session ; aucune conclusion de déploiement ou d'affichage des neuf onglets ne peut être tirée de la seule CI.
+- Le jeu de données fictives ne doit servir ni aux relances réelles, ni aux exports officiels, ni aux déclarations. Les montants des KPI simulés ne doivent pas être interprétés comme des montants comptables de l'entreprise.
