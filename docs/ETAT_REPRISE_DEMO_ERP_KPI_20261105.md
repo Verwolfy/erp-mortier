@@ -339,3 +339,24 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 2. Tester dans une session applicative habilitée les réponses métier et l'idempotence des RPC, de préférence sur une base de test dédiée ; ne pas confondre insertions SQL SIM26 et parcours UI.
 3. Garder les scripts d'audit `sql/demo/20261105_audit_9_rpc_transactions_LECTURE_SEULE.sql` et `sql/demo/20261105_audit_chaine_17_etapes_SIM26_LECTURE_SEULE.sql` comme précontrôles sans écriture.
 4. Conserver les 120 lignes fictives jusqu'à la décision de fin d'essais. Ne pas déclencher le rollback COMMIT ou de transactions réelles en autonomie.
+
+## Tests effectifs RPC dans un projet Supabase isolé — 5 novembre 2026
+
+**Résultat : trois lots transactionnels validés avec de vraies RPC PostgreSQL (non simulées).**
+
+- Projet isolé `erp-mortier-test` **`ffuhbmcfyexsbjwhryvj`**, initialement `INACTIVE`, restauré pour les tests ; **remis en pause à la fin** (`pause_project: success`) afin de ne pas laisser du calcul inutilement actif. Pour reprendre les tests, restaurer à nouveau le projet et vérifier qu'il est `ACTIVE_HEALTHY` avant SQL.
+- Trois scripts versionnés `sql/test_isole/20261105_test_achat_reception_RB.sql`, `20261105_test_production_qualite_RB.sql`, `20261105_test_vente_finance_RB.sql`. Chaque script a exécuté `BEGIN`, des insertions de fixtures `IT26_*`, `SET LOCAL ROLE service_role`, de **véritables fonctions RPC** et leurs rejouabilités / refus, puis `ROLLBACK`. Résultats SQL exacts :
+  1. `ACHAT_RECEPTION_TRANSITIONS_IDEMPOTENCE_OK` : commande 10 kg, partiel 4 kg, solde 6 kg, reprises sans double stock, refus conflit d'opération et sur-réception.
+  2. `PRODUCTION_QUALITE_TRANSITIONS_IDEMPOTENCE_OK` : recette et OF créés une seule fois malgré retries, PLANIFIE → EN_COURS → TERMINE avec FIFO MP/emballage et entrée PF, retry conforme et refus contradictoire, plus **branche CQ NON / OF REJETE** également idempotente.
+  3. `VENTE_FACTURATION_PAIEMENT_LETTRAGE_IDEMPOTENCE_OK` : commande + expédition, facture BROUILLON → VALIDE, autre facture BROUILLON → ANNULE, création comptes Banque/tiers, paiement et deux écritures, lettrage TTC **47,60 DZD fictifs** ; refus de double paiement, double validation, double annulation, sur-lettrage.
+- Contrôle de nettoyage hors transactions : **17 familles d'identifiants IT26 et journaux = 0 ligne résiduelle**, `rollback_clean = true`. Droits accordés provisoirement via `GRANT UPDATE` **dans les transactions** revenus à leur état d'origine après ROLLBACK (vérifié notamment pour `produits`, `lignes_recette`, `clients`).
+- Comparaison des droits `service_role` : le projet TEST est plus ancien et **manque UPDATE sur plusieurs référentiels** nécessaires aux `SELECT ... FOR SHARE`, alors que ces droits existent sur PROD. Les tests ont recréé temporairement les droits production **uniquement dans les transactions**, sans alignement permanent de la sécurité TEST. Les tests d'application connectée au projet TEST peuvent encore échouer tant que cette divergence n'est pas traitée via migration contrôlée.
+- Une assertion du test de paiement utilisait initialement `reglement_id` sur `ecritures_comptables` ; la clé réelle est `document_source_id`. **Correction du script de test**, aucun bug de l'application identifié par cette erreur.
+- Nouveau test CI `tests/test_isolated_rpc_smoke_contract.py` : garde-fou statique pour interdire COMMIT, exiger ROLLBACK et contrôler la couverture des étapes et des refus.
+- **PRODUCTION NON MODIFIÉE** : nouveaux contrôles SQL en lecture seule après la campagne confirment `DEMO26` **80/80** et `SIM26` **40/40**, montants et stocks équilibrés, soit 120 lignes fictives conservées. Le rollback de production `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` n'a pas été exécuté.
+
+**Rapport détaillé de référence :** [docs/TESTS_TRANSACTIONNELS_ISOLES_20261105.md](https://github.com/Verwolfy/erp-mortier/blob/main/docs/TESTS_TRANSACTIONNELS_ISOLES_20261105.md).
+
+**Portée exacte :** le test valide des exécutions réelles *séquentielles* SQL en tant que `service_role`, mais ni deux connexions concurrentes ni les sessions authentifiées Streamlit/API, ni l'émission de documents fiscaux ou de paiements externes. Le brouillon facture n'est pas directement relié à la commande client dans la RPC DRAFT actuelle, donc ne pas présenter cette partie comme une chaîne documentaire unifiée sans ce rattachement.
+
+**Suite :** vérifier la dernière CI GitHub, identifier les différences de privilèges TEST vs PROD et les traiter par migration de test uniquement si une campagne API est prévue, puis réaliser les tests de concurrence avec deux sessions sur le projet de test, sans envoyer mails ou factures réelles.
