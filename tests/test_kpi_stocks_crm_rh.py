@@ -1,6 +1,6 @@
 import pandas as pd
 import pytest
-from core.indicateurs_stocks import stock_value, below_threshold, expiry_alerts
+from core.indicateurs_stocks import stock_value, below_threshold, expiry_alerts, threshold_status
 from core.strict_reads import DataReadError
 from modules.dashboards import service
 
@@ -13,11 +13,33 @@ def test_zero_stock_needs_no_cost_and_known_cost_is_used():
     assert stock_value(pd.DataFrame([dict(quantite_disponible=0)]),'cmp_actuel')==0
     assert stock_value(pd.DataFrame([dict(quantite_disponible=2,cmp_actuel=3)]),'cmp_actuel')==6
 
-@pytest.mark.parametrize('refs',[[],[dict(mp_id='other',stock_mini=5)],[dict(mp_id='M',stock_mini=None)],
+@pytest.mark.parametrize('refs',[[],[dict(mp_id='other',stock_mini=5)],
     [dict(mp_id='M',stock_mini=5)]*2])
 def test_missing_or_ambiguous_threshold(refs):
     with pytest.raises(DataReadError):
         below_threshold(pd.DataFrame([dict(mp_id='M',quantite_disponible=1)]),pd.DataFrame(refs))
+
+
+def test_unknown_threshold_is_reported_not_invented_as_zero():
+    stock = pd.DataFrame([dict(mp_id='M',quantite_disponible=1),
+                          dict(mp_id='N',quantite_disponible=3)])
+    refs = pd.DataFrame([dict(mp_id='M',stock_mini=None),
+                         dict(mp_id='N',stock_mini=5)])
+    assert threshold_status(stock, refs) == (1, 1)
+    assert below_threshold(stock, refs) == 1
+
+
+def test_all_unconfigured_thresholds_do_not_hide_kpis():
+    stock = pd.DataFrame([dict(mp_id=f'M{i}',quantite_disponible=1) for i in range(107)])
+    refs = pd.DataFrame([dict(mp_id=f'M{i}',stock_mini=None) for i in range(107)])
+    assert threshold_status(stock, refs) == (0, 107)
+
+
+@pytest.mark.parametrize('value',['bad',-1,float('inf')])
+def test_configured_invalid_threshold_still_rejected(value):
+    with pytest.raises(DataReadError):
+        below_threshold(pd.DataFrame([dict(mp_id='M',quantite_disponible=1)]),
+                        pd.DataFrame([dict(mp_id='M',stock_mini=value)]))
 
 def test_threshold_counts_only_real_below_threshold_rows():
     assert below_threshold(pd.DataFrame([dict(mp_id='M',quantite_disponible=1)]),pd.DataFrame([dict(mp_id='M',stock_mini=2)]))==1
