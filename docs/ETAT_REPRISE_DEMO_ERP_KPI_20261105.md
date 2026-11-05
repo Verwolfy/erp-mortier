@@ -72,3 +72,15 @@ Ces valeurs sont la **contribution du jeu de test** ; le tableau de bord peut af
 - Aucun ajout, retrait ou changement des **78 lignes fictives** dans cette reprise. Le rollback `sql/demo/20261105_rollback_erp_kpi_FICTIF.sql` reste disponible et **non exécuté**.
 - **Limite non résolue :** faute de session Streamlit ERP authentifiée, aucun parcours de rendu visuel réel des 9 onglets n'a été effectué. Les tests automatisés et contrôles SQL ne doivent pas être présentés comme une validation navigateur.
 - Prochaines priorités : vérifier les CI du dernier commit, tester les 9 onglets en session autorisée, repérer les écrans qui exigent plus de scénarios ; enrichir uniquement avec des lots identifiés et un rollback indépendant. Maintenir l'exclusion des identifiants `DEMO26_*` de tout export officiel, relance ou reporting de production.
+
+## Contrôle complémentaire du 5 novembre — intégrité de la démonstration
+
+- GitHub Actions du commit `888b9655` : les deux workflows principaux étaient `success`.
+- Audit en lecture seule des sources KPI : 107 valeurs de coûts/quantités MP et 142 PF initialement signalées comme `NULL` sur les stocks existants ; une vérification affinée établit cependant **0 quantité nulle** et **0 coût nul pour les stocks strictement positifs**, donc pas de justification à inventer des coûts. Les lignes avec stock nul et coût indéterminé demeurent acceptables pour `stock_value`.
+- Le contrôle des dates/états des factures, règlements, commandes, pipeline, RH et OF n'a signalé aucune anomalie ; une date manquante de contrôle qualité hors scénario de test reste à analyser sans la remplir artificiellement.
+- Anomalie réelle du jeu DEMO : facture `DEMO26_FAC1` initialement `montant_paye=0` malgré un lettrage fictif de 3 000 DZD ; `DEMO26_FAC2` initialement `montant_paye=2 000` sans lettrage. Les seules deux lignes **fictives** ont été corrigées en transaction vers 3 000 et 0 respectivement (aucune ligne réelle modifiée).
+- Le seed GitHub `sql/demo/20261105_seed_erp_kpi_FICTIF.sql` et le vérificateur `sql/demo/20261105_verification_erp_kpi_FICTIF.sql` ont été alignés. Résultat du contrôle SQL en production après modification : `CONTROLES_DEMO_OK`.
+- Le montant de la créance fictive dépassant 30 jours est désormais **11 900 DZD**, en remplacement des 9 900 DZD indiqués dans le tableau antérieur du présent document. Les rapports réels mélangent potentiellement ces contributions démo avec d'autres données.
+- Le script de rollback original reste applicable : il supprime ces deux factures par identifiant, indépendamment de `montant_paye`. Il **n'a pas été exécuté**.
+- Le correctif P&L a été publié (`e05169c3`) avec tests (`4908b673`). Les tests de la toute dernière branche principale doivent être confirmés après les commits de documentation/données.
+- Aucune validation visuelle des neuf onglets Streamlit depuis une session connectée n'est attestée.
