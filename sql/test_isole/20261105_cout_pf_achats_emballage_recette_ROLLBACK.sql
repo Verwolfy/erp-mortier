@@ -222,7 +222,13 @@ SELECT 'INDIRECT_COST_OK' AS verdict,
          WHERE sku_id='IT26_PFCOST_SKU')+sum(montant_dzd))/6,4) AS cout_analytique_par_sac_dzd
 FROM pg_temp.it26_pf_indirect_costs;
 
-SELECT 'PF_COST_OK' AS verdict,
+SELECT 'PF_COST_AND_INDIRECT_COST_OK' AS verdict,
        '2 fournisseurs, 3 MP dont emballage, 4 achats, 4 receptions, 1 recette, 2 OF, 6 sacs' AS campagne,
-       'ROLLBACK - fixtures non conservees' AS persistance;
+       round((SELECT quantite_disponible*cout_revient FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU'),4) AS cout_direct_total_dzd,
+       round(sum(montant_dzd),2) AS frais_indirects_fictifs_dzd,
+       round((SELECT quantite_disponible*cout_revient FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU')+sum(montant_dzd),4) AS cout_analytique_total_dzd,
+       round(((SELECT quantite_disponible*cout_revient FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU')+sum(montant_dzd))/6,4) AS cout_analytique_par_sac_dzd,
+       round((SELECT cout_revient FROM public.stock_actuel_pf WHERE sku_id='IT26_PFCOST_SKU'),4) AS cump_stock_officiel_direct_dzd,
+       'ROLLBACK - fixtures non conservees' AS persistance
+FROM pg_temp.it26_pf_indirect_costs;
 ROLLBACK;
