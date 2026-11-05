@@ -1,3 +1,4 @@
+-- EXCLUSIVEMENT erp-mortier-test : ffuhbmcfyexsbjwhryvj.
 -- SESSION B, parallèle à SESSION A, projet TEST uniquement.
 BEGIN;
 SET LOCAL statement_timeout='25000ms';
