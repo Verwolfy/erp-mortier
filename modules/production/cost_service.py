@@ -8,7 +8,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
-from core.db_service import check_server_permission
+from core.db_service import check_server_permission, check_server_read_permission
 from modules.stocks.service import _stock_rpc_client
 
 BASES = ("UNITS", "KG", "HOURS_LABOR", "HOURS_MACHINE", "KWH", "DIRECT_COST")
@@ -42,17 +42,26 @@ def _client():
     return _stock_rpc_client()
 
 
+def _read_allowed() -> None:
+    if (check_server_read_permission("ordres_fabrication") is not True
+            or check_server_read_permission("comptes") is not True):
+        raise PermissionError("Lecture analytique réservée aux accès Production et Finance")
+
+
 def list_periods() -> list[dict]:
+    _read_allowed()
     response = _client().table("erp_cost_periods").select("period_id,libelle,date_debut,date_fin,statut").order("date_debut", desc=True).limit(100).execute()
     return response.data or []
 
 
 def list_natures() -> list[dict]:
+    _read_allowed()
     response = _client().table("erp_cost_natures").select("nature_code,libelle,actif").eq("actif", True).order("nature_code").execute()
     return response.data or []
 
 
 def get_period_report(period_id: str) -> dict:
+    _read_allowed()
     key = _ident(period_id)
     client = _client()
     pools = client.table("erp_cost_pools").select("pool_id,nature_code,base_imputation,montant_dzd,justificatif,statut").eq("period_id", key).limit(500).execute().data or []
@@ -120,3 +129,13 @@ def set_driver(period_id: str, of_id: str, base: str, value: object, reference: 
         "base_imputation": base, "valeur": _amount(value, "Assiette"),
         "justificatif": reference.strip(),
     }, on_conflict="period_id,of_id,base_imputation").execute()
+
+def validate_period(period_id: str) -> dict:
+    """Valide une période seulement lorsque toutes les charges sont imputables."""
+    _editable(period_id)
+    response = _client().rpc("erp_cost_validate_period",
+                             {"p_period_id": _ident(period_id)}).execute()
+    result = response.data
+    if not isinstance(result, dict) or result.get("audit_ok") is not True:
+        raise RuntimeError("Validation analytique non confirmée")
+    return result
