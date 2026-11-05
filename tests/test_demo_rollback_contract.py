@@ -81,3 +81,38 @@ def test_exact_80_line_verification_matches_every_rollback_predicate():
     assert "total_present = 80" in source
     assert "anomalies = 0" in source
     assert not re.search(r"(?im)^\s*(DELETE|UPDATE|INSERT|TRUNCATE|ALTER|DROP)\s+", source)
+
+
+def test_new_integrated_cycle_has_exact_40_reversible_rows():
+    seed = (ROOT / "20261105_seed_cycle_complet_SIM26_FICTIF.sql").read_text(encoding="utf-8")
+    undo = (ROOT / "20261105_rollback_cycle_complet_SIM26_FICTIF.sql").read_text(encoding="utf-8")
+    insertions = INSERT.findall(seed)
+    removals = DELETE.findall(undo)
+    assert len(insertions) == len(removals) == 40
+    assert len(set(insertions)) == 37
+    assert [table for table, _ in removals] == list(reversed(insertions))
+    assert seed.count("BEGIN;") == seed.count("COMMIT;") == 1
+    assert undo.count("BEGIN;") == undo.count("COMMIT;") == 1
+    assert all("SIM26_" in condition for _, condition in removals)
+
+
+def test_full_120_rollback_concatenates_both_in_dependency_order():
+    undo40 = (ROOT / "20261105_rollback_cycle_complet_SIM26_FICTIF.sql").read_text(encoding="utf-8")
+    undo80 = (ROOT / "20261105_rollback_COMPLET_80_lignes_FICTIF.sql").read_text(encoding="utf-8")
+    undo120 = (ROOT / "20261105_rollback_TOTAL_120_lignes_FICTIVES.sql").read_text(encoding="utf-8")
+    assert len(DELETE.findall(undo120)) == 95
+    assert DELETE.findall(undo120) == DELETE.findall(undo40) + DELETE.findall(undo80)
+    assert undo120.count("BEGIN;") == undo120.count("COMMIT;") == 1
+    assert not any(line.strip().startswith(("ALTER", "TRUNCATE", "DROP"))
+                   for line in undo120.splitlines())
+
+
+def test_sim26_verification_is_read_only_and_has_full_identity_coverage():
+    sql = (ROOT / "20261105_verification_cycle_complet_SIM26_FICTIF.sql").read_text(encoding="utf-8")
+    undo = (ROOT / "20261105_rollback_cycle_complet_SIM26_FICTIF.sql").read_text(encoding="utf-8")
+    for table, condition in DELETE.findall(undo):
+        assert f"FROM public.{table} WHERE {condition}" in sql
+    assert sql.count(" AS n") == 40
+    assert "received_mp" in sql and "delivered_pf" in sql
+    assert "allocated" in sql and "settlement_total" in sql
+    assert not re.search(r"(?im)^\s*(DELETE|UPDATE|INSERT|TRUNCATE|ALTER|DROP)\s+", sql)
