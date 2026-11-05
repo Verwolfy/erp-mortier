@@ -29,7 +29,7 @@ from core.utils import get_local_now
 from core.indicateurs_factures import (validated_documents, in_period, client_invoices,
                                       open_receivables, ageing_balance, numeric_values, dates)
 from core.strict_reads import DataReadError
-from core.indicateurs_stocks import stock_value, below_threshold, expiry_alerts
+from core.indicateurs_stocks import stock_value, below_threshold, expiry_alerts, threshold_status
 from core.indicateurs_tresorerie import validated_payments, cash_balances
 from core.indicateurs_charges import payroll_net_for_period, supplier_operating_payments
 
@@ -62,9 +62,11 @@ def get_kpis_direction() -> dict:
     # 3. Alertes Stock (Matières Premières sous seuil)
     df_stock_mp = charger_donnees("stock_actuel")
     df_ref_mp = charger_donnees("matieres_premieres")
-    alertes_stock = below_threshold(df_stock_mp, df_ref_mp)
+    alertes_stock, seuils_absents = threshold_status(df_stock_mp, df_ref_mp)
 
-    return {"ca_mois": ca_mois, "tresorerie": treso_dispo, "impayes_30j": impayes_30j, "alertes_stock": alertes_stock}
+    return {"ca_mois": ca_mois, "tresorerie": treso_dispo,
+            "impayes_30j": impayes_30j, "alertes_stock": alertes_stock,
+            "seuils_stock_absents": seuils_absents}
 
 def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     """Calcule le Compte de Résultat (P&L) de manière optimisée."""
@@ -190,10 +192,11 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
 
     valeur_mp = stock_value(df_stock_mp, "cmp_actuel")
     valeur_pf = stock_value(df_stock_pf, "cout_revient")
-    sous_seuil = below_threshold(df_stock_mp, df_ref_mp)
+    sous_seuil, seuils_absents = threshold_status(df_stock_mp, df_ref_mp)
     lots_expirants, lots_sans_date = expiry_alerts(df_lots, get_local_now(), jours_alerte_peremption)
     return {"valeur_mp": valeur_mp, "valeur_pf": valeur_pf,
             "valeur_totale": valeur_mp + valeur_pf, "sous_seuil": sous_seuil,
+            "seuils_stock_absents": seuils_absents,
             "lots_expirants": lots_expirants, "lots_sans_date": lots_sans_date}
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
