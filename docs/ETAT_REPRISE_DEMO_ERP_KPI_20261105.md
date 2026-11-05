@@ -374,3 +374,13 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - **Limites** : pas encore de test concurrent sur les réceptions achats, les sorties FIFO et les clôtures d'OF, ni d'essai d'authentification Streamlit/API externe. La protection de doublon est validée pour la création de commande et pour la référence bancaire sur la base TEST ; cela ne prouve pas l'ensemble des parcours utilisateurs.
 
 **Suite recommandée** : vérifier et réparer la CI, tester les réceptions concurrentes et les clôtures d'OF dans TEST, vérifier les accès via l'API applicative sans exposer `service_role`. Maintenir le jeu DEMO26/SIM26 en production et conserver son rollback ciblé non exécuté.
+
+## Deux nouvelles campagnes de concurrence réelle réussies — 5 novembre 2026
+
+- Projet isolé TEST `ffuhbmcfyexsbjwhryvj`, réactivé après un démarrage lent. Aucune écriture sur PRODUCTION `wenydirqtmkywbxbxfal`.
+- **Réception concurrente :** commande 10 kg ; deux sessions indépendantes reçoivent chacune 7 kg. Une session réussit, l'autre refuse en **23514**. Audit SQL : **1 réception, 7 kg reçus, stock 7 kg, 1 journal**, statut `PARTIELLEMENT_RECEPTIONNE`. Nettoyage SQL ciblé **COMMIT sur TEST** et audit zéro résidu.
+- **Double clôture OF :** deux sessions PostgreSQL sur `OF-0002` ont renvoyé les mêmes informations `TERMINE`, 2 unités, coût fictif 12 DZD ; **1 seule clôture, 1 seul CQ, 2 lignes de consommation**, MP restante 8 kg, emballages 3, PF 2. Une clôture avec paramètres contradictoires a été refusée en **23505**. Nettoyage SQL ciblé terminé ; **0 résidu** des fixtures vérifiées.
+- Contrôles PROD en lecture seule après les deux scénarios : **80/80 DEMO26, 40/40 SIM26, stocks et lettrage fictifs cohérents**. Le rollback des 120 lignes fictives PROD n'a pas été exécuté.
+- Nouveaux scripts `sql/test_isole/20261105_concurrence_reception_*.sql` et `sql/test_isole/20261105_concurrence_of_*.sql`; tests gardiens `tests/test_isolated_receipt_concurrency_contract.py` et `tests/test_isolated_of_concurrency_contract.py`. Rapport complet : [docs/TESTS_CONCURRENCE_RECEPTION_OF_20261105.md](https://github.com/Verwolfy/erp-mortier/blob/main/docs/TESTS_CONCURRENCE_RECEPTION_OF_20261105.md).
+- FIFO antérieur `FIFO_TEST_OK` sur deux lots validé avec ROLLBACK, **pas encore de deux sorties FIFO concurrentes**. Autres limites : appels API/Streamlit authentifiés, double lettrage, timeout réseau réel.
+- **À reprendre :** valider CI dernière révision, confirmer mise en pause TEST, puis préparer essais authentifiés sur TEST avec permissions et nettoyage.
