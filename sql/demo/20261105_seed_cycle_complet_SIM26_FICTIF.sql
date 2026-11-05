@@ -13,7 +13,7 @@ INSERT INTO public.matieres_premieres (mp_id,nom,categorie_mp,unite_stock,cmp_ac
 INSERT INTO public.produits (pf_id,nom,categorie_pf,unite_production,actif) VALUES ('SIM26_PF','[FICTIF] Produit fini simulé','Mortier','kg','OUI');
 INSERT INTO public.sku_conditionnement (sku_id,pf_id,format,poids_net,unite_vente,facteur_conversion,prix_vente_defaut,actif) VALUES ('SIM26_SKU','SIM26_PF','[FICTIF] Sac de simulation',10,'SAC',10,200,'OUI');
 INSERT INTO public.comptes (compte_id,nom_compte,type_compte,solde_initial,statut) VALUES ('SIM26_BANK','[FICTIF] Compte cycle intégré','Banque',0,'ACTIF');
-INSERT INTO public.commandes_achats (commande_achat_id,date_commande,fournisseur_id,type_achat,devise,taux_change,montant_total_devise,montant_total_local,date_voulue,statut) VALUES ('SIM26_PO','2026-10-13','SIM26_FOU','MP','DZD',1,1000,1000,'2026-10-15','RECEPTIONNEE');
+INSERT INTO public.commandes_achats (commande_achat_id,date_commande,fournisseur_id,type_achat,devise,taux_change,montant_total_devise,montant_total_local,date_voulue,statut) VALUES ('SIM26_PO','2026-10-13','SIM26_FOU','MP','DZD',1,1000,1000,'2026-10-15','RECEPTIONNE');
 INSERT INTO public.lignes_achats (ligne_achat_id,commande_achat_id,mp_id,unite_cond,qte_cond,qte_totale,prix_unitaire,total_devise) VALUES ('SIM26_POL','SIM26_PO','SIM26_MP','kg',100,100,10,1000);
 INSERT INTO public.bons_reception (bon_reception_id,commande_achat_id,date_reception,controle_conformite,remarques) VALUES ('SIM26_GR','SIM26_PO','2026-10-15','OUI','[FICTIF] Réception simulée 100 kg');
 INSERT INTO public.lots (lot_id,item_id,type_item,date_creation,date_peremption,quantite_initiale,quantite_restante,statut) VALUES ('SIM26_LOT_MP','SIM26_MP','MP','2026-10-15','2027-10-15',100,0,'EPUISE');
@@ -31,9 +31,9 @@ INSERT INTO public.stock_actuel_pf (sku_id,quantite_disponible,cout_revient,dern
 INSERT INTO public.mouvements_pf (mouvement_pf_id,date,type_mouvement,sku_id,quantite,reference,lot_id,cout_unitaire) VALUES ('SIM26_PF_IN','2026-10-18','ENTREE','SIM26_SKU',10,'SIM26_OF','SIM26_LOT_PF',100);
 INSERT INTO public.devis (devis_id,client_id,date,validite,statut) VALUES ('SIM26_DEV','SIM26_CLI','2026-10-19','2026-10-31','ACCEPTE');
 INSERT INTO public.lignes_devis (ligne_devis_id,devis_id,sku_id,quantite,prix_unitaire,remise_pct) VALUES ('SIM26_DEVL','SIM26_DEV','SIM26_SKU',10,200,0);
-INSERT INTO public.commandes_ventes (commande_vente_id,devis_id,client_id,date,statut) VALUES ('SIM26_SO','SIM26_DEV','SIM26_CLI','2026-10-20','LIVREE');
+INSERT INTO public.commandes_ventes (commande_vente_id,devis_id,client_id,date,statut) VALUES ('SIM26_SO','SIM26_DEV','SIM26_CLI','2026-10-20','TERMINE');
 INSERT INTO public.lignes_commande_ventes (ligne_commande_vente_id,commande_vente_id,sku_id,quantite,prix_unitaire) VALUES ('SIM26_SOL','SIM26_SO','SIM26_SKU',10,200);
-INSERT INTO public.bons_livraison (bl_id,commande_vente_id,date,transporteur,zone,statut) VALUES ('SIM26_DN','SIM26_SO','2026-10-22','[FICTIF] Logistique','SIMULATION','LIVRE');
+INSERT INTO public.bons_livraison (bl_id,commande_vente_id,date,transporteur,zone,statut) VALUES ('SIM26_DN','SIM26_SO','2026-10-22','[FICTIF] Logistique','SIMULATION','EXPEDIE');
 INSERT INTO public.lignes_bons_livraison (ligne_bl_id,bl_id,sku_id,quantite_livree,lot_id) VALUES ('SIM26_DNL','SIM26_DN','SIM26_SKU',10,'SIM26_LOT_PF');
 INSERT INTO public.mouvements_pf (mouvement_pf_id,date,type_mouvement,sku_id,quantite,reference,lot_id,cout_unitaire) VALUES ('SIM26_PF_OUT','2026-10-22','SORTIE','SIM26_SKU',10,'SIM26_DN','SIM26_LOT_PF',100);
 INSERT INTO public.factures (facture_id,commande_vente_id,client_id,date,montant_ht,taux_tva,montant_tva,montant_ttc,montant_paye,statut,date_echeance,montant_timbre,type_facture,remise_globale) VALUES ('SIM26_INV','SIM26_SO','SIM26_CLI','2026-10-23',2000,0.19,380,2380,2380,'VALIDE','2026-11-15',0,'FactureClient',0);
