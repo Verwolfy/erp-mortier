@@ -5,8 +5,8 @@ import pandas as pd
 import streamlit as st
 
 from modules.production.cost_service import (
-    BASES, add_pool, create_period, get_period_report, list_natures,
-    list_periods, set_driver, validate_period,
+    BASES, add_pool, create_period, create_nature, document_pool,
+    get_period_report, list_natures, list_periods, set_driver, validate_period,
 )
 
 
@@ -39,7 +39,9 @@ def show_cost_reference(can_write: bool) -> None:
             st.dataframe(pd.DataFrame(report["pools"]), use_container_width=True, hide_index=True)
             st.write("Clés et mesures par OF")
             st.dataframe(pd.DataFrame(report["drivers"]), use_container_width=True, hide_index=True)
-            st.write("Imputation calculée par OF — aucune écriture comptable")
+            st.write("Synthèse des coûts analytiques par OF")
+            st.dataframe(pd.DataFrame(report["summaries"]), use_container_width=True, hide_index=True)
+            st.write("Détail des imputations calculées — aucune écriture comptable")
             st.dataframe(pd.DataFrame(report["allocations"]), use_container_width=True, hide_index=True)
         except Exception:
             st.error("Calcul analytique non disponible : contrôler le référentiel de la période.")
@@ -77,6 +79,27 @@ def show_cost_reference(can_write: bool) -> None:
                 st.json(result)
             except Exception:
                 st.error("Validation refusée : corriger les assiettes et exécuter l'audit.")
+    with st.expander("Créer une nature de charge"):
+        with st.form("cost_new_nature"):
+            nature_code = st.text_input("Code nature (MAJUSCULES)")
+            nature_label = st.text_input("Libellé de la nature")
+            nature_desc = st.text_area("Description / périmètre")
+            if st.form_submit_button("Créer la nature"):
+                try:
+                    create_nature(nature_code, nature_label, nature_desc)
+                    st.success("Nature créée, sans montant automatique.")
+                except Exception:
+                    st.error("Nature refusée : code déjà utilisé, données invalides ou habilitation insuffisante.")
+    with st.expander("Associer une pièce justificative à une charge"):
+        with st.form("cost_document_pool"):
+            pool_ref = st.text_input("Identifiant du pool analytique")
+            real_document = st.text_input("Référence de la pièce réelle ou piste documentaire")
+            if st.form_submit_button("Documenter la charge"):
+                try:
+                    document_pool(period_id, pool_ref, real_document)
+                    st.success("Charge marquée DOCUMENTE. Vérifier l'audit avant validation.")
+                except Exception:
+                    st.error("Documentation refusée : période, droits ou pièce justificative incorrects.")
     with st.expander("Ajouter une charge de période"):
         with st.form("cost_add_pool"):
             nature = st.selectbox("Nature de charge", [x["nature_code"] for x in natures],
