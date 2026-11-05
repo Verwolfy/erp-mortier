@@ -278,3 +278,29 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - Cette capture confirme que la protection contre les seuils `NULL` fonctionne sur le déploiement visualisé. Elle ne constitue pas un test des 8 autres onglets ni une certification de données comptables réelles (la démonstration `DEMO26_` / `SIM26_` est encore en production).
 - Défaut de mise en page restant identifié : la valeur de trésorerie apparaît tronquée à cause de quatre colonnes égales. Correctif léger appliqué au code `modules/dashboards/views.py` : proportions `[1.05, 1.50, 1.25, 0.60]` pour affecter davantage d'espace aux montants. **Le rendu réel après ce second correctif reste à reconfirmer**, et la CI GitHub est à inspecter.
 - Aucune modification SQL ni des comptes, des stocks, des 120 lignes fictives, des permissions ou des règles fiscales dans cette étape.
+
+## Validation visuelle des huit autres tableaux de bord — 5 novembre 2026
+
+**Preuve utilisateur :** huit captures de Streamlit connecté de `Rentabilité (P&L)`, `Ventes & Facturation`, `Achats`, `Stocks`, `Production`, `CRM`, `RH`, `Finance`. **8/8 écrans affichés sans message d'échec de lecture**, en complément de la capture antérieure du neuvième écran `Vue Direction`. Ceci prouve le rendu des pages consultées pour les plages de dates affichées, pas une validation des actions d'écriture et des transitions métier.
+
+### Croisement SQL lecture seule avec les valeurs affichées
+- P&L novembre : 16 000 DZD facturation HT, coût marchandises 10 000, marge brute 6 000, paiements fournisseurs OPEX 5 000, paie enregistrée 50 000, solde de gestion `-49 000 DZD`. **Indicateur de simulation, non compte de résultat fiscal.**
+- Ventes 1–5 novembre : une facture client validée à **16 000 HT / 19 040 TTC**, panier TTC 19 040 ; le graphique de créances inclut des créances globales hors période.
+- Achats 1–5 novembre : **80 000,03 DZD**, dont **80 000** pour `DEMO26_CA1` et **0,03** pour la commande préexistante `CMA-0001` ; **1 commande en retard**. Les 0,03 DZD ne sont pas un bug d'addition ni une autorisation de corriger les montants tiers.
+- Stocks : **341 640,03 DZD = 71 640,03 MP + 270 000 PF**. La composante MP 0,03 DZD correspond au stock `SIM-AUD-MP-001` de 0,003 kg à 10 DZD/kg, distinct des lots DEMO26/SIM26. **4 alertes MP configurées** ; **107 seuils MP absents** ; **2 lots avec stock sans date** ; **1 lot avec péremption dans la fenêtre de 30 jours**. Ne pas inventer des seuils ni altérer les lots tiers.
+- Production 1–5 novembre : **2 OF, 1 contrôle de qualité rejeté sur 1**, d'où 100 % dans la cohorte visible. Cela ne signifie pas 100 % des OF rejetés.
+- CRM : **300 000 DZD** pipeline pondéré global ouvert et **50 %** conversion de la cohorte novembre.
+- RH : **10 employés actifs, 4 congés en attente** : correspondance exacte avec les comptages SQL de production, distincts des seuls identifiants DEMO26.
+- Finance 1–5 novembre : **3 000 DZD entrants / 5 000 DZD sortants**, 100 % du montant encaissé affecté ; tableau des comptes depuis le solde initial et les règlements validés. Les montants ne sont pas un rapprochement bancaire officiel.
+
+### Correctifs d'ergonomie réalisés
+- Les captures montrent des étiquettes de catégorie verticales, peu lisibles, particulièrement en `Finance` (comptes bancaires), `Achats` (fournisseurs) et `RH` (services).
+- `modules/dashboards/views.py` : les graphiques catégoriels **Balance âgée, Concentration fournisseurs, Répartition RH et Soldes Banque/Caisse** sont désormais configurés `horizontal=True` via `st.bar_chart`. L'API Streamlit supporte ce paramètre depuis des versions antérieures à la dépendance minimum `streamlit>=1.38.0`.
+- Test AST `tests/test_dashboard_view_rbac_contract.py` ajouté pour empêcher la régression vers des étiquettes verticales dans ces quatre graphiques. Le rendu Streamlit après déploiement de cette optimisation reste à reconfirmer.
+- **Aucune modification Supabase, des 120 données fictives, des montants comptables, des références fiscales ou des permissions**. Les anomalies de 0,03 DZD sont expliquées par des lignes distinctes déjà présentes et ne doivent pas être supprimées sans mandat.
+
+### Continuité
+1. Vérifier les workflows GitHub du dernier commit : tests ERP et audit, corriger les erreurs éventuelles.
+2. Après déploiement Streamlit, confirmer que les quatre graphiques ont des libellés horizontaux et restent lisibles.
+3. Enregistrer toute anomalie des opérations réelles (achats, fabrication, ventes) indépendamment de la preuve de lecture des tableaux de bord.
+4. Conserver les 120 lignes de démonstration et `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` jusqu'à la fin de la campagne de tests.
