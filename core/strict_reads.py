@@ -94,7 +94,8 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
 
 
 def fetch_history_page_strict(table_name, *, page=1, page_size=50,
-                              max_total=100000, date_column=None):
+                              max_total=100000, date_column=None,
+                              start_date=None, end_date=None):
     """Charge uniquement une page historique et annonce son total exact.
 
     Tri par date décroissante puis clé technique décroissante si demandé.\n    Sans date explicitement choisie : clé technique décroissante.\n    Pas un snapshot SQL :
@@ -113,6 +114,17 @@ def fetch_history_page_strict(table_name, *, page=1, page_size=50,
     if date_column is not None and (not isinstance(date_column, str) or
                                     date_column not in columns or date_column == key):
         raise ValueError("Colonne chronologique non autorisée")
+    if start_date is not None or end_date is not None:
+        if date_column is None or not isinstance(start_date, str) or not isinstance(end_date, str):
+            raise ValueError("Dates et colonne métier obligatoires")
+        try:
+            if (date.fromisoformat(start_date).isoformat() != start_date or
+                    date.fromisoformat(end_date).isoformat() != end_date):
+                raise ValueError("Dates ISO requises")
+        except ValueError:
+            raise ValueError("Dates ISO requises") from None
+        if start_date > end_date:
+            raise ValueError("Période historique inversée")
     start = (page - 1) * page_size
     if start >= max_total:
         raise ValueError("Page hors de la limite autorisée")
@@ -120,6 +132,9 @@ def fetch_history_page_strict(table_name, *, page=1, page_size=50,
         db._require_read_permission(table_name)
         query = db.get_supabase_client().table(table_name).select(
             db._read_projection(table_name), count="exact")
+        if start_date is not None:
+            # Ces filtres s'appliquent AVANT la pagination et au total exact.
+            query = query.gte(date_column, start_date).lte(date_column, end_date)
         if date_column is not None:
             query = query.order(date_column, desc=True, nullsfirst=False)
         response = (query.order(key, desc=True)
