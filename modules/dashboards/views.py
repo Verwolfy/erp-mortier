@@ -62,6 +62,8 @@ def _show_dashboards_page_impl():
         col2.metric("Trésorerie indicative", f"{kpis['tresorerie']:,.2f} DZD")
         col3.metric("Impayés (> 30 jours)", f"{kpis['impayes_30j']:,.2f} DZD", delta="À recouvrer", delta_color="inverse")
         col4.metric("Alertes Stock", str(kpis['alertes_stock']), delta="Critique" if kpis['alertes_stock'] > 0 else "Normal", delta_color="inverse")
+        if kpis.get("seuils_stock_absents", 0):
+            st.warning(f"{kpis['seuils_stock_absents']} matière(s) en stock sans seuil minimum configuré : ces références ne peuvent pas être évaluées pour les alertes.")
         st.divider()
 
     # --- 2. RENTABILITÉ (P&L) ---
@@ -158,6 +160,8 @@ def _show_dashboards_page_impl():
 
         if kpis_s.get("lots_sans_date", 0):
             st.warning(f"{kpis_s['lots_sans_date']} lot(s) avec stock sans date de péremption : risque non évalué.")
+        if kpis_s.get("seuils_stock_absents", 0):
+            st.warning(f"{kpis_s['seuils_stock_absents']} matière(s) en stock sans seuil minimum : alerte de rupture non évaluable pour ces références.")
         cs1, cs2, cs3 = st.columns(3)
         cs1.metric("Valeur Totale Immobilisée", f"{kpis_s['valeur_totale']:,.2f} DZD")
         cs2.metric("Mat. Premières (Sous seuil)", str(kpis_s['sous_seuil']), delta="Rupture imminente" if kpis_s['sous_seuil']>0 else "OK", delta_color="inverse")
