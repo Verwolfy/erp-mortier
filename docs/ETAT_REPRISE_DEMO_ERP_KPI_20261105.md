@@ -221,3 +221,27 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - Vérifier les deux GitHub Actions du dernier commit, résoudre tout échec confirmé avant de poursuivre les lots de code.
 - Le navigateur Streamlit authentifié `https://nextgent-erp.streamlit.app/` n'a pas été testé dans cette session ; aucune conclusion de déploiement ou d'affichage des neuf onglets ne peut être tirée de la seule CI.
 - Le jeu de données fictives ne doit servir ni aux relances réelles, ni aux exports officiels, ni aux déclarations. Les montants des KPI simulés ne doivent pas être interprétés comme des montants comptables de l'entreprise.
+
+## Cycle intégré additionnel SIM26 — achats → production → qualité → ventes → encaissement
+
+**Décision utilisateur du 5 novembre 2026 :** alimenter rapidement les tables métier avec un scénario fictif réellement lié de bout en bout, exécuter en lots et poursuivre sans demander des approbations pour les tâches non critiques.
+
+### État réellement appliqué sur Supabase principale
+- **40 nouvelles lignes `SIM26_*` réparties sur 37 tables**, insérées avec `COMMIT` après prévalidation SQL transactionnelle avec `ROLLBACK`. Les **80 lignes `DEMO26_*`** existantes sont restées inchangées. Total **120 enregistrements fictifs** identifiés par les scripts, répartis sur les **53 tables métier** déjà couvertes par le jeu initial ; pas de remplissage de `auth`, `storage`, ni des référentiels de sécurité ou de réglementation.
+- Cycle factuel relié : fournisseur et client fictifs ; 100 kg de matière première achetés et réceptionnés à 10 DZD/kg ; recette `SIM26_REC` 10 kg/unité ; OF `SIM26_OF` 10 unités ; qualité `SIM26_QC` conforme `OUI` ; SKU produit et lot ; devis et commande ; BL de 10 unités ; facture `SIM26_INV` 2 000 HT et 2 380 TTC **strictement illustratifs** ; règlement `SIM26_PAY` 2 380 ; lettrage `SIM26_MATCH` 2 380 ; facture fournisseur en brouillon, CRM, projet, tâche, feuille de temps.
+- Flux MP +100/-100 = **0**, flux PF +10/-10 = **0** ; les nouveaux stocks MP/PF sont à 0 après le cycle, aucun stock des scénarios existants changé.
+- **Deux vérifications de lecture seule après insertion et après essai de rollback :** `CONTROLE_80_LIGNES_OK` (55 contrôles, 53 tables, 80/80, 0 anomalie), et `SIM26` (40/40, 37 tables, 0 erreur d'identifiant, quantités cohérentes, qualité OUI et règlement/lettrage 2 380).
+- **Rollback combiné de 120 lignes** `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` : **95 commandes DELETE** en transaction unique, avec retrait SIM26 avant DEMO26 (la feuille de temps SIM26 référence l'employé DEMO26). Exécuté à blanc en remplaçant le COMMIT final par un SELECT + ROLLBACK. Suppressions temporaires vérifiées ; le rollback **définitif n'a pas été exécuté**.
+
+### Sources et commandes opérationnelles
+- [Scénario complet](https://github.com/Verwolfy/erp-mortier/blob/main/docs/SCENARIO_SIM26_CYCLE_ACHAT_PRODUCTION_VENTE_20261105.md).
+- Insertions : `sql/demo/20261105_seed_cycle_complet_SIM26_FICTIF.sql` (**déjà exécuté** ; ne pas rejouer sans retrait préalable).
+- Vérification lecture seule : `sql/demo/20261105_verification_cycle_complet_SIM26_FICTIF.sql` ; ancien lot `sql/demo/20261105_verification_EXACTE_80_lignes_FICTIF.sql`.
+- Rollback autonome `sql/demo/20261105_rollback_cycle_complet_SIM26_FICTIF.sql` ; rollback global `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` (**non exécutés définitivement**).
+- Les documents historiques de démonstration portent des dates du **13 au 25 octobre 2026** ; sélectionner le mois d'**octobre 2026** pour les retrouver dans les listes filtrées par période. Les chiffres réglementaires sont exclusivement des valeurs de simulation, **non des taux fiscaux vérifiés à date**.
+
+### Sécurité, CI et prochaines actions
+- Ajout du préfixe `SIM26_` à l'exclusion des **relances SMTP** (script `scripts/envoyer_relances.py`) et des **exports SCF** (`core/export_scf.py`). Les cas correspondants ont des tests de régression locaux sans connexion SMTP, DB ou validation fiscale.
+- Tests automatisés de correspondance exactes du seed SIM26 (40 INSERT), rollback SIM26 (40 DELETE), et rollback global (95 DELETE), plus lectures de vérification ; inspecter et réparer les éventuels échecs CI.
+- Ne jamais déduire de la seule CI que l'interface Streamlit sur `https://nextgent-erp.streamlit.app/` a été redéployée ou que ses transitions transactionnelles ont été exécutées : **les lignes ont été insérées par SQL pour simuler le résultat**, pas par les boutons des écrans. L'utilisateur veut pouvoir les visualiser et tester les parcours.
+- **Próchaine action :** vérifier les deux workflows du commit le plus récent, corriger tout test échoué, ensuite faire le contrôle visuel authentifié si une session est disponible. Ne pas ajouter des utilisateurs réels, des permissions, des règles fiscales ou des messages externes pour étendre la démonstration.
