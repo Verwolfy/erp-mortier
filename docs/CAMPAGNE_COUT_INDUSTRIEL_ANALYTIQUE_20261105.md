@@ -34,7 +34,27 @@ Les frais d'approche sont traités dans l'**analyse seulement** ; leur intégrat
 
 Un scénario de sensibilité de rebut augmente artificiellement le coût associé à une unité consommée non conforme, sans toucher à la vraie quantité de PF en stock ni affirmer qu'il s'agit de la méthode réglementaire retenue.
 
-## Validation nécessaire
+
+## Résultat réel SQL : VALIDÉ
+- Exécution intégrale sur TEST après restauration, fixtures initiales absentes.
+- Verdict final : `PF_COST_AND_INDIRECT_COST_OK`.
+- Réponse SQL :
+```json
+{
+  "cout_direct_total_dzd":"470.6573",
+  "frais_indirects_fictifs_dzd":"160.00",
+  "cout_analytique_total_dzd":"630.6573",
+  "cout_analytique_par_sac_dzd":"105.1095",
+  "cump_stock_officiel_direct_dzd":"78.4429",
+  "persistance":"ROLLBACK - fixtures non conservees"
+}
+```
+- Contrôle SQL indépendant **après ROLLBACK** : 0 fournisseur, 0 matière, 0 produit, 0 commande, 0 réception, 0 opération achat, 0 opération production, 0 stock MP/PF, 0 lot fictif.
+- Aucun changement de production ni des fonctions SQL métier.
+- Le modèle de rebut est une **sensibilité fictive** (assertion que le coût augmente) et non une écriture physique, comptable ou réglementaire.
+- La CI du commit le plus récent demeure à vérifier.
+
+## Validation nécessaire (historique du protocole)
 - Vérifier `SELECT 1` sur TEST.
 - Exécuter le script SQL complet, vérifier sorties `PF_COST_OK` **et** `INDIRECT_COST_OK`, et le montant total attendu de 630,66 DZD, 105,1095 DZD/sac.
 - Confirmer que le CUMP en stock **reste direct** : environ 78,4429 DZD/sac et non 105,1095.
