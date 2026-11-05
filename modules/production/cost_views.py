@@ -6,7 +6,7 @@ import streamlit as st
 
 from modules.production.cost_service import (
     BASES, add_pool, create_period, get_period_report, list_natures,
-    list_periods, set_driver,
+    list_periods, set_driver, validate_period,
 )
 
 
@@ -65,6 +65,18 @@ def show_cost_reference(can_write: bool) -> None:
         return
     period_id = st.selectbox("Période brouillon à compléter",
                              [p["period_id"] for p in editable], key="cost_period_edit")
+    with st.expander("Valider et figer la période"):
+        st.warning("La validation est irréversible depuis cet écran : toutes les assiettes "
+                   "doivent être renseignées et l'audit doit être conforme.")
+        agree = st.checkbox("Je confirme les montants et les clés d'imputation",
+                            key="cost_validate_ack")
+        if st.button("Valider la période", disabled=not agree, key="cost_validate_button"):
+            try:
+                result = validate_period(period_id)
+                st.success("Période validée. Montants et assiettes désormais verrouillés.")
+                st.json(result)
+            except Exception:
+                st.error("Validation refusée : corriger les assiettes et exécuter l'audit.")
     with st.expander("Ajouter une charge de période"):
         with st.form("cost_add_pool"):
             nature = st.selectbox("Nature de charge", [x["nature_code"] for x in natures],
