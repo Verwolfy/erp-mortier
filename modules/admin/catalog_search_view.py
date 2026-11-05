@@ -7,13 +7,14 @@ from modules.admin.catalog_search import CATALOGS, search_referentiel
 def render_catalog_search(table: str) -> None:
     if table not in CATALOGS:
         raise ValueError("Catalogue inconnu")
-    identifier = CATALOGS[table][0]
+    identifier, display_field, _ = CATALOGS[table]
     st.caption("Recherche rapide en lecture seule, 50 résultats maximum par page.")
     with st.form(f"ng_admin_search_{table}"):
         search = st.text_input("Rechercher une désignation ou un identifiant",
                                key=f"ng_admin_search_text_{table}")
-        field = st.selectbox("Chercher dans", ["nom", identifier],
-                             format_func=lambda v: "Nom" if v == "nom" else "Identifiant",
+        field = st.selectbox("Chercher dans", [display_field, identifier],
+                             format_func=lambda v: ("Désignation" if v == "nom" else "Format")
+                             if v == display_field else "Identifiant",
                              key=f"ng_admin_search_field_{table}")
         page = st.number_input("Page de résultats", min_value=1, max_value=1000,
                                step=1, value=1, key=f"ng_admin_search_page_{table}")
