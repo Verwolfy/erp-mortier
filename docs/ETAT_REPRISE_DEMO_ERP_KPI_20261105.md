@@ -314,3 +314,28 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 - **Distinction impérative :** le scénario `SIM26` a été initialement inséré par SQL, **les boutons de workflow Streamlit n'ont pas été utilisés**, aucune vraie commande ou facture validée via RPC pendant cette vérification. Ne pas confondre 17 contrôles de cohérence des données avec 17 transactions RPC réellement exécutées.
 - Jeu conservé : **120 lignes fictives** `DEMO26/SIM26`, et rollback `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` non exécuté définitivement.
 - Prochaine campagne : essais des actions transactionnelles dans un environnement isolé ou rollback transactionnel contrôlé et autorisé, audit des états de retour RPC et des droits par fonction. Les données réelles et les seuils fournisseurs absents restent intacts.
+
+## Campagne en lots — contrats RPC, sécurité et intégrité (2026-11-05)
+
+**Instruction utilisateur :** continuer sans retour après chaque étape, regrouper les opérations en lots et conserver les données fictives pour les simulations.
+
+### Lot A — GitHub CI
+- Les workflows de référence `03bc03be` ont terminé **success** : [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42093298112) et [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/42093298213).
+- Dernier commit technique `9d05de3c` : [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/42095612087) terminé **success** ; [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42095611718) : étape « Tous les tests ERP » **success** lors de la vérification, validation finale du workflow à confirmer.
+- Le test ajouté `tests/test_transaction_rpc_signatures_contract.py` compare statiquement, par AST, les neuf appels RPC et les noms de paramètres JSON transmis par les quatre services Python avec le contrat attendu, sans secrets ni écriture Supabase. Son second test verrouille le caractère lecture seule de l'audit SQL.
+
+### Lot B — Contrat transactionnel réel, lecture seule
+- Nouveau `sql/demo/20261105_audit_9_rpc_transactions_LECTURE_SEULE.sql` exécuté sur Supabase principale (`wenydirqtmkywbxbxfal`). **9/9 RPC = OK** avec noms, signatures, droits, contexte d'exécution et `search_path` attendus ; aucune fonction de ce lot exposée à `anon` ou `authenticated`, `service_role` habilité.
+- **Exception de sécurité INTENTIONNELLE :** `public.erp_create_sales_order(text,text,text,jsonb)` est `SECURITY DEFINER` propriétaire `postgres` et a `search_path=pg_catalog, pg_temp`. C'est exactement le verrouillage déployé via `sql/supabase_applied/20261027201513_erp_014_sales_order_security_fix.sql` et décrit dans `sql/011_fix_sales_order_definer.sql`. Le premier jet de l'audit exigeait à tort `SECURITY INVOKER` pour toutes les fonctions et signalait un faux positif. Critère corrigé au commit `ffb5ab83` **sans aucune modification de la fonction ni de la base**. Les huit autres RPC sont `SECURITY INVOKER` avec `search_path=pg_catalog, public`.
+- Le contrat est actuellement correct ; **ne PAS désactiver SECURITY DEFINER** sur cette procédure sans réétudier la migration et les privilèges.
+
+### Lot C — Scénario de données
+- Contrôle croisé relancé sur la base principale : **17/17 invariants SQL de chaîne d'achat à lettrage OK**, `DEMO26` **80/80** et `SIM26` **40/40**, stocks MP/PF de SIM26 nets à zéro, 100 kg reçus/consommés, 10 unités fabriquées/livrées, facture 2 380 DZD réglée et lettrée, aucun identifiant absent.
+- **120 lignes fictives conservées**. Retour arrière `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` toujours **non exécuté définitivement**. Aucun changement de comptes réels, droits, schémas ou référentiels fiscaux.
+- L'inspection des signatures et la CI prouvent la cohérence du code et des contrats, **pas l'exécution effective des neuf RPC depuis une session Streamlit autorisée**. Il reste à tester les transitions interactives en environnement isolé ou dans une session autorisée et un scénario réversible distinct, sans émission réelle de mails, factures ou documents fiscaux.
+
+### Reprise des opérations
+1. Vérifier le verdict final des deux workflows du dernier commit (et des commits documentaires éventuels), réparer tout échec.
+2. Tester dans une session applicative habilitée les réponses métier et l'idempotence des RPC, de préférence sur une base de test dédiée ; ne pas confondre insertions SQL SIM26 et parcours UI.
+3. Garder les scripts d'audit `sql/demo/20261105_audit_9_rpc_transactions_LECTURE_SEULE.sql` et `sql/demo/20261105_audit_chaine_17_etapes_SIM26_LECTURE_SEULE.sql` comme précontrôles sans écriture.
+4. Conserver les 120 lignes fictives jusqu'à la décision de fin d'essais. Ne pas déclencher le rollback COMMIT ou de transactions réelles en autonomie.
