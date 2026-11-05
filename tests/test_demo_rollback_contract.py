@@ -65,3 +65,19 @@ def test_second_lot_only_adds_two_traced_stock_movements():
     assert "DEMO26_STOCK_INITIAL" in lot2
     assert not re.search(r"(?im)^\s*(UPDATE|DELETE|TRUNCATE|DROP|ALTER)\s+", lot2)
     assert lot2.strip().endswith("COMMIT;")
+
+
+def test_exact_80_line_verification_matches_every_rollback_predicate():
+    """Le contrôle SQL doit couvrir chaque prédicat de suppression, sans omission."""
+    source = (ROOT / "20261105_verification_EXACTE_80_lignes_FICTIF.sql").read_text(encoding="utf-8")
+    rollback = (ROOT / "20261105_rollback_COMPLET_80_lignes_FICTIF.sql").read_text(encoding="utf-8")
+    predicates = DELETE.findall(rollback)
+    assert len(predicates) == 55
+    for table, condition in predicates:
+        assert f"FROM public.{table} WHERE {condition}) AS observe" in source
+    assert source.count(" AS observe") == 55
+    assert "nombre_tables = 53" in source
+    assert "total_attendu = 80" in source
+    assert "total_present = 80" in source
+    assert "anomalies = 0" in source
+    assert not re.search(r"(?im)^\s*(DELETE|UPDATE|INSERT|TRUNCATE|ALTER|DROP)\s+", source)
