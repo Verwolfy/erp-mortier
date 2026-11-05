@@ -106,6 +106,77 @@ BEGIN
   'audit_ok',(v_unallocated=0 AND v_misdated=0 AND abs(v_allocated-v_total)<0.00001));
 END $fn$;
 
+-- Défense en profondeur : périodes validées immuables pour les charges et assiettes.
+CREATE OR REPLACE FUNCTION public.erp_cost_check_editable()
+RETURNS trigger LANGUAGE plpgsql SET search_path='pg_catalog','public'
+AS $fn$
+DECLARE v_period_id text; v_status text;
+BEGIN
+ v_period_id := CASE WHEN TG_OP='DELETE' THEN OLD.period_id ELSE NEW.period_id END;
+ SELECT statut INTO v_status FROM public.erp_cost_periods
+  WHERE period_id=v_period_id FOR UPDATE;
+ IF v_status IS DISTINCT FROM 'BROUILLON' THEN
+  RAISE EXCEPTION 'Période analytique non modifiable' USING ERRCODE='23514';
+ END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+ IF TG_OP='UPDATE' AND NEW.period_id IS DISTINCT FROM OLD.period_id THEN
+  RAISE EXCEPTION 'Transfert entre périodes interdit' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END $fn$;
+
+DROP TRIGGER IF EXISTS erp_cost_pool_edit_guard ON public.erp_cost_pools;
+CREATE TRIGGER erp_cost_pool_edit_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.erp_cost_pools
+ FOR EACH ROW EXECUTE FUNCTION public.erp_cost_check_editable();
+DROP TRIGGER IF EXISTS erp_cost_driver_edit_guard ON public.erp_cost_drivers;
+CREATE TRIGGER erp_cost_driver_edit_guard
+ BEFORE INSERT OR UPDATE OR DELETE ON public.erp_cost_drivers
+ FOR EACH ROW EXECUTE FUNCTION public.erp_cost_check_editable();
+
+CREATE OR REPLACE FUNCTION public.erp_cost_validate_period(p_period_id text)
+RETURNS jsonb LANGUAGE plpgsql SET search_path='pg_catalog','public'
+AS $fn$
+DECLARE v_state text; v_audit jsonb;
+BEGIN
+ SELECT statut INTO v_state FROM public.erp_cost_periods
+ WHERE period_id=p_period_id FOR UPDATE;
+ IF v_state IS DISTINCT FROM 'BROUILLON' THEN
+   RAISE EXCEPTION 'Période non validable' USING ERRCODE='23514'; END IF;
+ IF NOT EXISTS (SELECT 1 FROM public.erp_cost_pools WHERE period_id=p_period_id)
+ OR NOT EXISTS (SELECT 1 FROM public.erp_cost_drivers WHERE period_id=p_period_id) THEN
+   RAISE EXCEPTION 'Charges et assiettes obligatoires' USING ERRCODE='23514'; END IF;
+ v_audit := public.erp_cost_period_audit(p_period_id);
+ IF v_audit->>'audit_ok' IS DISTINCT FROM 'true' THEN
+   RAISE EXCEPTION 'Audit de répartition non conforme' USING ERRCODE='23514'; END IF;
+ UPDATE public.erp_cost_periods SET statut='VALIDE' WHERE period_id=p_period_id;
+ RETURN v_audit;
+END $fn$;
+
+-- Bloque les corrections silencieuses de dates ou d'état après validation.
+CREATE OR REPLACE FUNCTION public.erp_cost_period_state_guard()
+RETURNS trigger LANGUAGE plpgsql SET search_path='pg_catalog','public'
+AS $fn$
+BEGIN
+ IF OLD.statut<>'BROUILLON' THEN
+   RAISE EXCEPTION 'Période validée immuable' USING ERRCODE='23514'; END IF;
+ IF NEW.date_debut IS DISTINCT FROM OLD.date_debut OR
+    NEW.date_fin IS DISTINCT FROM OLD.date_fin OR
+    NEW.libelle IS DISTINCT FROM OLD.libelle THEN
+   RAISE EXCEPTION 'Modifier les dates ou libellés nécessite une nouvelle période' USING ERRCODE='23514';
+ END IF;
+ IF NEW.statut NOT IN ('BROUILLON','VALIDE') THEN
+   RAISE EXCEPTION 'Transition de période non permise' USING ERRCODE='23514'; END IF;
+ -- Une validation directe par UPDATE n'est pas permise; seule la RPC verrouille
+ -- et effectue l'audit. GUC locale impossible à forger en tant que contrôle fort,
+ -- donc le backend doit rester strictement service_role.
+ RETURN NEW;
+END $fn$;
+DROP TRIGGER IF EXISTS erp_cost_period_state_guard ON public.erp_cost_periods;
+CREATE TRIGGER erp_cost_period_state_guard
+ BEFORE UPDATE ON public.erp_cost_periods
+ FOR EACH ROW EXECUTE FUNCTION public.erp_cost_period_state_guard();
+
 -- Aucun droit Data API public. Utilisation uniquement par le backend serveur habilité.
 DO $priv$
 DECLARE t text;
@@ -121,6 +192,8 @@ REVOKE ALL ON public.erp_cost_allocations FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.erp_cost_allocations TO service_role;
 REVOKE ALL ON FUNCTION public.erp_cost_period_audit(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.erp_cost_period_audit(text) TO service_role;
+REVOKE ALL ON FUNCTION public.erp_cost_validate_period(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.erp_cost_validate_period(text) TO service_role;
 
 -- Référentiel des natures sans montant fictif : seuls les libellés sont installés.
 INSERT INTO public.erp_cost_natures(nature_code,libelle,description) VALUES
