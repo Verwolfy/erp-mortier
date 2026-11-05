@@ -281,12 +281,15 @@ def show_stocks_page():
             "Page des mouvements", min_value=1, max_value=1000,
             value=1, step=1, key="ng_stocks_history_page"
         )
-        if st.button("Afficher les mouvements de stock", key="ng_stocks_history_load",
-                     on_click=_mark_stocks_activity):
+        from core.history_filters import history_period_inputs
+        period = history_period_inputs("ng_stocks_history")
+        if period is not None and st.button(
+                "Afficher les mouvements de stock", key="ng_stocks_history_load",
+                on_click=_mark_stocks_activity):
             from core.strict_reads import fetch_history_page_strict, DataReadError
             try:
-                mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock), date_column="date")
-                pf_rows, pf_total = fetch_history_page_strict("mouvements_pf", page=int(page_stock), date_column="date")
+                mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock), date_column="date", **period)
+                pf_rows, pf_total = fetch_history_page_strict("mouvements_pf", page=int(page_stock), date_column="date", **period)
                 df_mouv = pd.DataFrame(mp_rows)
                 df_mouv_pf = pd.DataFrame(pf_rows)
             except (PermissionError, DataReadError, ValueError):
