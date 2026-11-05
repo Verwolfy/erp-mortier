@@ -569,19 +569,24 @@ def show_admin_page():
     if not can_write:
         st.info("🔒 Mode lecture seule : vous n'avez pas les droits d'ajout ou de modification.")
 
-    # Les listes de choix n'interviennent que dans les formulaires d'écriture.
-    # En lecture seule, aucun appel inutile à listes_reference.
-    if can_write:
-        pays_opts = get_opts("PAYS", PAYS_FALLBACK)
-        wilaya_opts = get_opts("WILAYA", WILAYA_FALLBACK)
-        unite_opts = get_opts("UNITE_MESURE", UNITE_FALLBACK)
-        cat_client_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK)
-        cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK)
-        cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK)
-        hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK)
-    else:
-        pays_opts, wilaya_opts, unite_opts = [], [], []
-        cat_client_opts, cat_mp_opts, cat_pf_opts, hs_code_opts = [], [], [], []
+    # Chargements conditionnels : seules les listes de choix utilisées par
+    # un formulaire ou un éditeur explicitement ouvert sont lues.
+    def _active(*keys):
+        return can_write and any(st.session_state.get(key) is True for key in keys)
+
+    geo = ("ng_admin_create_client", "ng_admin_create_fournisseur",
+           "ng_admin_full_clients", "ng_admin_full_fournisseurs")
+    mp = ("ng_admin_create_mp", "ng_admin_full_matieres_premieres")
+    pf = ("ng_admin_create_product", "ng_admin_full_produits")
+    sku = ("ng_admin_create_sku", "ng_admin_full_sku_conditionnement")
+    pays_opts = get_opts("PAYS", PAYS_FALLBACK) if _active(*geo, *mp) else []
+    wilaya_opts = get_opts("WILAYA", WILAYA_FALLBACK) if _active(*geo) else []
+    unite_opts = get_opts("UNITE_MESURE", UNITE_FALLBACK) if _active(*mp, *pf, *sku) else []
+    cat_client_opts = get_opts("CAT_CLIENT", CAT_CLIENT_FALLBACK) if _active(
+        "ng_admin_create_client", "ng_admin_full_clients") else []
+    cat_mp_opts = get_opts("CAT_MP", CAT_MP_FALLBACK) if _active(*mp) else []
+    cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK) if _active(*pf) else []
+    hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK) if _active(*mp) else []
 
     tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations, tab_fiscal_sku, tab_documents, tab_qualite = st.tabs([
         "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
@@ -701,7 +706,8 @@ def show_admin_page():
     # --- CLIENTS ---
     with tab1:
         st.subheader("Gestion des Clients")
-        if can_write:
+        if can_write and st.checkbox("Préparer : ➕ Ajouter un client",
+                                     value=False, key="ng_admin_create_client"):
             with st.expander("➕ Ajouter un client"):
                 st.markdown("**Informations de base**")
                 c1, c2, c3 = st.columns(3)
@@ -758,7 +764,8 @@ def show_admin_page():
     # --- FOURNISSEURS ---
     with tab2:
         st.subheader("Gestion des Fournisseurs")
-        if can_write:
+        if can_write and st.checkbox("Préparer : ➕ Ajouter un fournisseur",
+                                     value=False, key="ng_admin_create_fournisseur"):
             with st.expander("➕ Ajouter un fournisseur"):
                 st.markdown("**Informations de base**")
                 c1, c2, c3 = st.columns(3)
@@ -814,7 +821,8 @@ def show_admin_page():
     # --- MATIERES PREMIERES ---
     with tab3:
         st.subheader("Matières Premières")
-        if can_write:
+        if can_write and st.checkbox("Préparer : ➕ Nouvelle Matière Première",
+                                     value=False, key="ng_admin_create_mp"):
             with st.expander("➕ Nouvelle Matière Première"):
                 with st.form("form_mp"):
                     st.markdown("**Informations de base**")
@@ -868,7 +876,8 @@ def show_admin_page():
     # --- PRODUITS ---
     with tab4:
         st.subheader("Produits Finis")
-        if can_write:
+        if can_write and st.checkbox("Préparer : ➕ Nouveau Produit",
+                                     value=False, key="ng_admin_create_product"):
             with st.expander("➕ Nouveau Produit"):
                 with st.form("form_pf"):
                     c1, c2 = st.columns(2)
