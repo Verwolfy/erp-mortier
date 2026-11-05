@@ -1,3 +1,4 @@
+-- EXCLUSIVEMENT erp-mortier-test : ffuhbmcfyexsbjwhryvj.
 -- Lecture seule, projet TEST uniquement. Attendu : 1 paiement et 2 écritures.
 SELECT (SELECT count(*) FROM public.reglements
  WHERE reference_trace='IT26_PAR_FINREF' AND compte_id='IT26_PAR_BANK') AS paiements,
