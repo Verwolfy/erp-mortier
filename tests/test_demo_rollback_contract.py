@@ -43,3 +43,25 @@ def test_seed_never_updates_or_deletes_existing_records():
     assert "OVERRIDING SYSTEM VALUE" in seed
     assert not re.search(r"(?im)^\s*(UPDATE|DELETE|TRUNCATE|DROP|ALTER)\s+", seed)
     assert seed.strip().endswith("COMMIT;")
+
+
+def test_complete_80_row_rollback_is_exactly_two_lots():
+    """Le rollback tout-en-un conserve l'ordre et les prédicats des deux lots."""
+    lot2 = (ROOT / "20261105_rollback_stock_opening_lot2_FICTIF.sql").read_text(encoding="utf-8")
+    lot1 = UNDO.read_text(encoding="utf-8")
+    combined = (ROOT / "20261105_rollback_COMPLET_80_lignes_FICTIF.sql").read_text(encoding="utf-8")
+    expected = DELETE.findall(lot2) + DELETE.findall(lot1)
+    actual = DELETE.findall(combined)
+    assert len(expected) == len(actual) == 55
+    assert actual == expected
+    assert combined.count("BEGIN;") == combined.count("COMMIT;") == 1
+    assert "CASCADE" not in re.sub(r"(?m)^--[^\\n]*$", "", combined).upper()
+
+
+def test_second_lot_only_adds_two_traced_stock_movements():
+    lot2 = (ROOT / "20261105_stock_opening_lot2_FICTIF.sql").read_text(encoding="utf-8")
+    assert INSERT.findall(lot2) == ["mouvements", "mouvements_pf"]
+    assert "DEMO26_MV2" in lot2 and "DEMO26_MVP2" in lot2
+    assert "DEMO26_STOCK_INITIAL" in lot2
+    assert not re.search(r"(?im)^\\s*(UPDATE|DELETE|TRUNCATE|DROP|ALTER)\\s+", lot2)
+    assert lot2.strip().endswith("COMMIT;")
