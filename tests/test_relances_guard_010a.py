@@ -119,3 +119,23 @@ def test_only_demo_invoices_produce_no_emails_or_eligible_count(monkeypatch, cap
     assert module.main() == 0
     module.envoyer_email_relance.assert_not_called()
     assert "Relances eligibles : 0" in capsys.readouterr().out
+
+
+def test_integrated_sim26_scenario_never_generates_reminder(monkeypatch, capsys):
+    module, _ = _loaded(monkeypatch)
+    _set_env(monkeypatch, mode="PRODUCTION", enabled="true", email="true")
+    module.SUPABASE_URL = PROD_URL
+    module.SMTP_USER = "simulation@example.test"
+    module.SMTP_PASSWORD = "test-only"
+    module.get_factures_echues = Mock(return_value=pd.DataFrame([
+        {"facture_id": "SIM26_INV", "client_id": "SIM26_CLI",
+         "montant_ttc": "2380", "montant_paye": "0",
+         "date_echeance": "2026-10-23"},
+    ]))
+    module.get_clients = Mock(return_value=pd.DataFrame([
+        {"client_id": "SIM26_CLI", "nom": "[FICTIF] Client SIM26",
+         "email_contact": "fiction@example.test"},
+    ]))
+    assert module.main() == 0
+    module.envoyer_email_relance.assert_not_called()
+    assert "Relances eligibles : 0" in capsys.readouterr().out
