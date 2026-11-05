@@ -16,13 +16,19 @@ WITH attendu(nom,signature) AS (
         coalesce(bool_and(has_function_privilege('service_role',p.oid,'EXECUTE')),false) AS service_ok,
         coalesce(bool_or(has_function_privilege('anon',p.oid,'EXECUTE')),false) AS acces_anon,
         coalesce(bool_or(has_function_privilege('authenticated',p.oid,'EXECUTE')),false) AS acces_auth,
-        coalesce(bool_and(p.prosecdef=false),false) AS invoker_ok,
-        coalesce(bool_and('search_path=pg_catalog, public'=ANY(p.proconfig)),false) AS path_ok
+        coalesce(bool_and(
+          (a.nom='erp_create_sales_order' AND p.prosecdef=true)
+          OR (a.nom<>'erp_create_sales_order' AND p.prosecdef=false)
+        ),false) AS execution_context_ok,
+        coalesce(bool_and(
+          (a.nom='erp_create_sales_order' AND 'search_path=pg_catalog, pg_temp'=ANY(p.proconfig))
+          OR (a.nom<>'erp_create_sales_order' AND 'search_path=pg_catalog, public'=ANY(p.proconfig))
+        ),false) AS path_ok
  FROM attendu a
  LEFT JOIN pg_proc p ON p.proname=a.nom
  AND p.pronamespace='public'::regnamespace
  GROUP BY a.nom,a.signature
 )
-SELECT nom, CASE WHEN nombre=1 AND signature_ok AND service_ok AND NOT acces_anon AND NOT acces_auth AND invoker_ok AND path_ok THEN 'OK' ELSE 'ECART' END AS resultat,
-       nombre,signature_ok,service_ok,acces_anon,acces_auth,invoker_ok,path_ok
+SELECT nom, CASE WHEN nombre=1 AND signature_ok AND service_ok AND NOT acces_anon AND NOT acces_auth AND execution_context_ok AND path_ok THEN 'OK' ELSE 'ECART' END AS resultat,
+       nombre,signature_ok,service_ok,acces_anon,acces_auth,execution_context_ok,path_ok
 FROM trouve ORDER BY nom;
