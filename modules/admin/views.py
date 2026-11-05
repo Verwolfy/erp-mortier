@@ -743,7 +743,12 @@ def show_admin_page():
             "pays": pays_opts,
             "wilaya": wilaya_opts
         }
-        render_editable_dataframe("Clients", "client_id", can_write, config_cli)
+        from modules.admin.catalog_search_view import render_catalog_search
+        render_catalog_search("clients")
+        # L'éditeur complet reste disponible sur demande, jamais au rendu initial.
+        if st.checkbox("Afficher / modifier le référentiel Clients",
+                       value=False, key="ng_admin_full_clients"):
+            render_editable_dataframe("Clients", "client_id", can_write, config_cli)
 
     # --- FOURNISSEURS ---
     with tab2:
@@ -794,7 +799,12 @@ def show_admin_page():
             "pays": pays_opts,
             "wilaya": wilaya_opts
         }
-        render_editable_dataframe("Fournisseurs", "fournisseur_id", can_write, config_fou)
+        from modules.admin.catalog_search_view import render_catalog_search
+        render_catalog_search("fournisseurs")
+        # L'éditeur complet reste disponible sur demande, jamais au rendu initial.
+        if st.checkbox("Afficher / modifier le référentiel Fournisseurs",
+                       value=False, key="ng_admin_full_fournisseurs"):
+            render_editable_dataframe("Fournisseurs", "fournisseur_id", can_write, config_fou)
 
     # --- MATIERES PREMIERES ---
     with tab3:
@@ -867,7 +877,12 @@ def show_admin_page():
             "categorie_pf": cat_pf_opts,
             "unite_production": unite_opts
         }
-        render_editable_dataframe("Produits", "pf_id", can_write, config_pf)
+        from modules.admin.catalog_search_view import render_catalog_search
+        render_catalog_search("produits")
+        # L'éditeur complet reste disponible sur demande, jamais au rendu initial.
+        if st.checkbox("Afficher / modifier le référentiel Produits",
+                       value=False, key="ng_admin_full_produits"):
+            render_editable_dataframe("Produits", "pf_id", can_write, config_pf)
 
     # --- SKUs ---
     with tab5:
