@@ -854,7 +854,11 @@ def show_admin_page():
             "origine_pays": pays_opts,
             "hs_code": hs_code_opts
         }
-        render_editable_dataframe("MatieresPremieres", "mp_id", can_write, config_mp)
+        from modules.admin.catalog_search_view import render_catalog_search
+        render_catalog_search("matieres_premieres")
+        if st.checkbox("Afficher / modifier le référentiel Matières premières",
+                       value=False, key="ng_admin_full_matieres_premieres"):
+            render_editable_dataframe("MatieresPremieres", "mp_id", can_write, config_mp)
 
     # --- PRODUITS ---
     with tab4:
@@ -928,22 +932,26 @@ def show_admin_page():
             else:
                 st.warning("Créez d'abord un produit actif.")
 
-        df_produits = get_dataframe("Produits")
-        pf_opts = []
-        if not df_produits.empty and "pf_id" in df_produits.columns:
-            pf_opts = [str(x) for x in df_produits["pf_id"].dropna().unique() if str(x).strip() not in ["", "None", "nan"]]
+        from modules.admin.catalog_search_view import render_catalog_search
+        render_catalog_search("sku_conditionnement")
+        if st.checkbox("Afficher / modifier le référentiel SKU",
+                       value=False, key="ng_admin_full_sku_conditionnement"):
+            df_produits = get_dataframe("Produits")
+            pf_opts = []
+            if not df_produits.empty and "pf_id" in df_produits.columns:
+                pf_opts = [str(x) for x in df_produits["pf_id"].dropna().unique() if str(x).strip() not in ["", "None", "nan"]]
 
-        df_mp = get_dataframe("MatieresPremieres")
-        emballage_opts = []
-        if not df_mp.empty and "categorie_mp" in df_mp.columns and "mp_id" in df_mp.columns:
-            emballage_opts = [str(x) for x in df_mp[df_mp["categorie_mp"].isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]["mp_id"].dropna().unique()]
+            df_mp = get_dataframe("MatieresPremieres")
+            emballage_opts = []
+            if not df_mp.empty and "categorie_mp" in df_mp.columns and "mp_id" in df_mp.columns:
+                emballage_opts = [str(x) for x in df_mp[df_mp["categorie_mp"].isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]["mp_id"].dropna().unique()]
 
-        config_sku = {
-            "pf_id": pf_opts if pf_opts else [""],
-            "emballage_mp_id": emballage_opts if emballage_opts else [""],
-            "unite_vente": unite_opts
-        }
-        render_editable_dataframe("SkuConditionnement", "sku_id", can_write, config_sku)
+            config_sku = {
+                "pf_id": pf_opts if pf_opts else [""],
+                "emballage_mp_id": emballage_opts if emballage_opts else [""],
+                "unite_vente": unite_opts
+            }
+            render_editable_dataframe("SkuConditionnement", "sku_id", can_write, config_sku)
 
     # --- LISTES DE CHOIX ---
     with tab_listes:
