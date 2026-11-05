@@ -455,14 +455,17 @@ def show_achats_page():
             "Page des historiques Achats", min_value=1, max_value=1000,
             value=1, step=1, key="ng_achats_history_page"
         )
-        if st.button("Afficher l'historique Achats", key="ng_achats_history_load",
-                     on_click=_mark_achats_activity):
+        from core.history_filters import history_period_inputs
+        period = history_period_inputs("ng_achats_history")
+        if period is not None and st.button(
+                "Afficher l'historique Achats", key="ng_achats_history_load",
+                on_click=_mark_achats_activity):
             from core.strict_reads import fetch_history_page_strict
             rows_commandes, total_commandes = fetch_history_page_strict(
-                "commandes_achats", page=int(page_achats), date_column="date_commande"
+                "commandes_achats", page=int(page_achats), date_column="date_commande", **period
             )
             rows_receptions, total_receptions = fetch_history_page_strict(
-                "bons_reception", page=int(page_achats), date_column="date_reception"
+                "bons_reception", page=int(page_achats), date_column="date_reception", **period
             )
             st.caption(
                 f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
