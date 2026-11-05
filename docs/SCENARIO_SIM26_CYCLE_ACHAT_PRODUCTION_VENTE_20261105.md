@@ -49,3 +49,9 @@ Les liens et données testent le **modèle relationnel et les indicateurs**, pas
 2. Lancer les deux scripts de vérification **lecture seule** sur Supabase et comparer avec les valeurs attendues.
 3. Dans Streamlit, sélectionner **octobre 2026** pour l'historique du cycle complet, contrôler les onglets sans validation transactionnelle réelle.
 4. Après la campagne, utiliser le rollback indépendant `SIM26` ou le rollback intégral `120` uniquement si le retrait des jeux fictifs est souhaité. L'utilisateur souhaite actuellement **conserver les données pour les essais**.
+
+## Ajustement de statuts à l'interface (post-seed)
+
+Après insertion du lot, contrôle des libellés utilisés par les vues métier : `commandes_achats.SIM26_PO.statut` = `RECEPTIONNE`, `commandes_ventes.SIM26_SO.statut` = `TERMINE`, `bons_livraison.SIM26_DN.statut` = `EXPEDIE`. Ces trois changements portent exclusivement sur les lignes SIM26 et sont intégrés au seed versionné pour une reproduction future. Dans la base principale, ils ont été appliqués après contrôle préalable des anciens statuts. Le contrôle SQL lecture seule a reconfirmé les **40 lignes**, **0 anomalie**, et ces trois états.
+
+**Ne pas rejouer le seed sur la base déjà alimentée** : l'opération échouerait sur les identifiants réservés.
