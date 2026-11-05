@@ -19,7 +19,7 @@ SET LOCAL ROLE service_role;
 DO $test$
 DECLARE
   v_order jsonb; v_replay jsonb; v_ship jsonb;
-  v_draft jsonb; v_validate jsonb;
+  v_draft jsonb; v_validate jsonb; v_cancel jsonb; v_cancel_id text;
   v_cash jsonb; v_counter jsonb; v_payment jsonb; v_alloc jsonb;
   v_order_id text; v_invoice_id text; v_cash_id text; v_counter_id text; v_pay_id text;
   v_lines jsonb:='[{"sku_id":"IT26_SALE_SKU","quantite":"2","prix_unitaire":"20"}]'::jsonb;
@@ -81,6 +81,22 @@ BEGIN
     PERFORM public.erp_sale_transaction('VALIDATE','IT26_SALE_VALIDATE_AGAIN',
       jsonb_build_object('facture_id',v_invoice_id));
     RAISE EXCEPTION 'Deuxième validation avec nouvel ID acceptée';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  -- Branche annulation : seul un BROUILLON peut être annulé, rejeu idempotent.
+  v_draft:=public.erp_sale_transaction('DRAFT','IT26_SALE_DRAFT_CANCEL',v_invoice_payload);
+  v_cancel_id:=v_draft->>'facture_id';
+  v_cancel:=public.erp_sale_transaction('CANCEL','IT26_SALE_CANCEL',
+    jsonb_build_object('facture_id',v_cancel_id));
+  v_replay:=public.erp_sale_transaction('CANCEL','IT26_SALE_CANCEL',
+    jsonb_build_object('facture_id',v_cancel_id));
+  IF v_cancel IS DISTINCT FROM v_replay
+     OR (SELECT statut FROM public.factures WHERE facture_id=v_cancel_id)<>'ANNULE'
+  THEN RAISE EXCEPTION 'Annulation brouillon non idempotente'; END IF;
+  BEGIN
+    PERFORM public.erp_sale_transaction('CANCEL','IT26_SALE_CANCEL_AGAIN',
+      jsonb_build_object('facture_id',v_cancel_id));
+    RAISE EXCEPTION 'Double annulation avec nouvel identifiant acceptée';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
   v_cash:=public.erp_finance_transaction('ACCOUNT','IT26_ACC_CASH',
