@@ -79,6 +79,8 @@ def test_demo_invoice_and_demo_client_excluded_in_production(monkeypatch):
     _set_env(monkeypatch, mode="PRODUCTION", enabled="true", email="true")
     monkeypatch.setenv("SMTP_USER", "smtp-simule@example.test")
     monkeypatch.setenv("SMTP_PASSWORD", "faux-secret-de-test")
+    module.SMTP_USER = "smtp-simule@example.test"
+    module.SMTP_PASSWORD = "faux-secret-de-test"
     module.SUPABASE_URL = PROD_URL
     module.get_factures_echues = Mock(return_value=pd.DataFrame([
         {"facture_id": "DEMO26_FAC2", "client_id": "DEMO26_CLI2",
@@ -106,6 +108,8 @@ def test_only_demo_invoices_produce_no_emails_or_eligible_count(monkeypatch, cap
     _set_env(monkeypatch, mode="PRODUCTION", enabled="true", email="true")
     monkeypatch.setenv("SMTP_USER", "smtp-simule@example.test")
     monkeypatch.setenv("SMTP_PASSWORD", "faux-secret-de-test")
+    module.SMTP_USER = "smtp-simule@example.test"
+    module.SMTP_PASSWORD = "faux-secret-de-test"
     module.SUPABASE_URL = PROD_URL
     module.get_factures_echues = Mock(return_value=pd.DataFrame([
         {"facture_id": "DEMO26_FAC2", "client_id": "DEMO26_CLI2",
