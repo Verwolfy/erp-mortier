@@ -72,3 +72,46 @@ def test_missing_reminder_threshold_stops_before_network(monkeypatch):
     monkeypatch.delenv("ERP_REMINDER_MINIMUM_DZD")
     assert module.main() == 2
     supa.create_client.assert_not_called()
+
+
+def test_demo_invoice_and_demo_client_excluded_in_production(monkeypatch):
+    module, _ = _loaded(monkeypatch)
+    _set_env(monkeypatch, mode="PRODUCTION", enabled="true", email="true")
+    monkeypatch.setenv("SMTP_USER", "smtp-simule@example.test")
+    monkeypatch.setenv("SMTP_PASSWORD", "faux-secret-de-test")
+    module.SUPABASE_URL = PROD_URL
+    module.get_factures_echues = Mock(return_value=pd.DataFrame([
+        {"facture_id": "DEMO26_FAC2", "client_id": "DEMO26_CLI2",
+         "montant_ttc": "11900", "montant_paye": "0", "date_echeance": "2026-09-30"},
+        {"facture_id": "FACTURE-REELLE", "client_id": "DEMO26_CLI1",
+         "montant_ttc": "500", "montant_paye": "0", "date_echeance": "2026-09-30"},
+        {"facture_id": "FAC-PROD-TEST", "client_id": "CLIENT-TEST",
+         "montant_ttc": "300", "montant_paye": "100", "date_echeance": "2026-09-30"},
+    ]))
+    module.get_clients = Mock(return_value=pd.DataFrame([
+        {"client_id": "DEMO26_CLI1", "nom": "[FICTIF] Test",
+         "email_contact": "fiction@example.test"},
+        {"client_id": "DEMO26_CLI2", "nom": "[FICTIF] Test",
+         "email_contact": "fiction@example.test"},
+        {"client_id": "CLIENT-TEST", "nom": "Client test non DEMO26",
+         "email_contact": "valid@example.test"},
+    ]))
+    assert module.main() == 0
+    module.envoyer_email_relance.assert_called_once()
+    assert module.envoyer_email_relance.call_args.kwargs["facture_id"] == "FAC-PROD-TEST"
+
+
+def test_only_demo_invoices_produce_no_emails_or_eligible_count(monkeypatch, capsys):
+    module, _ = _loaded(monkeypatch)
+    _set_env(monkeypatch, mode="PRODUCTION", enabled="true", email="true")
+    monkeypatch.setenv("SMTP_USER", "smtp-simule@example.test")
+    monkeypatch.setenv("SMTP_PASSWORD", "faux-secret-de-test")
+    module.SUPABASE_URL = PROD_URL
+    module.get_factures_echues = Mock(return_value=pd.DataFrame([
+        {"facture_id": "DEMO26_FAC2", "client_id": "DEMO26_CLI2",
+         "montant_ttc": "11900", "montant_paye": "0",
+         "date_echeance": "2026-09-30"},
+    ]))
+    assert module.main() == 0
+    module.envoyer_email_relance.assert_not_called()
+    assert "Relances eligibles : 0" in capsys.readouterr().out
