@@ -179,3 +179,19 @@ def test_finance_demo(demo):
     assert k["flux_entrants"] == 3000
     assert k["flux_sortants"] == 5000
     assert k["taux_lettrage"] == 100
+
+
+def test_direction_et_stocks_avec_107_seuils_non_configures(demo):
+    """Régression de la panne constatée sur la base, sans inventer les 107 seuils."""
+    for i in range(107):
+        demo["matieres_premieres"].append({"mp_id": f"MP_NON_SEUIL_{i}", "stock_mini": None})
+        demo["stock_actuel"].append({"mp_id": f"MP_NON_SEUIL_{i}",
+                                     "quantite_disponible": 0, "cmp_actuel": None})
+    direction = service.get_kpis_direction()
+    assert direction["ca_mois"] == 16000
+    assert direction["alertes_stock"] == 1
+    assert direction["seuils_stock_absents"] == 107
+    stocks = service.get_kpis_stocks(30)
+    assert stocks["sous_seuil"] == 1
+    assert stocks["seuils_stock_absents"] == 107
+    assert stocks["valeur_mp"] == 63000
