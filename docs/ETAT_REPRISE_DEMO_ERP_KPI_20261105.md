@@ -304,3 +304,13 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 2. Après déploiement Streamlit, confirmer que les quatre graphiques ont des libellés horizontaux et restent lisibles.
 3. Enregistrer toute anomalie des opérations réelles (achats, fabrication, ventes) indépendamment de la preuve de lecture des tableaux de bord.
 4. Conserver les 120 lignes de démonstration et `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` jusqu'à la fin de la campagne de tests.
+
+## Lot transactionnel contrôlé en lecture seule — 5 novembre 2026
+
+- CI du précédent commit `88391bf1` : [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42092594605) et [audit de réconciliation](https://github.com/Verwolfy/erp-mortier/actions/runs/42092594204), tous deux **success**.
+- Inventaire des procédures PostgreSQL présentes dans `public` : huit points d'entrée métier détectés : `erp_create_purchase_order`, `erp_receive_purchase_order`, `erp_create_recipe`, `erp_create_manufacturing_order`, `erp_start_manufacturing_order`, `erp_close_manufacturing_order`, `erp_sale_transaction`, `erp_finance_transaction`. La présence du code RPC ne garantit pas une exécution par le navigateur avec toutes les permissions.
+- Nouveau script `sql/demo/20261105_audit_chaine_17_etapes_SIM26_LECTURE_SEULE.sql` : **17/17 invariants SQL = OK**, exécuté sur la base principale, sans mutation : commande achat 100 kg, statut réceptionné, réception, lien BC/BR, recette, OF 10 unités terminé, consommation 100 kg, CQ conforme, mouvements MP/PF équilibrés, devis/commande, livraison de 10 unités, facture client 2 000 HT / 2 380 TTC, paiement 2 380, lettrage intégral, facture fournisseur brouillon, **jointure complète fournisseur → matière → recette → OF → produit → commande client → facture**.
+- Test de garde-fou ajouté à `tests/test_demo_rollback_contract.py` : vérifier que les 17 contrôles persistent dans ce SQL de lecture seule, sans DML, DDL ni procédures exécutées.
+- **Distinction impérative :** le scénario `SIM26` a été initialement inséré par SQL, **les boutons de workflow Streamlit n'ont pas été utilisés**, aucune vraie commande ou facture validée via RPC pendant cette vérification. Ne pas confondre 17 contrôles de cohérence des données avec 17 transactions RPC réellement exécutées.
+- Jeu conservé : **120 lignes fictives** `DEMO26/SIM26`, et rollback `sql/demo/20261105_rollback_TOTAL_120_lignes_FICTIVES.sql` non exécuté définitivement.
+- Prochaine campagne : essais des actions transactionnelles dans un environnement isolé ou rollback transactionnel contrôlé et autorisé, audit des états de retour RPC et des droits par fonction. Les données réelles et les seuils fournisseurs absents restent intacts.
