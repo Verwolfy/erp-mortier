@@ -1,6 +1,6 @@
 """Recherche bornée et non mutante des référentiels ERP.
 
-Le sélecteur est strictement limité aux 3 référentiels demandés.
+Le sélecteur est strictement limité aux référentiels explicitement approuvés.
 On ne charge que les colonnes utiles à l'identification de l'article,
 pas les coordonnées personnelles ou fiscales des tiers.
 """
@@ -12,12 +12,14 @@ CATALOGS = {
     "clients": ("client_id", "nom", "categorie_client"),
     "fournisseurs": ("fournisseur_id", "nom", "categorie"),
     "produits": ("pf_id", "nom", "categorie_pf"),
+    "matieres_premieres": ("mp_id", "nom", "categorie_mp"),
+    "sku_conditionnement": ("sku_id", "format", "pf_id"),
 }
 PAGE_SIZE = 50
 MAX_TOTAL = 100000
 
 
-def search_referentiel(table: str, term: str, *, field: str = "nom",
+def search_referentiel(table: str, term: str, *, field: str | None = None,
                        page: int = 1) -> tuple[list[dict], int]:
     """Recherche ILIKE et pagination SQL, contrôle RBAC renouvelé à chaque appel.
 
@@ -27,6 +29,8 @@ def search_referentiel(table: str, term: str, *, field: str = "nom",
     if table not in CATALOGS:
         raise ValueError("Référentiel non pris en charge")
     identifier, name, category = CATALOGS[table]
+    if field is None:
+        field = name
     if field not in (identifier, name):
         raise ValueError("Champ de recherche non autorisé")
     if (not isinstance(term, str) or not 2 <= len(term.strip()) <= 80
