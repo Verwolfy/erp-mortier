@@ -55,7 +55,7 @@ def test_complete_80_row_rollback_is_exactly_two_lots():
     assert len(expected) == len(actual) == 55
     assert actual == expected
     assert combined.count("BEGIN;") == combined.count("COMMIT;") == 1
-    assert "CASCADE" not in re.sub(r"(?m)^--[^\\n]*$", "", combined).upper()
+    assert "CASCADE" not in re.sub(r"(?m)^--[^\n]*$", "", combined).upper()
 
 
 def test_second_lot_only_adds_two_traced_stock_movements():
@@ -63,5 +63,5 @@ def test_second_lot_only_adds_two_traced_stock_movements():
     assert INSERT.findall(lot2) == ["mouvements", "mouvements_pf"]
     assert "DEMO26_MV2" in lot2 and "DEMO26_MVP2" in lot2
     assert "DEMO26_STOCK_INITIAL" in lot2
-    assert not re.search(r"(?im)^\\s*(UPDATE|DELETE|TRUNCATE|DROP|ALTER)\\s+", lot2)
+    assert not re.search(r"(?im)^\s*(UPDATE|DELETE|TRUNCATE|DROP|ALTER)\s+", lot2)
     assert lot2.strip().endswith("COMMIT;")
