@@ -17,8 +17,8 @@ def test_listes_de_choix_chargees_seulement_si_utilisees():
     assert "def _active(*keys):" in source
     assert "st.session_state.get(key) is True" in source
     assert "return can_write and any(" in source
-    assert 'get_opts("PAYS", PAYS_FALLBACK)' in source
-    assert 'get_opts("HS_CODE", HS_CODE_FALLBACK)' in source
+    assert "get_opts('PAYS', PAYS_FALLBACK)" in source
+    assert "get_opts('HS_CODE', HS_CODE_FALLBACK)" in source
     # Les options ne doivent plus être chargées sans condition.
     assigns = [n for n in page.body if isinstance(n, ast.Assign)]
     for node in assigns:
@@ -50,15 +50,15 @@ def test_sku_read_only_and_creation_disabled_have_no_catalog_reads():
     ]
     assert len(creation_guards) == 1
     guarded = ast.unparse(creation_guards[0])
-    assert 'get_dataframe("Produits", only_active=True)' in guarded
-    assert 'get_dataframe("MatieresPremieres", only_active=True)' in guarded
+    assert "get_dataframe('Produits', only_active=True)" in guarded
+    assert "get_dataframe('MatieresPremieres', only_active=True)" in guarded
     # Autres lectures sur ouverture explicite de l'éditeur
     editors = [
         n for n in sku.body if isinstance(n, ast.If)
         and "ng_admin_full_sku_conditionnement" in ast.unparse(n.test)
     ]
     assert len(editors) == 1
-    assert 'render_editable_dataframe("SkuConditionnement"' in ast.unparse(editors[0])
+    assert "render_editable_dataframe('SkuConditionnement'" in ast.unparse(editors[0])
 
 
 def test_les_listes_de_reference_ne_chargent_pas_par_defaut():
