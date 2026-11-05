@@ -2,6 +2,11 @@
 -- Production/qualité via vraies RPC. Aucun COMMIT : ROLLBACK final.
 BEGIN;
 SET LOCAL statement_timeout='45s';
+-- Alignement ÉPHÉMÈRE des GRANTs TEST sur les droits production :
+-- restauré automatiquement par ROLLBACK, sans changement durable.
+GRANT UPDATE ON public.produits, public.matieres_premieres,
+  public.sku_conditionnement, public.recettes,
+  public.clients, public.fournisseurs TO service_role;
 INSERT INTO public.matieres_premieres(mp_id,nom,categorie_mp,unite_stock,actif)
 VALUES ('IT26_RAW','[TEST] Liant','Granulat','kg','OUI'),
        ('IT26_PACK','[TEST] Sac','EMBALLAGE','U','OUI');
