@@ -177,3 +177,26 @@ Comparaison réalisée en SQL **sur Supabase principale**, après correction des
 **Lot D — Validation applicative.** URL identifiée dans les notes de déploiement : `https://nextgent-erp.streamlit.app/`. Les 9 fonctions KPI et la barrière d'accès Streamlit ont des tests automatisés ; **aucune validation visuelle connectée** n'est attestée dans ce lot. Sans session navigateur autorisée, ne pas confondre tests unitaires/CI avec déploiement réel ou rendu fonctionnel.
 
 **Décision de continuité :** travailler par lots complets avec bilan regroupé. Conserver le jeu actuel et le script de retour arrière intégral `sql/demo/20261105_rollback_COMPLET_80_lignes_FICTIF.sql`. Éviter tout ajout à la base pour combler artificiellement les tables techniques, fiscales ou de sécurité. Reprendre par vérification CI de `c42e3164`, puis inspection des anomalies de rendu/deployment à partir d'une session ERP effectivement accessible.
+
+## Lots regroupés — CI, exports, contrôle SQL (suite du 5 novembre 2026)
+
+### Lot 1 — Validation de référence
+- Commit `180715bc` : deux workflows GitHub terminés en `success`, [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42081667803) et [audit de réconciliation](https://github.com/Verwolfy/erp-mortier/actions/runs/42081667799). Les expressions régulières des contrôles du rollback 80 lignes ont été corrigées avant ce verdict.
+- Les contrôles des 9 KPI et la simulation de la barrière RBAC Streamlit restent couverts par la suite automatisée ; cela **n'atteste pas** un parcours navigateur authentifié.
+
+### Lot 2 — Protection des sorties fictives
+- Audit : le job de relances `scripts/envoyer_relances.py` ignore `DEMO26_` avant courriel et comptage ; le job de stock `scripts/recalculer_stock.py` est sans écriture.
+- Risque complémentaire confirmé dans le code : `core/export_scf.py` vérifiait `VALIDEE` mais pas l'origine fictive. **Correction appliquée sur `main`** (commit `d9dd30bf`) : refus d'export CSV pour une référence ou un journal commençant par `DEMO26_`, ou un compte SCF réservé `41199926` / `70199926` dans les lignes. Ceci bloque une pièce fictive même si son statut devient `VALIDEE`, sans empêcher l'export de pièces ordinaires valides.
+- Tests locaux sans accès à la production ajoutés dans `tests/test_export_scf.py` (commit `0b5d21eb`) : 5 cas fictifs refusés et 1 cas valide conservé. **Vérifier le verdict CI du nouveau commit avant de déclarer ces tests exécutés avec succès.**
+- La pièce SCF de démo en base reste en `BROUILLON` ; aucune écriture comptable ou validation juridique n'a été engagée.
+
+### Lot 3 — Données et réversibilité
+- `sql/demo/20261105_verification_erp_kpi_FICTIF.sql` étendu au lot 2 (commit `6126aff3`) : validation des deux mouvements d'ouverture et rapprochement de leurs quantités avec les stocks correspondants.
+- **Exécution SQL réelle en lecture seule : `CONTROLES_DEMO_OK`.**
+- Les **80 lignes fictives**, en 53 tables, sont conservées. Le rollback global `sql/demo/20261105_rollback_COMPLET_80_lignes_FICTIF.sql` reste **non exécuté définitivement** et disponible.
+- Aucun changement de permissions, d'utilisateur, de schéma, de référentiel fiscal ou de données réelles lors de ce cycle.
+
+### Lot 4 — Validation UI et suite
+- URL documentée : `https://nextgent-erp.streamlit.app/`. Tentative d'ouverture publique par le navigateur externe non concluante ; **aucune authentification ni validation visuelle des neuf onglets n'a été réalisée**.
+- Prochain cycle : confirmer les deux workflows GitHub de `6126aff3` et des éventuels commits documentaires, examiner les erreurs réelles s'il en existe ; vérifier le déploiement depuis la console de l'hébergeur quand elle est autorisée ; tester les neuf onglets avec le rôle `ADMIN` sans créer de nouveaux accès.
+- Conserver les deux lots distincts pour traçabilité. Aucun rollback COMMIT avant la fin des essais.
