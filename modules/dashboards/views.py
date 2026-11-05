@@ -117,7 +117,7 @@ def _show_dashboards_page_impl():
             with col_g1:
                 st.markdown("**Balance Âgée (Créances)**")
                 df_balance = pd.DataFrame(list(kpis_v["balance_agee"].items()), columns=["Tranche", "Montant (DZD)"])
-                st.bar_chart(df_balance.set_index("Tranche"))
+                st.bar_chart(df_balance.set_index("Tranche"), horizontal=True)
             with col_g2:
                 st.markdown("**Top Clients**")
                 if not kpis_v["top_clients"].empty:
@@ -145,7 +145,7 @@ def _show_dashboards_page_impl():
                 st.markdown("**Concentration Fournisseurs**")
                 df_rep = kpis_a["repartition_fournisseurs"]
                 if not df_rep.empty:
-                    st.bar_chart(df_rep.set_index("fournisseur_id")[df_rep.columns[1]])
+                    st.bar_chart(df_rep.set_index("fournisseur_id")[df_rep.columns[1]], horizontal=True)
             with col_ga2:
                 st.markdown("**Évolution des Prix d'Achat**")
                 df_evo = kpis_a["evolution_prix"]
@@ -233,7 +233,7 @@ def _show_dashboards_page_impl():
 
         st.markdown("**Répartition par Service**")
         if not kpis_r["repartition_service"].empty:
-            st.bar_chart(kpis_r["repartition_service"].set_index("Service"))
+            st.bar_chart(kpis_r["repartition_service"].set_index("Service"), horizontal=True)
         else:
             st.info("Aucune donnée d'employés.")
 
@@ -258,6 +258,6 @@ def _show_dashboards_page_impl():
             st.caption("Soldes initiaux + règlements VALIDE jusqu’à aujourd’hui, indépendants du filtre des flux. Comptes tiers exclus ; hors autres écritures et rapprochement bancaire. Les soldes initiaux ne sont pas datés dans le référentiel.")
             if not kpis_f["repartition_comptes"].empty:
                 df_pie = kpis_f["repartition_comptes"].assign(compte=lambda df: df["compte_id"].astype(str) + " — " + df["nom_compte"].astype(str)).set_index("compte")["solde"]
-                st.bar_chart(df_pie)
+                st.bar_chart(df_pie, horizontal=True)
             else:
                 st.info("Aucun compte financier configuré.")
