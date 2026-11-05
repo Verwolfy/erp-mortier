@@ -41,6 +41,19 @@ def exporter_journal_scf_csv(ecritures: Iterable[Mapping[str, Any]], *, droit_ex
     for piece in ecritures:
         if not isinstance(piece, Mapping) or piece.get("statut") != "VALIDEE":
             raise ExportRefuse("Pièce non validée ou non structurée")
+        # Les écritures fictives sont exclues des exports, même si
+        # leur statut est modifié après les essais.
+        reference = piece.get("reference")
+        journal = piece.get("journal")
+        if any(isinstance(value, str) and value.strip().upper().startswith("DEMO26_")
+               for value in (reference, journal)):
+            raise ExportRefuse("Pièce fictive exclue")
+        lignes = piece.get("lignes")
+        if isinstance(lignes, (list, tuple)) and any(
+            isinstance(row, Mapping) and str(row.get("compte", "")).strip()
+            in {"41199926", "70199926"} for row in lignes
+        ):
+            raise ExportRefuse("Compte de démonstration exclu")
         # Réutilise la validation de l'équilibre et de la précision.
         try:
             calculer_balance_scf([piece])
