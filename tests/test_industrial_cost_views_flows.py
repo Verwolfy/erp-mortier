@@ -167,6 +167,7 @@ def test_creation_of_period_keeps_dates(ui):
 
 def test_pool_creation_starts_in_simulation(ui):
     ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer la charge"
+    ui.st.text_input.side_effect = lambda label, **kw: "5" if label == "Montant analytique (DZD)" else "TEST"
     ui.view.show_cost_reference(True)
     ui.svc.add_pool.assert_called_once_with(
         "P-TEST", "ENERGIE", "UNITS", "5", "TEST")
@@ -174,6 +175,7 @@ def test_pool_creation_starts_in_simulation(ui):
 
 def test_driver_uses_selected_basis_and_of(ui):
     ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer l'assiette"
+    ui.st.text_input.side_effect = lambda label, **kw: "5" if label == "Valeur de la clé" else "TEST"
     ui.view.show_cost_reference(True)
     ui.svc.set_driver.assert_called_once_with(
         "P-TEST", "TEST", "UNITS", "5", "TEST")
@@ -185,3 +187,21 @@ def test_create_nature_does_not_create_charge(ui):
     ui.svc.create_nature.assert_called_once_with(
         "TEST", "TEST", "Motif de test suffisamment detaille")
     ui.svc.add_pool.assert_not_called()
+
+
+def test_six_decimal_amount_kept_exact(ui):
+    ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer la charge"
+    ui.st.text_input.side_effect = lambda label, **kw: (
+        "0.123456" if label == "Montant analytique (DZD)" else "TEST")
+    ui.view.show_cost_reference(True)
+    ui.svc.add_pool.assert_called_once_with(
+        "P-TEST", "ENERGIE", "UNITS", "0.123456", "TEST")
+
+
+def test_six_decimal_driver_kept_exact(ui):
+    ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer l'assiette"
+    ui.st.text_input.side_effect = lambda label, **kw: (
+        "0.123456" if label == "Valeur de la clé" else "TEST")
+    ui.view.show_cost_reference(True)
+    ui.svc.set_driver.assert_called_once_with(
+        "P-TEST", "TEST", "UNITS", "0.123456", "TEST")
