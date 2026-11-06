@@ -29,7 +29,8 @@ def ui(monkeypatch):
     st.text_area.return_value = "Motif de test suffisamment detaille"
 
     service = types.ModuleType("modules.production.cost_service")
-    for name in ("list_periods", "list_natures", "get_period_report", "can_manage_costs",
+    for name in ("list_periods", "list_natures", "get_period_report",
+                 "get_validation_preflight", "can_manage_costs",
                  "create_period", "create_nature", "add_pool", "document_pool",
                  "export_validated_period",
                  "set_driver", "validate_period"):
@@ -45,6 +46,10 @@ def ui(monkeypatch):
         "scf_reconciliation": [], "audit": {"audit_ok": False},
     }
     service.can_manage_costs.return_value = True
+    service.get_validation_preflight.return_value = {
+        "ready": True, "blockers": [], "counts": {"charges": 1, "assiettes": 1},
+        "avertissement": "La RPC SQL revérifie tous les prérequis.",
+    }
 
     monkeypatch.setitem(sys.modules, "streamlit", st)
     monkeypatch.setitem(sys.modules, "modules.production.cost_service", service)
@@ -175,6 +180,58 @@ def test_validation_error_never_claims_success(ui):
     ui.view.show_cost_reference(True)
     ui.st.error.assert_called()
     ui.st.success.assert_not_called()
+
+
+
+def test_readonly_preflight_shows_blockers_without_mutation(ui):
+    ui.st.button.side_effect = lambda label, **_kw: label == "Vérifier les prérequis"
+    ui.svc.get_validation_preflight.return_value = {
+        "ready": False, "blockers": ["Aucune charge de période enregistrée.",
+                                    "Aucun OF terminé dans cette plage de dates."],
+        "counts": {"charges": 0, "assiettes": 0},
+        "avertissement": "La validation SQL est obligatoire.",
+    }
+    ui.view.show_cost_reference(True)
+    ui.svc.get_validation_preflight.assert_called_once_with("P-TEST")
+    assert any("non validable" in call.args[0]
+               for call in ui.st.warning.call_args_list)
+    assert any("Aucune charge" in call.args[0]
+               for call in ui.st.caption.call_args_list)
+    _assert_no_writes(ui.svc)
+
+
+def test_validation_is_blocked_if_preflight_fails(ui):
+    ui.st.checkbox.return_value = True
+    ui.st.button.side_effect = lambda label, **_kw: label == "Valider la période"
+    ui.svc.get_validation_preflight.return_value = {
+        "ready": False, "blockers": ["Pièce SCF non validée"],
+        "counts": {"charges": 1, "assiettes": 1},
+        "avertissement": "Contrôle SQL.",
+    }
+    ui.view.show_cost_reference(True)
+    ui.svc.get_validation_preflight.assert_called_once_with("P-TEST")
+    ui.svc.validate_period.assert_not_called()
+    assert any("prérequis incomplets" in call.args[0]
+               for call in ui.st.error.call_args_list)
+
+
+def test_preflight_error_never_calls_irreversible_validation(ui):
+    ui.st.checkbox.return_value = True
+    ui.st.button.side_effect = lambda label, **_kw: label == "Valider la période"
+    ui.svc.get_validation_preflight.side_effect = RuntimeError("private backend string")
+    ui.view.show_cost_reference(True)
+    ui.svc.validate_period.assert_not_called()
+    assert "private backend string" not in str(ui.st.error.call_args_list)
+    _assert_no_writes(ui.svc)
+
+
+def test_preflight_runs_again_before_validation_rpc(ui):
+    ui.st.checkbox.return_value = True
+    ui.st.button.side_effect = lambda label, **_kw: label == "Valider la période"
+    ui.svc.validate_period.return_value = {"audit_ok": True}
+    ui.view.show_cost_reference(True)
+    ui.svc.get_validation_preflight.assert_called_once_with("P-TEST")
+    ui.svc.validate_period.assert_called_once_with("P-TEST")
 
 
 def test_documenting_pool_sends_scf_piece_line_and_reason(ui):

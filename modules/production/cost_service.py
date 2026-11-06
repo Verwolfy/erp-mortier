@@ -185,6 +185,117 @@ def get_period_report(period_id: str, *, sections=None, include_audit: bool = Tr
     report["loaded_sections"] = list(requested)
     return report
 
+
+def get_validation_preflight(period_id: str) -> dict:
+    """Précontrôle LECTURE SEULE des prérequis d'une validation analytique.
+
+    Plusieurs requêtes HTTP peuvent voir des instantanés différents :
+    ce résultat guide l'utilisateur mais NE remplace JAMAIS la validation
+    transactionnelle erp_cost_validate_period et ses verrous SQL.
+    """
+    _read_allowed()
+    key = _ident(period_id)
+    client = _client()
+    response = (client.table("erp_cost_periods")
+                .select("period_id,date_debut,date_fin,statut")
+                .eq("period_id", key).limit(2).execute())
+    periods = response.data
+    if (not isinstance(periods, list) or len(periods) != 1
+            or not isinstance(periods[0], dict)
+            or periods[0].get("period_id") != key):
+        raise RuntimeError("Période analytique absente ou lecture incomplète")
+    period = periods[0]
+
+    # Ne charger les jeux nécessaires qu'à la demande, sans données fictives.
+    sections = ("pools", "drivers", "scf_reconciliation", "summaries")
+    report = get_period_report(key, sections=sections, include_audit=True)
+    if (report.get("loaded_sections") != list(sections)
+            or report.get("audit_calculated") is not True
+            or not isinstance(report.get("audit"), dict)):
+        raise RuntimeError("Précontrôle incomplet : audit indisponible")
+    for section in sections:
+        if (not isinstance(report.get(section), list)
+                or any(not isinstance(r, dict) for r in report[section])):
+            raise RuntimeError("Précontrôle incomplet : données incohérentes")
+
+    pools = report["pools"]
+    drivers = report["drivers"]
+    recon = report["scf_reconciliation"]
+    summaries = report["summaries"]
+    audit = report["audit"]
+
+    # La vue de rapprochement peut signaler une preuve non validée, même
+    # lorsque l'audit mathématique d'origine retourne audit_ok=true.
+    by_pool = {}
+    for entry in recon:
+        pool = entry.get("pool_id")
+        if not isinstance(pool, str) or pool in by_pool:
+            raise RuntimeError("Rapprochements SCF dupliqués ou invalides")
+        by_pool[pool] = entry
+    pool_ids = [p.get("pool_id") for p in pools]
+    if any(not isinstance(x, str) for x in pool_ids) or len(set(pool_ids)) != len(pool_ids):
+        raise RuntimeError("Charges analytiques dupliquées ou invalides")
+
+    blockers = []
+    if period.get("statut") != "BROUILLON":
+        blockers.append("La période n'est plus en brouillon.")
+    if not pools:
+        blockers.append("Aucune charge de période enregistrée.")
+    if not drivers:
+        blockers.append("Aucune assiette mesurée par OF terminé.")
+    if not summaries:
+        blockers.append("Aucune synthèse analytique par OF disponible.")
+    undocumented = sum(
+        p.get("statut") != "DOCUMENTE"
+        or by_pool.get(p["pool_id"], {}).get("rapprochement_ok") is not True
+        for p in pools
+    )
+    if undocumented:
+        blockers.append(
+            f"{undocumented} charge(s) sans pièce SCF validée et débit suffisamment rapproché.")
+    if len(by_pool) != len(pools) or set(by_pool) != set(pool_ids):
+        blockers.append("Rapprochement SCF incomplet ou non concordant avec les charges.")
+
+    # Ne jamais déduire la validabilité de l'égalité 0 = 0.
+    if audit.get("audit_ok") is not True:
+        blockers.append("Audit de répartition non conforme ou non confirmé.")
+    try:
+        if int(audit.get("pools_sans_assiette", 0)) > 0:
+            blockers.append("Certaines charges ne disposent d'aucune assiette positive.")
+        if int(audit.get("of_hors_periode_ou_non_termines", 0)) > 0:
+            blockers.append("Des OF sont non terminés ou hors des dates de la période.")
+    except (TypeError, ValueError, OverflowError):
+        raise RuntimeError("Compteurs d'audit invalides") from None
+
+    # Diagnostic informatif : compter les OF éligibles, sans jamais en créer.
+    start, end = period.get("date_debut"), period.get("date_fin")
+    if not (isinstance(start, str) and isinstance(end, str)):
+        raise RuntimeError("Dates de période non lisibles")
+    orders = _fetch_all(
+        client.table("ordres_fabrication")
+        .select("of_id,date_fin").eq("statut", "TERMINE")
+        .gte("date_fin", start).lte("date_fin", end),
+        ("of_id",),
+    )
+    if not drivers and not orders:
+        blockers.append("Aucun OF terminé dans cette plage de dates.")
+    return {
+        "period_id": key,
+        "ready": not blockers,
+        "blockers": blockers,
+        "counts": {
+            "charges": len(pools),
+            "assiettes": len(drivers),
+            "charges_documentees": len(pools) - undocumented,
+            "of_analyses": len(summaries),
+            "of_termines_dans_periode": len(orders),
+        },
+        "audit_equilibre": audit.get("audit_ok") is True,
+        "avertissement": ("Précontrôle non transactionnel : la RPC SQL revérifie "
+                          "tous les prérequis sous verrou lors de la validation."),
+    }
+
+
 def export_validated_period(period_id: str) -> dict:
     """Export analytique figé; un appel SQL, réservé à Production+Finance."""
     _read_allowed()
@@ -204,6 +315,17 @@ def export_validated_period(period_id: str) -> dict:
     return result
 
 
+
+def _confirmed_row(response, keys: dict) -> None:
+    """Ne jamais annoncer une écriture si PostgREST ne confirme pas l'objet créé."""
+    rows = getattr(response, "data", None)
+    if (not isinstance(rows, list) or len(rows) != 1
+            or not isinstance(rows[0], dict)
+            or any(rows[0].get(field) != expected for field, expected in keys.items())):
+        raise RuntimeError(
+            "Écriture analytique non confirmée ; vérifier Supabase avant toute nouvelle tentative")
+
+
 def create_period(label: str, start: str, end: str) -> str:
     _allowed()
     if not isinstance(label, str) or not 1 <= len(label.strip()) <= 150:
@@ -212,11 +334,12 @@ def create_period(label: str, start: str, end: str) -> str:
     if a > b:
         raise ValueError("Fin de période antérieure au début")
     period_id = f"COST-P-{uuid4()}"
-    _client().table("erp_cost_periods").insert({
+    response = _client().table("erp_cost_periods").insert({
         "period_id": period_id, "libelle": label.strip(),
         "date_debut": a.isoformat(), "date_fin": b.isoformat(),
         "statut": "BROUILLON",
     }).execute()
+    _confirmed_row(response, {"period_id": period_id, "statut": "BROUILLON"})
     return period_id
 
 
@@ -234,11 +357,12 @@ def add_pool(period_id: str, nature: str, base: str, amount: object, reference: 
     if not isinstance(reference, str) or not 1 <= len(reference.strip()) <= 500:
         raise ValueError("Justificatif obligatoire")
     pool_id = f"COST-POOL-{uuid4()}"
-    _client().table("erp_cost_pools").insert({
+    response = _client().table("erp_cost_pools").insert({
         "pool_id": pool_id, "period_id": period_id, "nature_code": _ident(nature),
         "base_imputation": base, "montant_dzd": _amount(amount, "Montant"),
         "justificatif": reference.strip(), "statut": "SIMULATION",
     }).execute()
+    _confirmed_row(response, {"pool_id": pool_id, "period_id": period_id, "statut": "SIMULATION"})
     return pool_id
 
 
@@ -257,11 +381,14 @@ def set_driver(period_id: str, of_id: str, base: str, value: object, reference: 
     finished = orders[0].get("date_fin")
     if not isinstance(finished, str) or not periods[0]["date_debut"] <= finished <= periods[0]["date_fin"]:
         raise ValueError("OF hors période de référence")
-    client.table("erp_cost_drivers").upsert({
+    response = client.table("erp_cost_drivers").upsert({
         "period_id": period_id, "of_id": of_id,
         "base_imputation": base, "valeur": _amount(value, "Assiette"),
         "justificatif": reference.strip(),
     }, on_conflict="period_id,of_id,base_imputation").execute()
+    _confirmed_row(response, {
+        "period_id": period_id, "of_id": of_id, "base_imputation": base,
+    })
 
 def validate_period(period_id: str) -> dict:
     """Valide une période seulement lorsque toutes les charges sont imputables."""
@@ -283,10 +410,11 @@ def create_nature(code: str, label: str, description: str = "") -> None:
         raise ValueError("Libellé invalide")
     if not isinstance(description, str) or len(description) > 1000:
         raise ValueError("Description trop longue")
-    _client().table("erp_cost_natures").insert({
+    response = _client().table("erp_cost_natures").insert({
         "nature_code": code, "libelle": label.strip(), "description": description,
         "actif": True,
     }).execute()
+    _confirmed_row(response, {"nature_code": code, "actif": True})
 
 
 def document_pool(period_id: str, pool_id: str, scf_piece_id: str, scf_line_id: int, explanation: str) -> None:

@@ -1,3 +1,15 @@
+## 6 novembre 2026 — fiabilisation du précontrôle des coûts industriels (phase de tests)
+
+- **Périmètre :** ajout au service `modules/production/cost_service.py` d'un précontrôle explicite des périodes (`get_validation_preflight`) avec lecture des charges, assiettes, rapprochement SCF, OF terminés de la période et audit. La RPC transactionnelle SQL demeure l'autorité finale.
+- **Sécurité des écritures :** confirmation stricte des retours `INSERT/UPSERT` dans `create_period`, `add_pool`, `set_driver`, `create_nature`. En cas de confirmation absente, retour incertain et instruction de consulter Supabase avant nouvel essai.
+- **Interface :** bouton manuel de précontrôle (lecture seule), détails des blocages, revérification avant appel de la validation irréversible ; guide utilisateur enrichi.
+- **Tests :** fichier `tests/test_industrial_cost_preflight.py` ajouté (droits, données manquantes, audit nul, preuves SCF, incohérences, confirmations d'écriture) et UI adaptée ; CI à exécuter avant fusion.
+- **Données production :** aucune modification ni validation effectuée. Deux brouillons de novembre sans charge ; OF terminés en octobre ; zéro pièce SCF validée. Aucune réécriture de dates, aucune génération de montant.
+- **Documentation :** `docs/CAMPAGNE_PREVALIDATION_COUTS_INDUSTRIELS_20261106.md`.
+- **Prochaine action :** PR, revue diff, tests complets, correction des échecs, fusion sur `main` uniquement après CI verte ; preuve de redéploiement Streamlit encore indisponible.
+
+---
+
 ## 6 novembre 2026 — audit réel des périodes analytiques et correction d'affichage (fusionnée sur main)
 
 - **Cible** : GitHub `Verwolfy/erp-mortier`, PR [#39](https://github.com/Verwolfy/erp-mortier/pull/39) fusionnée avec commit `eac759848110d7acc97e2b1c2d6f7b4768be31c8`, Supabase principal `erp-mortier` (`wenydirqtmkywbxbxfal`).

@@ -155,8 +155,17 @@ les quantités enregistrées.
   puis réparties sur des OF terminés dans les dates de la période.
   L'audit mesure l'équilibre de répartition, pas l'existence de justificatifs :
   **0 DZD réparti sur 0 DZD peut apparaître équilibré, sans que la période
-  soit validable**. Ne pas utiliser le bouton de validation avant présence
-  des charges, assiettes et pièces SCF validées et contrôle des dates.
+  soit validable**. Cliquer sur **Précontrôle avant validation**
+  puis **Vérifier les prérequis** : ce diagnostic en lecture seule détaille les
+  charges, assiettes, rapprochements SCF et OF terminés dans les dates.
+  Une période de novembre ne peut pas englober un OF terminé en octobre.
+  Corriger les anomalies et relancer le précontrôle ; une validation explicitement
+  confirmée effectue **à nouveau** le précontrôle, puis la transaction SQL.
+  Le précontrôle utilise plusieurs lectures réseau et ne constitue pas
+  une validation transactionnelle ; la RPC SQL fait toujours autorité.
+  Les écritures de charges et d'assiettes doivent être confirmées par une
+  réponse du serveur ; si la réponse est incertaine, **contrôler Supabase
+  avant toute nouvelle tentative**, plutôt que doubler une saisie.
   Les coûts analytiques ne modifient ni le CUMP ni les écritures du journal SCF.
 
 La clôture peut modifier les stocks de matières, d'emballages et de produits

@@ -13,7 +13,8 @@ import streamlit as st
 from modules.production.cost_service import (
     BASES, add_pool, can_manage_costs, create_period, create_nature, document_pool,
     export_validated_period,
-    get_period_report, list_natures, list_periods, set_driver, validate_period,
+    get_period_report, get_validation_preflight, list_natures, list_periods,
+    set_driver, validate_period,
 )
 
 
@@ -181,18 +182,43 @@ def show_cost_reference(can_write: bool) -> None:
             (f"{p['libelle']} — {p['date_debut']} au {p['date_fin']}"
              for p in editable if p["period_id"] == k), k),
         key="cost_period_edit")
+    with st.expander("Précontrôle avant validation (lecture seule)"):
+        st.caption(
+            "Vérifie charges, assiettes, OF dans la période, pièces SCF validées "
+            "et équilibre des imputations. Aucune comptabilisation ni validation.")
+        if st.button("Vérifier les prérequis", key="cost_preflight_button"):
+            try:
+                check = get_validation_preflight(period_id)
+                st.json(check["counts"])
+                if check["ready"]:
+                    st.success("Précontrôle satisfaisant ; la validation SQL reste décisive.")
+                else:
+                    st.warning("Période non validable en l'état :")
+                    for issue in check["blockers"]:
+                        st.caption("• " + issue)
+                st.caption(check["avertissement"])
+            except Exception:
+                st.error("Précontrôle indisponible : ne pas valider cette période.")
+
     with st.expander("Valider et figer la période"):
-        st.warning("La validation est irréversible depuis cet écran : toutes les assiettes "
-                   "doivent être renseignées et l'audit doit être conforme.")
+        st.warning(
+            "Validation irréversible : exige charges, OF terminés dans les dates, "
+            "assiettes et pièces SCF validées. Le contrôle est relancé avant toute RPC.")
         agree = st.checkbox("Je confirme les montants et les clés d'imputation",
                             key="cost_validate_ack")
         if st.button("Valider la période", disabled=not agree, key="cost_validate_button"):
             try:
-                result = validate_period(period_id)
-                st.success("Période validée. Montants et assiettes désormais verrouillés.")
-                st.json(result)
+                check = get_validation_preflight(period_id)
+                if check["ready"] is not True:
+                    st.error("Validation bloquée : prérequis incomplets.")
+                    for issue in check["blockers"]:
+                        st.caption("• " + issue)
+                else:
+                    result = validate_period(period_id)
+                    st.success("Période validée. Montants et assiettes désormais verrouillés.")
+                    st.json(result)
             except Exception:
-                st.error("Validation refusée : corriger les assiettes et exécuter l'audit.")
+                st.error("Validation refusée : précontrôle ou validation SQL non confirmés.")
     with st.expander("Créer une nature de charge"):
         with st.form("cost_new_nature"):
             nature_code = st.text_input("Code nature (MAJUSCULES)")
@@ -205,6 +231,8 @@ def show_cost_reference(can_write: bool) -> None:
                 except Exception:
                     st.error("Nature refusée : code déjà utilisé, données invalides ou habilitation insuffisante.")
     with st.expander("Associer une pièce justificative à une charge"):
+        st.caption("Seules les pièces SCF déjà VALIDÉES avec une ligne au débit "
+                   "suffisante peuvent justifier une charge. Un brouillon SCF est refusé.")
         with st.form("cost_document_pool"):
             pool_ref = st.text_input("Identifiant du pool analytique")
             scf_piece = st.text_input("UUID de la pièce SCF validée")
@@ -234,6 +262,9 @@ def show_cost_reference(can_write: bool) -> None:
                     except Exception:
                         st.error("Charge refusée : vérifier droits, période, montant et justificatif.")
     with st.expander("Renseigner une assiette pour un OF terminé"):
+        st.caption("L'OF doit être terminé ET daté entre le début et la fin "
+                   "de la période sélectionnée. Les OF d'octobre ne peuvent pas "
+                   "être imputés à une période de novembre.")
         with st.form("cost_add_driver"):
             of_id = st.text_input("Identifiant de l'OF terminé")
             driver = st.selectbox("Clé mesurée", BASES)
