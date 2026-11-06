@@ -23,7 +23,7 @@ BEGIN
   VALUES (v_piece,'IT26_COST_EX','IT26_COST','IT26_COST_DOC_'||n,
           '[TEST] COST_DOC_'||n,'2026-11-05','[TEST] Piece fictive equilibree','BROUILLON');
   INSERT INTO public.scf_lignes(piece_id,numero,compte,debit,credit)
-  VALUES(v_piece,1,v_a,100,0),(v_piece,2,v_b,0,100);
+  VALUES(v_piece,1,v_a,200,0),(v_piece,2,v_b,0,200);
   UPDATE public.scf_pieces SET statut='VALIDEE' WHERE piece_id=v_piece;
  END LOOP;
 END $fixtures_scf$;
@@ -59,8 +59,8 @@ BEGIN
  EXCEPTION WHEN SQLSTATE '23514' THEN denied := true; END;
  IF NOT denied THEN RAISE EXCEPTION 'Simulation validée sans pièce'; END IF;
 
- INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,explication_imputation)
- SELECT 'IT26_COSTACL_POOL',piece_id,'[TEST] rattachement fictif a une charge industrie' FROM public.scf_pieces WHERE document_source='[TEST] COST_DOC_1';
+ INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,scf_ligne_id,explication_imputation)
+ SELECT 'IT26_COSTACL_POOL',s.piece_id,l.ligne_id,'[TEST] rattachement fictif a une charge industrie' FROM public.scf_pieces s JOIN public.scf_lignes l ON l.piece_id=s.piece_id AND l.debit>0 WHERE s.document_source='[TEST] COST_DOC_1';
  UPDATE public.erp_cost_pools SET statut='DOCUMENTE',
  justificatif='[TEST] document fictif pour vérifier état' WHERE pool_id='IT26_COSTACL_POOL';
  IF (public.erp_cost_validate_period('IT26_COSTACL_P')->>'audit_ok') IS DISTINCT FROM 'true'
