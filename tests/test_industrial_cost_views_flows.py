@@ -176,7 +176,7 @@ def test_driver_uses_selected_basis_and_of(ui):
     ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer l'assiette"
     ui.view.show_cost_reference(True)
     ui.svc.set_driver.assert_called_once_with(
-        "P-TEST", "TEST", "UNITS", "5", "Motif de test suffisamment detaille")
+        "P-TEST", "TEST", "UNITS", "5", "TEST")
 
 
 def test_create_nature_does_not_create_charge(ui):
