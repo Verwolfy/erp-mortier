@@ -73,5 +73,6 @@ def test_validation_snapshot_and_drift_contract():
     assert '"validation_drift": (' in srv
     assert '"erp_cost_of_validation_drift"' in srv
     assert 'client.table(table_name).select(columns)' in srv
-    assert 'report.get("validation_drift")' in ui
+    assert 'section == "validation_drift"' in ui
+    assert 'report["validation_drift"]' in ui
     assert 'derive_detectee' in ui
