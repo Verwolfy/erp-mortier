@@ -200,12 +200,15 @@ def document_pool(period_id: str, pool_id: str, scf_piece_id: str, scf_line_id: 
     debit = Decimal(str(lines[0]["debit"]))
     if not debit.is_finite() or debit <= 0 or Decimal(str(pools[0]["montant_dzd"])) > debit:
         raise ValueError("Montant de charge supérieur au débit SCF admissible")
-    # Étape 1 : lien vérifié. Si l'étape 2 échoue, la charge reste SIMULATION,
-    # donc la période ne peut pas être validée prématurément.
-    client.table("erp_cost_pool_scf_evidence").upsert({
-        "pool_id": key, "piece_id": piece_id, "scf_ligne_id": scf_line_id,
-        "explication_imputation": explanation.strip(),
-    }, on_conflict="pool_id").execute()
-    client.table("erp_cost_pools").update({
-        "statut": "DOCUMENTE", "justificatif": f"SCF:{piece_id}",
-    }).eq("pool_id", key).eq("period_id", period_id).execute()
+    # Une seule RPC transactionnelle : jamais de preuve orpheline si le réseau
+    # tombe entre la liaison et le passage en statut DOCUMENTE.
+    response = client.rpc("erp_cost_document_pool_atomic", {
+        "p_period_id": _ident(period_id),
+        "p_pool_id": key,
+        "p_piece_id": piece_id,
+        "p_scf_ligne_id": scf_line_id,
+        "p_explication": explanation.strip(),
+    }).execute()
+    result = response.data
+    if not isinstance(result, dict) or result.get("documented") is not True:
+        raise RuntimeError("Documentation SCF non confirmée")
