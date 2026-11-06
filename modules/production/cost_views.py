@@ -45,12 +45,23 @@ def show_cost_reference(can_write: bool) -> None:
             index=5 if next((p["statut"] for p in periods
                              if p["period_id"] == selected), "") == "VALIDE" else 0,
         )
+        audit_requested = st.checkbox(
+            "Calculer l'audit complet de la période (vérification coûteuse)",
+            value=False, key="cost_report_full_audit",
+        )
         try:
-            # Ne pas charger l'ensemble des tableaux au moindre changement de filtre.
-            report = get_period_report(selected, sections=(section,))
-            audit = report.get("audit") or {}
-            st.caption("Audit de complétude : " + ("CONFORME" if audit.get("audit_ok") else "À compléter"))
-            st.json(audit)
+            # L'audit complet est calculé à la demande et jamais mis en cache.
+            # La RPC de validation le recalculera obligatoirement.
+            report = get_period_report(
+                selected, sections=(section,), include_audit=audit_requested)
+            if audit_requested:
+                audit = report.get("audit") or {}
+                st.caption("Audit de complétude : " +
+                           ("CONFORME" if audit.get("audit_ok") else "À compléter"))
+                st.json(audit)
+            else:
+                st.caption("Audit non calculé. Exécuter l'audit complet pour contrôler "
+                           "la répartition avant toute validation.")
             st.caption("Section chargée : " + section_labels[section] +
                        ". Les autres tableaux ne sont pas téléchargés.")
             if section == "validation_drift":
