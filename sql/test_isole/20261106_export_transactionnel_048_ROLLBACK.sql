@@ -136,6 +136,9 @@ BEGIN
  v_export:=public.erp_cost_export_validated('IT26_IND_PERIOD');
  IF v_export->>'format' IS DISTINCT FROM 'erp_cost_validated_export_v1'
     OR v_export->>'snapshot_type' IS DISTINCT FROM 'single_sql_statement'
+    OR jsonb_typeof(v_export->'totals'->'charges_dzd')<>'string'
+    OR (SELECT count(*) FROM jsonb_array_elements(v_export->'pools') p
+        WHERE jsonb_typeof(p->'montant_dzd')='string')<>2
     OR (v_export->'totals'->>'charges_dzd')::numeric<>210
     OR (v_export->'totals'->>'impute_valide_dzd')::numeric<>210
     OR jsonb_array_length(v_export->'of_snapshots')<>2
