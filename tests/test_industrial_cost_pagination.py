@@ -127,7 +127,14 @@ def test_full_report_has_all_pages_for_all_seven_tables(svc):
     }
     queries = {}
     for table, (key, size) in layout.items():
-        qs = Query([{key: f"{i:05d}"} for i in range(size)])
+        rows = [{key: f"{i:05d}"} for i in range(size)]
+        if table == "erp_cost_drivers":
+            for row in rows:
+                row["base_imputation"] = "UNITS"
+        if table == "erp_cost_allocations":
+            for row in rows:
+                row["of_id"] = "OF-TEST"
+        qs = Query(rows)
         queries[table] = qs
 
     client.return_value.table.side_effect = lambda table: queries[table]
