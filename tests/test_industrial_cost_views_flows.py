@@ -84,6 +84,37 @@ def test_read_failure_fails_closed(ui):
     _assert_no_writes(ui.svc)
 
 
+def test_missing_finance_read_permission_has_actionable_message(ui):
+    ui.svc.list_periods.side_effect = PermissionError("Finance denied")
+    ui.view.show_cost_reference(True)
+    ui.st.error.assert_called_once()
+    assert "Production ET Finance" in ui.st.error.call_args.args[0]
+    ui.st.form.assert_not_called()
+    _assert_no_writes(ui.svc)
+
+
+def test_missing_service_key_has_distinct_safe_message(ui):
+    class StockClientConfigurationError(Exception):
+        pass
+
+    ui.svc.list_natures.side_effect = StockClientConfigurationError("private token")
+    ui.view.show_cost_reference(True)
+    ui.st.error.assert_called_once()
+    assert "non configuré" in ui.st.error.call_args.args[0]
+    assert "private token" not in str(ui.st.error.call_args.args)
+    ui.st.form.assert_not_called()
+    _assert_no_writes(ui.svc)
+
+
+def test_generic_backend_failure_does_not_disclose_error_details(ui):
+    ui.svc.list_periods.side_effect = ConnectionError("secret backend URI")
+    ui.view.show_cost_reference(True)
+    ui.st.error.assert_called_once()
+    assert "secret backend URI" not in str(ui.st.error.call_args.args)
+    assert "connexion ou de base" in ui.st.error.call_args.args[0]
+    _assert_no_writes(ui.svc)
+
+
 def test_report_error_does_not_write(ui):
     ui.svc.get_period_report.side_effect = RuntimeError("unavailable")
     ui.view.show_cost_reference(False)
