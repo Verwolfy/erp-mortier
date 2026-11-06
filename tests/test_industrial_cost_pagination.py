@@ -173,7 +173,7 @@ def test_repeated_key_across_pages_is_rejected(svc):
 def test_missing_pagination_key_is_rejected(svc):
     mod, _, _ = svc
     with pytest.raises(RuntimeError, match="manquante"):
-        mod._fetch_all(Query([{"id": "A"}, {"other": "B"}]), ("id",))
+        mod._fetch_all(Query([{"other": "B"}]), ("id",))
 
 
 def test_null_page_response_fails_closed(svc):
