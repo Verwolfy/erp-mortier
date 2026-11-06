@@ -72,6 +72,13 @@ BEGIN
  BEGIN PERFORM public.erp_cost_validate_period('IT26_IND_PERIOD');
  EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
  IF NOT v_rejected THEN RAISE EXCEPTION 'Simulation validee a tort'; END IF;
+ -- Même avec un justificatif texte, le statut DOCUMENTE ne passe pas sans FK SCF validee.
+ v_rejected:=false;
+ BEGIN
+   UPDATE public.erp_cost_pools SET statut='DOCUMENTE'
+    WHERE pool_id='IT26_IND_POOL_E';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Charge DOCUMENTE sans piece acceptee'; END IF;
  INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,explication_imputation)
  SELECT 'IT26_IND_POOL_E', piece_id, '[TEST] rattachement fictif du pool energie' FROM public.scf_pieces WHERE document_source='[TEST] COST_DOC_1';
  INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,explication_imputation)
