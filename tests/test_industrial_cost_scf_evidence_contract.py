@@ -23,8 +23,8 @@ def test_ui_service_requires_verified_scf_uuid():
     ui = (ROOT / "modules" / "production" / "cost_views.py").read_text(encoding="utf-8")
     assert 'client.table("scf_pieces")' in srv
     assert 'pieces[0]["statut"] != "VALIDEE"' in srv
-    assert 'client.table("erp_cost_pool_scf_evidence").upsert(' in srv
-    assert 'on_conflict="pool_id"' in srv
+    assert 'client.rpc("erp_cost_document_pool_atomic"' in srv
+    assert '"p_scf_ligne_id": scf_line_id' in srv
     assert 'document_pool(period_id, pool_ref, scf_piece, int(scf_line), explanation)' in ui
     assert 'UUID de la pièce SCF validée' in ui
 
@@ -40,5 +40,17 @@ def test_quantitative_line_reconciliation_contract():
     assert "SECURITY DEFINER" in sql
     assert "erp_apply_stock_movement" not in sql
     srv = (ROOT / "modules" / "production" / "cost_service.py").read_text(encoding="utf-8")
-    assert '"scf_ligne_id": scf_line_id' in srv
+    assert '"p_scf_ligne_id": scf_line_id' in srv
     assert 'Decimal(str(pools[0]["montant_dzd"])) > debit' in srv
+
+
+def test_atomic_documentation_contract():
+    sql = (ROOT / "sql" / "041_couts_industriels_documentation_atomique.sql").read_text(encoding="utf-8")
+    assert "SECURITY DEFINER" in sql
+    assert "FOR UPDATE" in sql
+    assert "erp_cost_pool_scf_evidence" in sql
+    assert "statut='DOCUMENTE'" in sql
+    assert "p_scf_ligne_id" in sql
+    assert "REVOKE ALL ON FUNCTION" in sql
+    assert "GRANT EXECUTE ON FUNCTION" in sql
+    assert "erp_apply_stock_movement" not in sql
