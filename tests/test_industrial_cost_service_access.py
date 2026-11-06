@@ -70,7 +70,8 @@ def test_authorized_period_creation_uses_brouillon(service):
     mod, db, client = service
     db.check_server_permission.return_value = True
     mod.uuid4 = lambda: "test-stable"
-    client.table.return_value.execute.return_value.data = [
+    # PostgREST renvoie la confirmation sur le builder INSERT, pas sur TABLE.
+    client.table.return_value.insert.return_value.execute.return_value.data = [
         {"period_id": "COST-P-test-stable", "statut": "BROUILLON"}]
     period_id = mod.create_period("Novembre", "2026-11-01", "2026-11-30")
     assert period_id.startswith("COST-P-")
