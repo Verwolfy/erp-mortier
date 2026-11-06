@@ -221,6 +221,8 @@ def test_validated_period_displays_snapshot_drift_warning(ui):
         "of_id": "OF-TEST", "derive_detectee": True,
         "cout_direct_valide_dzd": "100", "cout_direct_actuel_dzd": "101",
     }]
+    ui.st.selectbox.side_effect = lambda label, values, **kw: (
+        "validation_drift" if label == "Section du rapport" else list(values)[0])
     ui.view.show_cost_reference(False)
     ui.st.error.assert_called_once()
     ui.st.form.assert_not_called()
@@ -233,6 +235,30 @@ def test_validated_period_displays_conform_snapshot(ui):
         "of_id": "OF-TEST", "derive_detectee": False,
         "cout_direct_valide_dzd": "100", "cout_direct_actuel_dzd": "100",
     }]
+    ui.st.selectbox.side_effect = lambda label, values, **kw: (
+        "validation_drift" if label == "Section du rapport" else list(values)[0])
     ui.view.show_cost_reference(False)
     ui.st.success.assert_called_once()
     ui.st.error.assert_not_called()
+
+
+def test_ui_only_requests_selected_section(ui):
+    ui.view.show_cost_reference(False)
+    ui.svc.get_period_report.assert_called_once_with("P-TEST", sections=("pools",))
+    ui.st.dataframe.assert_called()
+
+
+def test_ui_can_open_scf_section_without_other_tables(ui):
+    ui.st.selectbox.side_effect = lambda label, values, **kw: (
+        "scf_reconciliation" if label == "Section du rapport" else list(values)[0])
+    ui.view.show_cost_reference(False)
+    ui.svc.get_period_report.assert_called_once_with(
+        "P-TEST", sections=("scf_reconciliation",))
+
+
+def test_section_failure_hides_write_forms(ui):
+    ui.svc.get_period_report.side_effect = ConnectionError("selected section unavailable")
+    ui.view.show_cost_reference(True)
+    ui.st.error.assert_called()
+    ui.st.form.assert_not_called()
+    _assert_no_writes(ui.svc)
