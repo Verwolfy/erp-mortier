@@ -244,7 +244,7 @@ def test_validated_period_displays_conform_snapshot(ui):
 
 def test_ui_only_requests_selected_section(ui):
     ui.view.show_cost_reference(False)
-    ui.svc.get_period_report.assert_called_once_with("P-TEST", sections=("pools",))
+    ui.svc.get_period_report.assert_called_once_with("P-TEST", sections=("pools",), include_audit=False)
     ui.st.dataframe.assert_called()
 
 
@@ -253,11 +253,37 @@ def test_ui_can_open_scf_section_without_other_tables(ui):
         "scf_reconciliation" if label == "Section du rapport" else list(values)[0])
     ui.view.show_cost_reference(False)
     ui.svc.get_period_report.assert_called_once_with(
-        "P-TEST", sections=("scf_reconciliation",))
+        "P-TEST", sections=("scf_reconciliation",), include_audit=False)
 
 
 def test_section_failure_hides_write_forms(ui):
     ui.svc.get_period_report.side_effect = ConnectionError("selected section unavailable")
+    ui.view.show_cost_reference(True)
+    ui.st.error.assert_called()
+    ui.st.form.assert_not_called()
+    _assert_no_writes(ui.svc)
+
+
+def test_ui_does_not_recalculate_audit_when_unchecked(ui):
+    ui.view.show_cost_reference(False)
+    ui.svc.get_period_report.assert_called_once_with(
+        "P-TEST", sections=("pools",), include_audit=False)
+    ui.st.json.assert_not_called()
+
+
+def test_ui_explicit_audit_request_recalculates(ui):
+    ui.st.checkbox.side_effect = lambda label, **_kw: (
+        label.startswith("Calculer l'audit complet"))
+    ui.svc.get_period_report.return_value["audit"] = {"audit_ok": True}
+    ui.view.show_cost_reference(False)
+    ui.svc.get_period_report.assert_called_once_with(
+        "P-TEST", sections=("pools",), include_audit=True)
+    ui.st.json.assert_called_once_with({"audit_ok": True})
+
+
+def test_ui_audit_failure_disables_write_forms(ui):
+    ui.st.checkbox.return_value = True
+    ui.svc.get_period_report.side_effect = RuntimeError("audit unavailable")
     ui.view.show_cost_reference(True)
     ui.st.error.assert_called()
     ui.st.form.assert_not_called()
