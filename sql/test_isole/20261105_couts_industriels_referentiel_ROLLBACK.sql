@@ -112,6 +112,14 @@ BEGIN
  OR (SELECT cout_analytique_par_unite_dzd FROM public.erp_cost_of_summary
      WHERE period_id='IT26_IND_PERIOD' AND of_id='IT26_IND_OF2')<>68
  THEN RAISE EXCEPTION 'Cout analytique ou cout unitaire incorrect'; END IF;
+ -- Le lien documentaire d'une période validée doit être immuable.
+ v_rejected:=false;
+ BEGIN
+  DELETE FROM public.erp_cost_pool_scf_evidence WHERE pool_id='IT26_IND_POOL_E';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN
+   RAISE EXCEPTION 'Suppression d une preuve de periode validee acceptee';
+ END IF;
  SELECT count(*) INTO v_count FROM public.erp_cost_allocations WHERE period_id='IT26_IND_PERIOD';
  IF v_count<>4 THEN RAISE EXCEPTION 'Lignes de repartition incorrectes: %',v_count; END IF;
  RAISE NOTICE 'COST_REFERENCE_OK OF1 allocation 70 (total 370), OF2 allocation 140 (total 340)';
