@@ -42,3 +42,13 @@ Commit `9fc89c229cd8ee50104d4733253d135caf0f05a2` :
 Le test du premier déploiement a identifié une marge de durcissement : une suppression de lien SCF par une transaction concurrente doit prendre le même verrou de période que la validation analytique. Le correctif a été versionné dans `sql/039_verrouillage_suppression_preuve_couts.sql`, avec un test qui refuse la suppression de la preuve d'une période validée. **Au moment de cette mise à jour, 039 n'avait pas encore été appliqué sur TEST ni sur la production** : la restauration du projet TEST était encore `COMING_UP`. Ne pas présenter 039 comme déployé tant qu'une preuve d'application et le test SQL de régression ne sont pas disponibles.
 
 CI associée au test renforcé `ebd4034568bca30920330191e77924012ee4b7eb` : [tests ERP réussis](https://github.com/Verwolfy/erp-mortier/actions/runs/42196175853) et [audit de réconciliation réussi](https://github.com/Verwolfy/erp-mortier/actions/runs/42196175891). Le navigateur Streamlit authentifié n'a pas été exercé.
+
+## Clôture de la migration 039 — validée
+
+La restauration de TEST a finalement atteint `ACTIVE_HEALTHY`. La migration `sql/039_verrouillage_suppression_preuve_couts.sql` a ensuite été **appliquée avec succès sur TEST, puis en production**.
+
+Le test transactionnel enrichi `sql/test_isole/20261105_couts_industriels_referentiel_ROLLBACK.sql` a donné `COST_REFERENCE_OK` : deux OF, imputations respectives de 70 et 140 DZD et refus de supprimer un lien SCF après validation. Le contrôle indépendant après ROLLBACK a trouvé 0 lien, 0 période fictive, 0 pièce et 0 compte SCF fictifs ; la fonction de suppression contient bien `FOR UPDATE OF t`.
+
+Sur la production après 039 : `liens=0`, `periodes=0`, `charges=0`, `verrou_actif=true`. Aucune donnée métier existante n'a été modifiée.
+
+La CI de référence de la campagne `ebd4034568bca30920330191e77924012ee4b7eb` est verte : [tests ERP](https://github.com/Verwolfy/erp-mortier/actions/runs/42196175853) et [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/42196175891).
