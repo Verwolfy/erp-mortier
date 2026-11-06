@@ -158,7 +158,7 @@ def create_nature(code: str, label: str, description: str = "") -> None:
     }).execute()
 
 
-def document_pool(period_id: str, pool_id: str, scf_piece_id: str, explanation: str) -> None:
+def document_pool(period_id: str, pool_id: str, scf_piece_id: str, scf_line_id: int, explanation: str) -> None:
     """Lie une charge à une pièce SCF déjà validée, sans publier ni créer la pièce."""
     _editable(period_id)
     from uuid import UUID
@@ -166,11 +166,13 @@ def document_pool(period_id: str, pool_id: str, scf_piece_id: str, explanation: 
         piece_id = str(UUID(scf_piece_id))
     except (ValueError, TypeError, AttributeError) as exc:
         raise ValueError("Identifiant UUID de pièce SCF requis") from exc
+    if isinstance(scf_line_id, bool) or not isinstance(scf_line_id, int) or scf_line_id <= 0:
+        raise ValueError("Identifiant de ligne SCF invalide")
     if not isinstance(explanation, str) or not 10 <= len(explanation.strip()) <= 1000:
         raise ValueError("Justification d'imputation de 10 à 1000 caractères obligatoire")
     key = _ident(pool_id)
     client = _client()
-    pools = client.table("erp_cost_pools").select("pool_id,statut").eq(
+    pools = client.table("erp_cost_pools").select("pool_id,statut,montant_dzd").eq(
         "period_id", _ident(period_id)).eq("pool_id", key).limit(2).execute().data or []
     if len(pools) != 1 or pools[0]["statut"] != "SIMULATION":
         raise ValueError("Charge absente ou déjà documentée")
@@ -179,10 +181,17 @@ def document_pool(period_id: str, pool_id: str, scf_piece_id: str, explanation: 
     if (len(pieces) != 1 or pieces[0]["statut"] != "VALIDEE"
             or not pieces[0].get("date_validation")):
         raise ValueError("Pièce SCF non validée ou absente")
+    lines = client.table("scf_lignes").select("ligne_id,piece_id,debit,credit").eq(
+        "ligne_id", scf_line_id).eq("piece_id", piece_id).limit(2).execute().data or []
+    if len(lines) != 1:
+        raise ValueError("Ligne SCF introuvable dans la pièce validée")
+    debit = Decimal(str(lines[0]["debit"]))
+    if not debit.is_finite() or debit <= 0 or Decimal(str(pools[0]["montant_dzd"])) > debit:
+        raise ValueError("Montant de charge supérieur au débit SCF admissible")
     # Étape 1 : lien vérifié. Si l'étape 2 échoue, la charge reste SIMULATION,
     # donc la période ne peut pas être validée prématurément.
     client.table("erp_cost_pool_scf_evidence").upsert({
-        "pool_id": key, "piece_id": piece_id,
+        "pool_id": key, "piece_id": piece_id, "scf_ligne_id": scf_line_id,
         "explication_imputation": explanation.strip(),
     }, on_conflict="pool_id").execute()
     client.table("erp_cost_pools").update({
