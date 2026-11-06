@@ -160,3 +160,60 @@ def test_report_failure_never_returns_partial_dict(svc):
     with pytest.raises(ConnectionError, match="page unavailable"):
         mod.get_period_report("P-REPORT")
     client.return_value.rpc.assert_not_called()
+
+
+def test_repeated_key_across_pages_is_rejected(svc):
+    mod, _, _ = svc
+    values = [{"id": f"{i:05d}"} for i in range(1000)]
+    values.insert(500, {"id": "00499"})
+    with pytest.raises(RuntimeError, match="instable"):
+        mod._fetch_all(Query(values), ("id",))
+
+
+def test_missing_pagination_key_is_rejected(svc):
+    mod, _, _ = svc
+    with pytest.raises(RuntimeError, match="manquante"):
+        mod._fetch_all(Query([{"id": "A"}, {"other": "B"}]), ("id",))
+
+
+def test_null_page_response_fails_closed(svc):
+    mod, _, _ = svc
+
+    class NullPage(Query):
+        def execute(self):
+            return types.SimpleNamespace(data=None)
+
+    with pytest.raises(RuntimeError, match="incomplet"):
+        mod._fetch_all(NullPage([]), ("id",))
+
+
+def test_non_monotonic_page_refused_without_partial_output(svc):
+    mod, _, _ = svc
+
+    class ShiftedPage(Query):
+        def execute(self):
+            result = super().execute()
+            if self.start == 500:
+                result.data = [{"id": "00100"}] + result.data[1:]
+            return result
+
+    with pytest.raises(RuntimeError, match="instable"):
+        mod._fetch_all(ShiftedPage([{"id": f"{i:05d}"} for i in range(1300)]), ("id",))
+
+
+def test_full_report_rejects_duplicate_second_page(svc):
+    mod, _, client = svc
+
+    class OverlappingQuery(Query):
+        def execute(self):
+            result = super().execute()
+            if self.start == 500:
+                result.data[0] = {"pool_id": "00499"}
+            return result
+
+    client.return_value.table.side_effect = lambda table: (
+        OverlappingQuery([{"pool_id": f"{i:05d}"} for i in range(1001)])
+        if table == "erp_cost_pools" else Query([]))
+    with pytest.raises(RuntimeError, match="instable"):
+        mod.get_period_report("P-REPORT")
+    client.return_value.rpc.assert_not_called()
