@@ -94,10 +94,11 @@ def show_cost_reference(can_write: bool) -> None:
         with st.form("cost_document_pool"):
             pool_ref = st.text_input("Identifiant du pool analytique")
             scf_piece = st.text_input("UUID de la pièce SCF validée")
+            scf_line = st.number_input("Identifiant numérique de la ligne SCF au débit", min_value=1, step=1, value=1)
             explanation = st.text_area("Motif de rattachement à la fabrication (10 caractères minimum)")
             if st.form_submit_button("Documenter la charge"):
                 try:
-                    document_pool(period_id, pool_ref, scf_piece, explanation)
+                    document_pool(period_id, pool_ref, scf_piece, int(scf_line), explanation)
                     st.success("Pièce SCF liée. Vérifier l’audit avant validation.")
                 except Exception:
                     st.error("Documentation refusée : pièce SCF non validée, période ou droits incorrects.")
