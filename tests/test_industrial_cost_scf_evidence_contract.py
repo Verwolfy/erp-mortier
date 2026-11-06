@@ -70,6 +70,8 @@ def test_validation_snapshot_and_drift_contract():
     assert "erp_apply_stock_movement" not in sql
     srv = (ROOT / "modules" / "production" / "cost_service.py").read_text(encoding="utf-8")
     ui = (ROOT / "modules" / "production" / "cost_views.py").read_text(encoding="utf-8")
-    assert 'client.table("erp_cost_of_validation_drift")' in srv
+    assert '"validation_drift": (' in srv
+    assert '"erp_cost_of_validation_drift"' in srv
+    assert 'client.table(table_name).select(columns)' in srv
     assert 'report.get("validation_drift")' in ui
     assert 'derive_detectee' in ui
