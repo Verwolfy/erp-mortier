@@ -313,6 +313,59 @@ def test_ui_explicit_audit_request_recalculates(ui):
     ui.st.json.assert_called_once_with({"audit_ok": True})
 
 
+
+def test_zero_balance_audit_never_claims_period_is_validated(ui):
+    ui.st.checkbox.side_effect = lambda label, **_kw: (
+        label.startswith("Calculer l'audit complet"))
+    ui.svc.get_period_report.return_value["audit"] = {
+        "audit_ok": True, "total_pools_dzd": 0, "total_impute_dzd": 0,
+    }
+    ui.view.show_cost_reference(False)
+    captions = " ".join(x.args[0] for x in ui.st.caption.call_args_list)
+    assert "ÉQUILIBRÉ" in captions
+    assert "ne vaut pas validation" in captions
+    assert "CONFORME" not in captions
+    ui.st.warning.assert_called_once()
+    assert "0 DZD" in ui.st.warning.call_args.args[0]
+    _assert_no_writes(ui.svc)
+
+
+def test_balanced_nonzero_audit_is_distinct_from_validation(ui):
+    ui.st.checkbox.side_effect = lambda label, **_kw: (
+        label.startswith("Calculer l'audit complet"))
+    ui.svc.get_period_report.return_value["audit"] = {
+        "audit_ok": True, "total_pools_dzd": "100.000000",
+        "total_impute_dzd": "100.000000",
+    }
+    ui.view.show_cost_reference(False)
+    captions = " ".join(x.args[0] for x in ui.st.caption.call_args_list)
+    assert "ne vaut pas validation" in captions
+    ui.st.warning.assert_not_called()
+    _assert_no_writes(ui.svc)
+
+
+def test_empty_pool_section_explains_missing_charges(ui):
+    ui.view.show_cost_reference(False)
+    assert any("Aucune charge analytique" in x.args[0]
+               for x in ui.st.info.call_args_list)
+    _assert_no_writes(ui.svc)
+
+
+def test_two_periods_same_name_are_distinguished_by_dates(ui):
+    ui.svc.list_periods.return_value.append({
+        "period_id": "P-TEST-2", "libelle": "Novembre", "statut": "BROUILLON",
+        "date_debut": "2026-11-06", "date_fin": "2026-11-06",
+    })
+    ui.view.show_cost_reference(False)
+    reference = next(x for x in ui.st.selectbox.call_args_list
+                     if x.args[0] == "Période de référence")
+    display = reference.kwargs["format_func"]
+    assert display("P-TEST") != display("P-TEST-2")
+    assert "2026-11-01" in display("P-TEST")
+    assert "2026-11-06" in display("P-TEST-2")
+    _assert_no_writes(ui.svc)
+
+
 def test_ui_audit_failure_disables_write_forms(ui):
     ui.st.checkbox.return_value = True
     ui.svc.get_period_report.side_effect = RuntimeError("audit unavailable")

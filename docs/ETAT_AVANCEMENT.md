@@ -1,3 +1,15 @@
+## 6 novembre 2026 — audit réel des périodes analytiques et correction d'affichage (en cours)
+
+- **Cible** : GitHub `Verwolfy/erp-mortier`, branche de correction `fix/couts-audit-zero-20261106` (à fusionner après CI), Supabase principal `erp-mortier` (`wenydirqtmkywbxbxfal`).
+- **Diagnostic SQL réel en lecture seule** : deux périodes libellées `Sofiane`, l'une 06/11/2026, l'autre 01–06/11/2026, statut `BROUILLON`, 0 charge, 0 assiette, 0 imputation. Six natures actives ; zéro pièce `scf_pieces` validée. OF terminés existants `SIM26_OF` (18/10/2026) et `OF-0001` (24/10/2026), tous deux hors de ces périodes.
+- **Défaut vérifié** : `public.erp_cost_period_audit(period_id)` retourne `audit_ok=true` et `total_pools_dzd=0`, `total_impute_dzd=0` pour les deux périodes vides. Ce champ certifie uniquement l'équilibre arithmétique ; `public.erp_cost_validate_period(text)` impose séparément l'existence de charges et d'assiettes, ainsi que des preuves SCF documentées et validées : la validation de ces brouillons n'est pas autorisée.
+- **Correction en cours** : `modules/production/cost_views.py` indique désormais « ÉQUILIBRÉ (ne vaut pas validation) » et avertit explicitement sur l'équilibre à zéro ; alerte pour une section de charges vide ; affiche les dates pour distinguer les périodes homonymes. Quatre tests UI de non-régression ajoutés dans `tests/test_industrial_cost_views_flows.py`. Consigne ajoutée à `modules/help/views.py`.
+- **Sécurité et frontières** : aucun changement RLS, GRANT, clé, SQL ni donnée métier en production ; aucune pièce/comptabilisation inventée. La clé `service_role` doit rester exclusivement serveur. Le scan GitHub des secrets et la vérification des accès d'hébergement restent des contrôles distincts.
+- **État tests** : exécution GitHub Actions sur branche/PR à vérifier, ne pas annoncer « tests OK » sans retour CI. Tests Python locaux non exécutables dans l'environnement provisoire sans dépendances Streamlit.
+- **Prochaine action** : ouvrir PR et vérifier CI complète ; fusionner sur `main` si verte. Reprendre les coûts sur une période correspondant à des OF réels et uniquement après disponibilité de charges, mesures et pièces SCF validées, sinon laisser les périodes en brouillon.
+
+---
+
 ## 4 novembre 2026 — refonte graphique documentaire selon le modèle approuvé
 
 - **Implémentation sur `main`** : `modules/documents/layout_nextgen.py` (gabarit PDF A4 aux couleurs bleu marine/vert, bloc tiers, signatures par métier, QR vectoriel et tableaux à colonnes adaptées) et `modules/documents/views.py` (édition/Word adaptés aux familles documentaires).
