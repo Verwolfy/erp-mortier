@@ -43,6 +43,14 @@ def show_cost_reference(can_write: bool) -> None:
             st.dataframe(pd.DataFrame(report["drivers"]), use_container_width=True, hide_index=True)
             st.write("Synthèse des coûts analytiques par OF")
             st.dataframe(pd.DataFrame(report["summaries"]), use_container_width=True, hide_index=True)
+            if report.get("validation_drift"):
+                rows = report["validation_drift"]
+                if any(r.get("derive_detectee") for r in rows):
+                    st.error("Écart après validation : au moins un OF ou coût analytique a changé.")
+                else:
+                    st.success("Instantanés OF conformes à la validation analytique.")
+                st.write("Instantané de validation et contrôle des dérives")
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
             st.write("Détail des imputations calculées — aucune écriture comptable")
             st.dataframe(pd.DataFrame(report["allocations"]), use_container_width=True, hide_index=True)
         except Exception:
