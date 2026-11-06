@@ -6,9 +6,13 @@ DECLARE v_a text; v_b text; v_piece uuid; n integer;
 BEGIN
  IF EXISTS(SELECT 1 FROM public.scf_exercices WHERE exercice_id='IT26_COST_EX') THEN
   RAISE EXCEPTION 'Exercice fixture deja present'; END IF;
- SELECT numero_compte INTO v_a FROM public.scf_plan_comptes WHERE actif IS TRUE AND mouvementable IS TRUE ORDER BY numero_compte LIMIT 1;
- SELECT numero_compte INTO v_b FROM public.scf_plan_comptes WHERE actif IS TRUE AND mouvementable IS TRUE ORDER BY numero_compte OFFSET 1 LIMIT 1;
- IF v_a IS NULL OR v_b IS NULL THEN RAISE EXCEPTION 'Deux comptes SCF requis en TEST'; END IF;
+ IF EXISTS (SELECT 1 FROM public.scf_plan_comptes WHERE numero_compte IN ('69999991','69999992'))
+ THEN RAISE EXCEPTION 'Comptes fictifs SCF preexistants'; END IF;
+ INSERT INTO public.scf_plan_comptes(numero_compte,libelle,actif,mouvementable) VALUES
+ ('69999991','[TEST] Compte analytique debit',true,true),
+ ('69999992','[TEST] Compte analytique credit',true,true);
+ v_a:='69999991';
+ v_b:='69999992';
  INSERT INTO public.scf_exercices(exercice_id,date_debut,date_fin,statut)
  VALUES ('IT26_COST_EX','2026-01-01','2026-12-31','OUVERT');
  INSERT INTO public.scf_journaux(code_journal,libelle) VALUES ('IT26_COST','[TEST] Journal analytique');
