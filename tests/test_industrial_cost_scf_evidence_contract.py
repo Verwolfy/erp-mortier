@@ -76,3 +76,30 @@ def test_validation_snapshot_and_drift_contract():
     assert 'section == "validation_drift"' in ui
     assert 'report["validation_drift"]' in ui
     assert 'derive_detectee' in ui
+
+
+def test_validated_snapshot_export_is_read_only_bounded_and_server_only():
+    sql = (ROOT / "sql" / "043_export_couts_valides_snapshot.sql").read_text(encoding="utf-8")
+    assert "STABLE SECURITY DEFINER" in sql
+    assert "SET search_path=pg_catalog,public" in sql
+    assert "v_period.statut IS DISTINCT FROM 'VALIDE'" in sql
+    assert "v_pool_count>5000" in sql
+    assert "v_of_count>5000" in sql
+    assert "v_driver_count>10000" in sql
+    assert "v_pool_count<>v_evidence_count" in sql
+    assert "abs(v_pool_total-v_alloc_total)>=0.00001" in sql
+    assert "single_sql_statement" in sql
+    assert "erp_cost_of_validation_snapshot" in sql
+    assert "REVOKE ALL ON FUNCTION public.erp_cost_export_validated(text)" in sql
+    assert "GRANT EXECUTE ON FUNCTION public.erp_cost_export_validated(text)" in sql
+    assert "erp_apply_stock_movement" not in sql
+
+
+def test_validated_snapshot_export_fixture_rolls_back():
+    fixture = (ROOT / "sql" / "test_isole" /
+               "20261106_export_transactionnel_048_ROLLBACK.sql").read_text(encoding="utf-8")
+    assert fixture.startswith("-- TEST UNIQUEMENT")
+    assert fixture.rstrip().endswith("ROLLBACK;")
+    assert "COST_EXPORT_SNAPSHOT_OK" in fixture
+    assert "Export brouillon autorisé" in fixture
+    assert "Instantané export modifié après dérive OF" in fixture
