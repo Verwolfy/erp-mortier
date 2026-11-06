@@ -158,17 +158,33 @@ def create_nature(code: str, label: str, description: str = "") -> None:
     }).execute()
 
 
-def document_pool(period_id: str, pool_id: str, document_reference: str) -> None:
-    """Marque une charge justifiée; exige une référence documentaire explicite."""
+def document_pool(period_id: str, pool_id: str, scf_piece_id: str, explanation: str) -> None:
+    """Lie une charge à une pièce SCF déjà validée, sans publier ni créer la pièce."""
     _editable(period_id)
-    if not isinstance(document_reference, str) or not 3 <= len(document_reference.strip()) <= 500:
-        raise ValueError("Référence de pièce justificative obligatoire")
-    pool_id = _ident(pool_id)
+    from uuid import UUID
+    try:
+        piece_id = str(UUID(scf_piece_id))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError("Identifiant UUID de pièce SCF requis") from exc
+    if not isinstance(explanation, str) or not 10 <= len(explanation.strip()) <= 1000:
+        raise ValueError("Justification d'imputation de 10 à 1000 caractères obligatoire")
+    key = _ident(pool_id)
     client = _client()
-    rows = client.table("erp_cost_pools").select("pool_id,justificatif").eq(
-        "period_id", period_id).eq("pool_id", pool_id).limit(2).execute().data or []
-    if len(rows) != 1:
-        raise ValueError("Charge inconnue")
+    pools = client.table("erp_cost_pools").select("pool_id,statut").eq(
+        "period_id", _ident(period_id)).eq("pool_id", key).limit(2).execute().data or []
+    if len(pools) != 1 or pools[0]["statut"] != "SIMULATION":
+        raise ValueError("Charge absente ou déjà documentée")
+    pieces = client.table("scf_pieces").select("piece_id,statut,date_validation").eq(
+        "piece_id", piece_id).limit(2).execute().data or []
+    if (len(pieces) != 1 or pieces[0]["statut"] != "VALIDEE"
+            or not pieces[0].get("date_validation")):
+        raise ValueError("Pièce SCF non validée ou absente")
+    # Étape 1 : lien vérifié. Si l'étape 2 échoue, la charge reste SIMULATION,
+    # donc la période ne peut pas être validée prématurément.
+    client.table("erp_cost_pool_scf_evidence").insert({
+        "pool_id": key, "piece_id": piece_id,
+        "explication_imputation": explanation.strip(),
+    }).execute()
     client.table("erp_cost_pools").update({
-        "statut": "DOCUMENTE", "justificatif": document_reference.strip()
-    }).eq("pool_id", pool_id).eq("period_id", period_id).execute()
+        "statut": "DOCUMENTE", "justificatif": f"SCF:{piece_id}",
+    }).eq("pool_id", key).eq("period_id", period_id).execute()
