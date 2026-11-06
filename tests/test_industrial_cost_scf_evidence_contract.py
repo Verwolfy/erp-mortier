@@ -54,3 +54,22 @@ def test_atomic_documentation_contract():
     assert "REVOKE ALL ON FUNCTION" in sql
     assert "GRANT EXECUTE ON FUNCTION" in sql
     assert "erp_apply_stock_movement" not in sql
+
+
+def test_validation_snapshot_and_drift_contract():
+    sql = (ROOT / "sql" / "042_snapshot_validation_couts_industriels.sql").read_text(encoding="utf-8")
+    assert "erp_cost_of_validation_snapshot" in sql
+    assert "AFTER UPDATE OF statut" in sql
+    assert "OLD.statut='BROUILLON'" in sql
+    assert "NEW.statut='VALIDE'" in sql
+    assert "IS DISTINCT FROM" in sql
+    assert "security_invoker=true" in sql
+    assert "ENABLE ROW LEVEL SECURITY" in sql
+    assert "GRANT SELECT ON public.erp_cost_of_validation_snapshot TO service_role" in sql
+    assert "GRANT SELECT ON public.erp_cost_of_validation_drift TO service_role" in sql
+    assert "erp_apply_stock_movement" not in sql
+    srv = (ROOT / "modules" / "production" / "cost_service.py").read_text(encoding="utf-8")
+    ui = (ROOT / "modules" / "production" / "cost_views.py").read_text(encoding="utf-8")
+    assert 'client.table("erp_cost_of_validation_drift")' in srv
+    assert 'report.get("validation_drift")' in ui
+    assert 'derive_detectee' in ui
