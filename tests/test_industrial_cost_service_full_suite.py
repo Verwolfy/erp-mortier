@@ -130,6 +130,14 @@ def test_document_success_uses_one_atomic_rpc(world):
     world.tables["erp_cost_pools"].update.assert_not_called()
 
 
+def test_identical_documentation_retry_after_unknown_commit(world):
+    world.tables["erp_cost_pools"].execute.return_value.data[0]["statut"] = "DOCUMENTE"
+    world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Energie de fabrication")
+    world.client.rpc.assert_called_once()
+    assert world.client.rpc.call_args.args[0] == "erp_cost_document_pool_atomic"
+    world.tables["erp_cost_pools"].update.assert_not_called()
+
+
 def test_document_unconfirmed_rpc_never_claims_success(world):
     world.client.rpc.return_value.execute.return_value.data = {"documented": False}
     with pytest.raises(RuntimeError, match="non confirmée"):
