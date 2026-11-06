@@ -32,9 +32,28 @@ def show_cost_reference(can_write: bool) -> None:
         kind = type(exc).__name__
         _LOG.warning("Chargement du référentiel analytique impossible (%s)", kind)
         if kind == "StockClientConfigurationError":
-            st.error("Client serveur des coûts industriels non configuré.")
-            st.info("Administrateur : vérifier la clé serveur Stocks et la cible Supabase "
-                    "dans les secrets de déploiement Streamlit, sans afficher les clés.")
+            # Code fixe, jamais de valeurs de secret ou message d'exception fournisseur.
+            reason = getattr(exc, "configuration_reason", "")
+            guidance = {
+                "missing": ("Clé serveur ou URL Supabase absente.",
+                            "Renseigner supabase.url et supabase.stock_service_key "
+                            "dans les secrets Streamlit du déploiement."),
+                "empty_key": ("Clé serveur Stocks vide ou invalide.",
+                              "Configurer une clé serveur service_role valide dans "
+                              "supabase.stock_service_key (jamais côté navigateur)."),
+                "url": ("URL Supabase invalide.",
+                        "Vérifier le format HTTPS de supabase.url dans Streamlit Secrets."),
+                "environment": ("Cible Supabase ou politique d'environnement refusée.",
+                                "Contrôler erp_environment.name, production_supabase_url "
+                                "et production_enabled sans désactiver la protection."),
+                "client": ("Initialisation du client Supabase impossible.",
+                           "Consulter les journaux Streamlit du serveur."),
+            }
+            headline, action = guidance.get(
+                reason, ("Client serveur des coûts industriels non configuré.",
+                         "Contrôler les secrets Streamlit côté serveur."))
+            st.error(headline)
+            st.info("Administrateur : " + action)
         else:
             st.error("Lecture des coûts industriels impossible : erreur de connexion ou de base.")
             st.info("Administrateur : consulter les journaux serveur pour identifier "
