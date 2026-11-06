@@ -185,6 +185,25 @@ def get_period_report(period_id: str, *, sections=None, include_audit: bool = Tr
     report["loaded_sections"] = list(requested)
     return report
 
+def export_validated_period(period_id: str) -> dict:
+    """Export analytique figé; un appel SQL, réservé à Production+Finance."""
+    _read_allowed()
+    key = _ident(period_id)
+    result = _client().rpc(
+        "erp_cost_export_validated", {"p_period_id": key}
+    ).execute().data
+    if (not isinstance(result, dict)
+            or result.get("format") != "erp_cost_validated_export_v1"
+            or result.get("snapshot_type") != "single_sql_statement"
+            or (result.get("period") or {}).get("period_id") != key
+            or (result.get("period") or {}).get("statut") != "VALIDE"
+            or not isinstance(result.get("of_snapshots"), list)
+            or not isinstance(result.get("pools"), list)
+            or not isinstance(result.get("drivers"), list)):
+        raise RuntimeError("Export analytique non confirmé")
+    return result
+
+
 def create_period(label: str, start: str, end: str) -> str:
     _allowed()
     if not isinstance(label, str) or not 1 <= len(label.strip()) <= 150:
