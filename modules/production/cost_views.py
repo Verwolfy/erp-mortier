@@ -55,6 +55,7 @@ def show_cost_reference(can_write: bool) -> None:
             st.dataframe(pd.DataFrame(report["allocations"]), use_container_width=True, hide_index=True)
         except Exception:
             st.error("Calcul analytique non disponible : contrôler le référentiel de la période.")
+            return
 
     if not can_write or not can_manage_costs():
         st.caption("Consultation uniquement. Écriture réservée aux profils habilités en Production et Finance.")
