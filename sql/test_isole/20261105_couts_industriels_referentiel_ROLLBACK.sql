@@ -1,5 +1,29 @@
 -- TEST UNIQUEMENT : ffuhbmcfyexsbjwhryvj. Fixtures ephemeres, aucune persistance.
 BEGIN;
+-- Base fictive de pieces SCF equilibrees, exclusivement dans le BEGIN/ROLLBACK des tests.
+DO $fixtures_scf$
+DECLARE v_a text; v_b text; v_piece uuid; v_start bigint; n integer;
+BEGIN
+ IF EXISTS(SELECT 1 FROM public.scf_exercices WHERE exercice_id='IT26_COST_EX') THEN
+  RAISE EXCEPTION 'Exercice fixture deja present'; END IF;
+ SELECT numero_compte INTO v_a FROM public.scf_plan_comptes ORDER BY numero_compte LIMIT 1;
+ SELECT numero_compte INTO v_b FROM public.scf_plan_comptes ORDER BY numero_compte OFFSET 1 LIMIT 1;
+ IF v_a IS NULL OR v_b IS NULL THEN RAISE EXCEPTION 'Deux comptes SCF requis en TEST'; END IF;
+ INSERT INTO public.scf_exercices(exercice_id,date_debut,date_fin,statut)
+ VALUES ('IT26_COST_EX','2026-01-01','2026-12-31','OUVERT');
+ INSERT INTO public.scf_journaux(code_journal,libelle) VALUES ('IT26_COST','[TEST] Journal analytique');
+ SELECT coalesce(max(ligne_id),0)+100000000 INTO v_start FROM public.scf_lignes;
+ FOR n IN 1..2 LOOP
+  v_piece:=gen_random_uuid();
+  INSERT INTO public.scf_pieces(
+  piece_id,exercice_id,code_journal,reference,document_source,date_ecriture,libelle,statut)
+  VALUES (v_piece,'IT26_COST_EX','IT26_COST','IT26_COST_DOC_'||n,
+          '[TEST] COST_DOC_'||n,'2026-11-05','[TEST] Piece fictive equilibree','BROUILLON');
+  INSERT INTO public.scf_lignes(ligne_id,piece_id,numero,compte,debit,credit)
+  VALUES(v_start+n*2,v_piece,1,v_a,100,0),(v_start+n*2+1,v_piece,2,v_b,0,100);
+  UPDATE public.scf_pieces SET statut='VALIDEE' WHERE piece_id=v_piece;
+ END LOOP;
+END $fixtures_scf$;
 SET LOCAL statement_timeout='45s';
 DO $case$
 DECLARE
@@ -45,6 +69,10 @@ BEGIN
  BEGIN PERFORM public.erp_cost_validate_period('IT26_IND_PERIOD');
  EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
  IF NOT v_rejected THEN RAISE EXCEPTION 'Simulation validee a tort'; END IF;
+ INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,explication_imputation)
+ SELECT 'IT26_IND_POOL_E', piece_id, '[TEST] rattachement fictif du pool energie' FROM public.scf_pieces WHERE document_source='[TEST] COST_DOC_1';
+ INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,explication_imputation)
+ SELECT 'IT26_IND_POOL_M', piece_id, '[TEST] rattachement fictif du pool main oeuvre' FROM public.scf_pieces WHERE document_source='[TEST] COST_DOC_2';
  UPDATE public.erp_cost_pools SET statut='DOCUMENTE' WHERE period_id='IT26_IND_PERIOD';
  a:=public.erp_cost_validate_period('IT26_IND_PERIOD');
  IF a->>'audit_ok'<>'true' OR
