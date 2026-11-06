@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 
 _LOG = logging.getLogger(__name__)
 
@@ -68,7 +69,8 @@ def show_cost_reference(can_write: bool) -> None:
             "Période de référence",
             [p["period_id"] for p in periods],
             format_func=lambda k: next(
-                (p["libelle"] + " — " + p["statut"] for p in periods if p["period_id"] == k), k))
+                (f"{p['libelle']} — {p['date_debut']} au {p['date_fin']} — {p['statut']}"
+                 for p in periods if p["period_id"] == k), k))
         section_labels = {
             "pools": "Charges de période",
             "drivers": "Clés et mesures par OF",
@@ -95,8 +97,21 @@ def show_cost_reference(can_write: bool) -> None:
                 selected, sections=(section,), include_audit=audit_requested)
             if audit_requested:
                 audit = report.get("audit") or {}
-                st.caption("Audit de complétude : " +
-                           ("CONFORME" if audit.get("audit_ok") else "À compléter"))
+                # La RPC ne vérifie que l'équilibre ; 0 DZD = 0 DZD n'est
+                # pas une période validable (contrôle distinct dans la RPC de validation).
+                st.caption("Audit de répartition : " +
+                           ("ÉQUILIBRÉ (ne vaut pas validation de la période)"
+                            if audit.get("audit_ok") else "À compléter"))
+                if audit.get("audit_ok") and audit.get("total_pools_dzd") is not None:
+                    try:
+                        empty_total = Decimal(str(audit["total_pools_dzd"])) == 0
+                    except (InvalidOperation, ValueError, TypeError):
+                        empty_total = False
+                    if empty_total:
+                        st.warning(
+                            "Audit équilibré à 0 DZD : aucune charge à répartir. "
+                            "Une période vide n'est pas validable ; charges, assiettes "
+                            "et pièces SCF validées sont obligatoires.")
                 st.json(audit)
             else:
                 st.caption("Audit non calculé. Exécuter l'audit complet pour contrôler "
@@ -114,6 +129,10 @@ def show_cost_reference(can_write: bool) -> None:
                     st.info("Aucun instantané disponible pour cette période.")
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
             else:
+                if section == "pools" and not report[section]:
+                    st.info("Aucune charge analytique sur cette période. "
+                            "Les charges documentées et leurs assiettes sont requises "
+                            "avant validation.")
                 st.dataframe(pd.DataFrame(report[section]),
                              use_container_width=True, hide_index=True)
         except Exception:
@@ -155,8 +174,13 @@ def show_cost_reference(can_write: bool) -> None:
     editable = [p for p in periods if p["statut"] == "BROUILLON"]
     if not editable:
         return
-    period_id = st.selectbox("Période brouillon à compléter",
-                             [p["period_id"] for p in editable], key="cost_period_edit")
+    period_id = st.selectbox(
+        "Période brouillon à compléter",
+        [p["period_id"] for p in editable],
+        format_func=lambda k: next(
+            (f"{p['libelle']} — {p['date_debut']} au {p['date_fin']}"
+             for p in editable if p["period_id"] == k), k),
+        key="cost_period_edit")
     with st.expander("Valider et figer la période"):
         st.warning("La validation est irréversible depuis cet écran : toutes les assiettes "
                    "doivent être renseignées et l'audit doit être conforme.")
