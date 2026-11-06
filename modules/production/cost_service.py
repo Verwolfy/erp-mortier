@@ -57,40 +57,81 @@ def _read_allowed() -> None:
         raise PermissionError("Lecture analytique réservée aux accès Production et Finance")
 
 
+# Pagination serveur : ne jamais masquer des lignes d'un rapport financier.
+_REPORT_PAGE_SIZE = 500
+_REPORT_MAX_ROWS = 100000
+
+
+def _fetch_all(query, order_by: tuple[str, ...], *, page_size: int = _REPORT_PAGE_SIZE) -> list[dict]:
+    """Récupère toutes les pages, dans un ordre stable, ou refuse le rapport."""
+    if isinstance(page_size, bool) or not isinstance(page_size, int) or not 1 <= page_size <= 1000:
+        raise ValueError("Taille de page invalide")
+    if not order_by:
+        raise ValueError("Ordre de pagination requis")
+    for col in order_by:
+        query = query.order(col)
+    rows: list[dict] = []
+    while True:
+        chunk = query.range(len(rows), len(rows) + page_size - 1).execute().data or []
+        if len(chunk) > page_size or len(rows) + len(chunk) > _REPORT_MAX_ROWS:
+            raise RuntimeError("Volume analytique supérieur à la limite de sécurité")
+        rows.extend(chunk)
+        if len(chunk) < page_size:
+            return rows
+        if len(rows) == _REPORT_MAX_ROWS:
+            raise RuntimeError("Volume analytique maximal atteint : résultat potentiellement incomplet")
+
+
 def list_periods() -> list[dict]:
     _read_allowed()
-    response = _client().table("erp_cost_periods").select("period_id,libelle,date_debut,date_fin,statut").order("date_debut", desc=True).limit(100).execute()
-    return response.data or []
+    q = _client().table("erp_cost_periods").select("period_id,libelle,date_debut,date_fin,statut")
+    return _fetch_all(q, ("period_id",))
 
 
 def list_natures() -> list[dict]:
     _read_allowed()
-    response = _client().table("erp_cost_natures").select("nature_code,libelle,actif").eq("actif", True).order("nature_code").execute()
-    return response.data or []
+    q = _client().table("erp_cost_natures").select("nature_code,libelle,actif").eq("actif", True)
+    return _fetch_all(q, ("nature_code",))
 
 
 def get_period_report(period_id: str) -> dict:
     _read_allowed()
     key = _ident(period_id)
     client = _client()
-    pools = client.table("erp_cost_pools").select("pool_id,nature_code,base_imputation,montant_dzd,justificatif,statut").eq("period_id", key).limit(500).execute().data or []
-    drivers = client.table("erp_cost_drivers").select("of_id,base_imputation,valeur,justificatif").eq("period_id", key).limit(2000).execute().data or []
-    allocations = client.table("erp_cost_allocations").select("of_id,nature_code,base_imputation,montant_impute_dzd,cout_direct_of_dzd,quantite_produite").eq("period_id", key).limit(2000).execute().data or []
-    summaries = client.table("erp_cost_of_summary").select("of_id,quantite_produite,cout_direct_of_dzd,charges_imputees_dzd,cout_analytique_total_dzd,cout_analytique_par_unite_dzd").eq("period_id", key).limit(1000).execute().data or []
-    scf_reconciliation = client.table("erp_cost_scf_reconciliation").select(
-        "pool_id,nature_code,montant_impute_dzd,reference_scf,scf_ligne_id,compte,montant_debit_scf_dzd,solde_non_impute_dzd,rapprochement_ok"
-    ).eq("period_id", key).limit(500).execute().data or []
-    validation_drift = client.table("erp_cost_of_validation_drift").select(
-        "of_id,statut_of_valide,statut_of_actuel,quantite_validee,quantite_actuelle,"
-        "cout_direct_valide_dzd,cout_direct_actuel_dzd,charges_validees_dzd,"
-        "charges_actuelles_dzd,cout_total_valide_dzd,cout_total_actuel_dzd,"
-        "derive_detectee,captured_at"
-    ).eq("period_id", key).limit(1000).execute().data or []
+    pools = _fetch_all(
+        client.table("erp_cost_pools").select(
+            "pool_id,nature_code,base_imputation,montant_dzd,justificatif,statut"
+        ).eq("period_id", key), ("pool_id",))
+    drivers = _fetch_all(
+        client.table("erp_cost_drivers").select(
+            "of_id,base_imputation,valeur,justificatif"
+        ).eq("period_id", key), ("of_id", "base_imputation"))
+    allocations = _fetch_all(
+        client.table("erp_cost_allocations").select(
+            "pool_id,of_id,nature_code,base_imputation,montant_impute_dzd,"
+            "cout_direct_of_dzd,quantite_produite"
+        ).eq("period_id", key), ("pool_id", "of_id"))
+    summaries = _fetch_all(
+        client.table("erp_cost_of_summary").select(
+            "of_id,quantite_produite,cout_direct_of_dzd,charges_imputees_dzd,"
+            "cout_analytique_total_dzd,cout_analytique_par_unite_dzd"
+        ).eq("period_id", key), ("of_id",))
+    scf_reconciliation = _fetch_all(
+        client.table("erp_cost_scf_reconciliation").select(
+            "pool_id,nature_code,montant_impute_dzd,reference_scf,scf_ligne_id,"
+            "compte,montant_debit_scf_dzd,solde_non_impute_dzd,rapprochement_ok"
+        ).eq("period_id", key), ("pool_id",))
+    validation_drift = _fetch_all(
+        client.table("erp_cost_of_validation_drift").select(
+            "of_id,statut_of_valide,statut_of_actuel,quantite_validee,quantite_actuelle,"
+            "cout_direct_valide_dzd,cout_direct_actuel_dzd,charges_validees_dzd,"
+            "charges_actuelles_dzd,cout_total_valide_dzd,cout_total_actuel_dzd,"
+            "derive_detectee,captured_at"
+        ).eq("period_id", key), ("of_id",))
     audit = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
     return {"pools": pools, "drivers": drivers, "allocations": allocations,
             "summaries": summaries, "scf_reconciliation": scf_reconciliation,
             "validation_drift": validation_drift, "audit": audit}
-
 
 def create_period(label: str, start: str, end: str) -> str:
     _allowed()
