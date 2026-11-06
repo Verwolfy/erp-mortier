@@ -30,6 +30,8 @@ def world(monkeypatch):
                          "debit": "200", "credit": "0"}],
         "ordres_fabrication": [{"of_id": "OF-1", "statut": "TERMINE",
                                 "date_fin": "2026-11-05"}],
+        "erp_cost_pool_scf_evidence": [],
+        "erp_cost_drivers": [],
     }.items():
         table = MagicMock(name=name)
         for method in ("select", "eq", "limit", "order", "insert", "upsert", "update"):
