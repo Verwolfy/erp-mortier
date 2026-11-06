@@ -102,6 +102,23 @@ BEGIN
  UPDATE public.erp_cost_periods SET statut='VALIDE' WHERE period_id=p_period_id;
  RETURN v_audit;
 END $fn$;
+-- Lecture de rapprochement : aucune ecriture comptable, montant restant de la ligne.
+CREATE OR REPLACE VIEW public.erp_cost_scf_reconciliation
+WITH (security_invoker=true) AS
+SELECT p.period_id,p.pool_id,p.nature_code,p.montant_dzd AS montant_impute_dzd,
+       s.piece_id,s.reference AS reference_scf,s.statut AS statut_scf,
+       e.scf_ligne_id,l.compte,l.debit AS montant_debit_scf_dzd,
+       (l.debit-p.montant_dzd) AS solde_non_impute_dzd,
+       (p.statut='DOCUMENTE' AND s.statut='VALIDEE'
+        AND s.date_validation IS NOT NULL AND l.debit>0
+        AND p.montant_dzd<=l.debit) AS rapprochement_ok
+FROM public.erp_cost_pools p
+LEFT JOIN public.erp_cost_pool_scf_evidence e ON e.pool_id=p.pool_id
+LEFT JOIN public.scf_pieces s ON s.piece_id=e.piece_id
+LEFT JOIN public.scf_lignes l ON l.ligne_id=e.scf_ligne_id AND l.piece_id=e.piece_id;
+REVOKE ALL ON public.erp_cost_scf_reconciliation FROM PUBLIC,anon,authenticated;
+GRANT SELECT ON public.erp_cost_scf_reconciliation TO service_role;
+
 REVOKE ALL ON FUNCTION public.erp_cost_validate_period(text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.erp_cost_validate_period(text) TO service_role;
 COMMIT;
