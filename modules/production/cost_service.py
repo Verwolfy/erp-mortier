@@ -181,10 +181,10 @@ def document_pool(period_id: str, pool_id: str, scf_piece_id: str, explanation: 
         raise ValueError("Pièce SCF non validée ou absente")
     # Étape 1 : lien vérifié. Si l'étape 2 échoue, la charge reste SIMULATION,
     # donc la période ne peut pas être validée prématurément.
-    client.table("erp_cost_pool_scf_evidence").insert({
+    client.table("erp_cost_pool_scf_evidence").upsert({
         "pool_id": key, "piece_id": piece_id,
         "explication_imputation": explanation.strip(),
-    }).execute()
+    }, on_conflict="pool_id").execute()
     client.table("erp_cost_pools").update({
         "statut": "DOCUMENTE", "justificatif": f"SCF:{piece_id}",
     }).eq("pool_id", key).eq("period_id", period_id).execute()
