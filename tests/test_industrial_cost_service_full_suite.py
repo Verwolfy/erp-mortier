@@ -176,3 +176,36 @@ def test_amount_must_be_exact_finite_and_precise(world):
         with pytest.raises(ValueError):
             world.service._amount(bad, "Montant")
     assert world.service._amount("10.123456", "Montant") == "10.123456"
+
+
+def test_validated_export_requires_both_read_permissions(world):
+    world.db.check_server_read_permission.side_effect = lambda t: t != "comptes"
+    with pytest.raises(PermissionError):
+        world.service.export_validated_period("P-1")
+    world.client.rpc.assert_not_called()
+
+
+def test_validated_export_rpc_single_call_and_shape(world):
+    world.client.rpc.return_value.execute.return_value.data = {
+        "format": "erp_cost_validated_export_v1",
+        "snapshot_type": "single_sql_statement",
+        "period": {"period_id": "P-1", "statut": "VALIDE"},
+        "pools": [], "drivers": [], "of_snapshots": [],
+    }
+    result = world.service.export_validated_period("P-1")
+    assert result["format"] == "erp_cost_validated_export_v1"
+    world.client.rpc.assert_called_once_with(
+        "erp_cost_export_validated", {"p_period_id": "P-1"})
+
+
+@pytest.mark.parametrize("bad", (
+    None, {}, {"format": "wrong"}, {"format": "erp_cost_validated_export_v1"},
+    {"format": "erp_cost_validated_export_v1",
+     "snapshot_type": "single_sql_statement",
+     "period": {"period_id": "P-1", "statut": "BROUILLON"},
+     "pools": [], "of_snapshots": [], "drivers": []},
+))
+def test_validated_export_rejects_missing_confirmation(world, bad):
+    world.client.rpc.return_value.execute.return_value.data = bad
+    with pytest.raises(RuntimeError, match="non confirmé"):
+        world.service.export_validated_period("P-1")
