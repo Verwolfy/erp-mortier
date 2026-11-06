@@ -113,11 +113,11 @@ def show_cost_reference(can_write: bool) -> None:
                                       format_func=lambda code: next(
                                           (n["libelle"] for n in natures if n["nature_code"] == code), code))
                 base = st.selectbox("Clé d'imputation", BASES)
-                amount = st.number_input("Montant analytique (DZD)", min_value=0.0, value=0.0, step=1.0)
+                amount = st.text_input("Montant analytique (DZD)", value="0", help="Saisir jusqu’à 6 décimales, sans arrondi flottant.")
                 reference = st.text_input("Justificatif / hypothèse (obligatoire)")
                 if st.form_submit_button("Enregistrer la charge"):
                     try:
-                        add_pool(period_id, nature, base, str(amount), reference)
+                        add_pool(period_id, nature, base, amount, reference)
                         st.success("Charge analytique enregistrée en simulation.")
                     except Exception:
                         st.error("Charge refusée : vérifier droits, période, montant et justificatif.")
@@ -125,11 +125,11 @@ def show_cost_reference(can_write: bool) -> None:
         with st.form("cost_add_driver"):
             of_id = st.text_input("Identifiant de l'OF terminé")
             driver = st.selectbox("Clé mesurée", BASES)
-            value = st.number_input("Valeur de la clé", min_value=0.0, value=0.0, step=1.0)
+            value = st.text_input("Valeur de la clé", value="0", help="Saisir jusqu’à 6 décimales, sans arrondi flottant.")
             reference = st.text_input("Source de la mesure / justificatif")
             if st.form_submit_button("Enregistrer l'assiette"):
                 try:
-                    set_driver(period_id, of_id, driver, str(value), reference)
+                    set_driver(period_id, of_id, driver, value, reference)
                     st.success("Assiette enregistrée.")
                 except Exception:
                     st.error("Assiette refusée : vérifier droits, OF terminé, dates et mesure.")
