@@ -39,6 +39,8 @@ def world(monkeypatch):
         table.execute.return_value = types.SimpleNamespace(data=data)
         tables[name] = table
     client.table.side_effect = lambda name: tables[name]
+    client.rpc.return_value.execute.return_value = types.SimpleNamespace(
+        data={"documented": True, "pool_id": "POOL-1"})
     stock = types.ModuleType("modules.stocks.service")
     stock._stock_rpc_client = MagicMock(return_value=client)
     monkeypatch.setitem(sys.modules, "core.db_service", db)
@@ -74,21 +76,21 @@ def test_writer_access_confirmed(world):
 def test_document_invalid_uuid_never_writes(world, bad):
     with pytest.raises(ValueError):
         world.service.document_pool("P-1", "POOL-1", bad, 42, "Imputation fictive")
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
 @pytest.mark.parametrize("line", (0, -1, True, 1.2, "42"))
 def test_document_invalid_line_id_never_writes(world, line):
     with pytest.raises(ValueError):
         world.service.document_pool("P-1", "POOL-1", VALID_UUID, line, "Imputation fictive")
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
 @pytest.mark.parametrize("reason", ("", "court", "x" * 1001))
 def test_document_missing_explanation_never_writes(world, reason):
     with pytest.raises(ValueError):
         world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, reason)
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
 def test_document_rejects_unapproved_scf_piece(world):
@@ -96,14 +98,14 @@ def test_document_rejects_unapproved_scf_piece(world):
         {"piece_id": VALID_UUID, "statut": "BROUILLON", "date_validation": None}]
     with pytest.raises(ValueError, match="SCF"):
         world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Motif documente")
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
 def test_document_rejects_wrong_scf_line(world):
     world.tables["scf_lignes"].execute.return_value.data = []
     with pytest.raises(ValueError, match="Ligne SCF"):
         world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Motif documente")
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
 @pytest.mark.parametrize("debit", ("0", "-2", "NaN", "99"))
@@ -111,28 +113,35 @@ def test_document_rejects_insufficient_debit(world, debit):
     world.tables["scf_lignes"].execute.return_value.data[0]["debit"] = debit
     with pytest.raises(ValueError):
         world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Motif documente")
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
-def test_document_success_writes_evidence_then_status(world):
+def test_document_success_uses_one_atomic_rpc(world):
     world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Energie de fabrication")
-    evidence = world.tables["erp_cost_pool_scf_evidence"]
-    evidence.upsert.assert_called_once()
-    payload = evidence.upsert.call_args.args[0]
+    world.client.rpc.assert_called_once()
+    name,payload=world.client.rpc.call_args.args
+    assert name == "erp_cost_document_pool_atomic"
     assert payload == {
-        "pool_id": "POOL-1", "piece_id": VALID_UUID,
-        "scf_ligne_id": 42, "explication_imputation": "Energie de fabrication",
+        "p_period_id": "P-1", "p_pool_id": "POOL-1",
+        "p_piece_id": VALID_UUID, "p_scf_ligne_id": 42,
+        "p_explication": "Energie de fabrication",
     }
-    pool = world.tables["erp_cost_pools"]
-    pool.update.assert_called_once()
-    assert pool.update.call_args.args[0]["statut"] == "DOCUMENTE"
+    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.tables["erp_cost_pools"].update.assert_not_called()
+
+
+def test_document_unconfirmed_rpc_never_claims_success(world):
+    world.client.rpc.return_value.execute.return_value.data = {"documented": False}
+    with pytest.raises(RuntimeError, match="non confirmée"):
+        world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Energie de fabrication")
+    world.tables["erp_cost_pools"].update.assert_not_called()
 
 
 def test_document_denies_after_period_validation(world):
     world.tables["erp_cost_periods"].execute.return_value.data = [{"statut": "VALIDE"}]
     with pytest.raises(ValueError, match="non modifiable"):
         world.service.document_pool("P-1", "POOL-1", VALID_UUID, 42, "Motif documente")
-    world.tables["erp_cost_pool_scf_evidence"].upsert.assert_not_called()
+    world.client.rpc.assert_not_called()
 
 
 @pytest.mark.parametrize("state", ("EN_COURS", "REJETE"))
