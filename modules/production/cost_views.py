@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import json
+import logging
+
+_LOG = logging.getLogger(__name__)
 
 import pandas as pd
 import streamlit as st
@@ -20,8 +23,22 @@ def show_cost_reference(can_write: bool) -> None:
     try:
         periods = list_periods()
         natures = list_natures()
-    except Exception:
-        st.error("Référentiel indisponible : vérifier la migration SQL 034 et les habilitations serveur.")
+    except PermissionError:
+        st.error("Accès aux coûts industriels refusé : les droits de lecture Production ET Finance sont requis.")
+        st.info("Demander à l'administrateur de vérifier le rôle du compte dans les deux modules.")
+        return
+    except Exception as exc:
+        # Ne jamais exposer d'URL privée, de token ou de message d'API dans le navigateur.
+        kind = type(exc).__name__
+        _LOG.warning("Chargement du référentiel analytique impossible (%s)", kind)
+        if kind == "StockClientConfigurationError":
+            st.error("Client serveur des coûts industriels non configuré.")
+            st.info("Administrateur : vérifier la clé serveur Stocks et la cible Supabase "
+                    "dans les secrets de déploiement Streamlit, sans afficher les clés.")
+        else:
+            st.error("Lecture des coûts industriels impossible : erreur de connexion ou de base.")
+            st.info("Administrateur : consulter les journaux serveur pour identifier "
+                    "le type d'erreur et vérifier la connexion Supabase.")
         return
 
     if not periods:
