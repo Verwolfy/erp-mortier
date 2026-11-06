@@ -83,6 +83,26 @@ BEGIN
  SELECT 'IT26_IND_POOL_E', s.piece_id,l.ligne_id,'[TEST] rattachement fictif du pool energie' FROM public.scf_pieces s JOIN public.scf_lignes l ON l.piece_id=s.piece_id AND l.debit>0 WHERE s.document_source='[TEST] COST_DOC_1';
  INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,scf_ligne_id,explication_imputation)
  SELECT 'IT26_IND_POOL_M', s.piece_id,l.ligne_id,'[TEST] rattachement fictif du pool main oeuvre' FROM public.scf_pieces s JOIN public.scf_lignes l ON l.piece_id=s.piece_id AND l.debit>0 WHERE s.document_source='[TEST] COST_DOC_2';
+ -- Dépassement du débit comptable : 201 > 200 doit être refusé.
+ v_rejected:=false;
+ BEGIN
+  UPDATE public.erp_cost_pools SET montant_dzd=201,statut='DOCUMENTE'
+   WHERE pool_id='IT26_IND_POOL_E';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Depassement debit SCF accepte'; END IF;
+
+ -- Interdiction d'utiliser la même ligne comptable sur deux charges.
+ INSERT INTO public.erp_cost_pools(pool_id,period_id,nature_code,base_imputation,montant_dzd,justificatif,statut)
+ VALUES ('IT26_IND_POOL_DUP','IT26_IND_PERIOD','ENERGIE','KG',1,'[TEST] doublon ligne','SIMULATION');
+ v_rejected:=false;
+ BEGIN
+  INSERT INTO public.erp_cost_pool_scf_evidence(pool_id,piece_id,scf_ligne_id,explication_imputation)
+  SELECT 'IT26_IND_POOL_DUP',s.piece_id,l.ligne_id,'[TEST] doublon interdit'
+  FROM public.scf_pieces s JOIN public.scf_lignes l ON l.piece_id=s.piece_id AND l.debit>0
+  WHERE s.document_source='[TEST] COST_DOC_1';
+ EXCEPTION WHEN unique_violation THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Double imputation ligne SCF acceptee'; END IF;
+ DELETE FROM public.erp_cost_pools WHERE pool_id='IT26_IND_POOL_DUP';
  UPDATE public.erp_cost_pools SET statut='DOCUMENTE' WHERE period_id='IT26_IND_PERIOD';
  a:=public.erp_cost_validate_period('IT26_IND_PERIOD');
  IF a->>'audit_ok'<>'true' OR
