@@ -85,7 +85,8 @@ def _fetch_all(query, order_by: tuple[str, ...], *, page_size: int = _REPORT_PAG
 def list_periods() -> list[dict]:
     _read_allowed()
     q = _client().table("erp_cost_periods").select("period_id,libelle,date_debut,date_fin,statut")
-    return _fetch_all(q, ("period_id",))
+    rows = _fetch_all(q, ("date_debut", "period_id"))
+    return sorted(rows, key=lambda r: (r["date_debut"], r["period_id"]), reverse=True)
 
 
 def list_natures() -> list[dict]:
