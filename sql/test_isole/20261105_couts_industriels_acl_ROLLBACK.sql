@@ -2,7 +2,7 @@
 BEGIN;
 -- Base fictive de pieces SCF equilibrees, exclusivement dans le BEGIN/ROLLBACK des tests.
 DO $fixtures_scf$
-DECLARE v_a text; v_b text; v_piece uuid; v_start bigint; n integer;
+DECLARE v_a text; v_b text; v_piece uuid; n integer;
 BEGIN
  IF EXISTS(SELECT 1 FROM public.scf_exercices WHERE exercice_id='IT26_COST_EX') THEN
   RAISE EXCEPTION 'Exercice fixture deja present'; END IF;
@@ -12,15 +12,14 @@ BEGIN
  INSERT INTO public.scf_exercices(exercice_id,date_debut,date_fin,statut)
  VALUES ('IT26_COST_EX','2026-01-01','2026-12-31','OUVERT');
  INSERT INTO public.scf_journaux(code_journal,libelle) VALUES ('IT26_COST','[TEST] Journal analytique');
- SELECT coalesce(max(ligne_id),0)+100000000 INTO v_start FROM public.scf_lignes;
  FOR n IN 1..2 LOOP
   v_piece:=gen_random_uuid();
   INSERT INTO public.scf_pieces(
   piece_id,exercice_id,code_journal,reference,document_source,date_ecriture,libelle,statut)
   VALUES (v_piece,'IT26_COST_EX','IT26_COST','IT26_COST_DOC_'||n,
           '[TEST] COST_DOC_'||n,'2026-11-05','[TEST] Piece fictive equilibree','BROUILLON');
-  INSERT INTO public.scf_lignes(ligne_id,piece_id,numero,compte,debit,credit)
-  VALUES(v_start+n*2,v_piece,1,v_a,100,0),(v_start+n*2+1,v_piece,2,v_b,0,100);
+  INSERT INTO public.scf_lignes(piece_id,numero,compte,debit,credit)
+  VALUES(v_piece,1,v_a,100,0),(v_piece,2,v_b,0,100);
   UPDATE public.scf_pieces SET statut='VALIDEE' WHERE piece_id=v_piece;
  END LOOP;
 END $fixtures_scf$;
