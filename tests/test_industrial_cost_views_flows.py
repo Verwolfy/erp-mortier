@@ -31,6 +31,7 @@ def ui(monkeypatch):
     service = types.ModuleType("modules.production.cost_service")
     for name in ("list_periods", "list_natures", "get_period_report", "can_manage_costs",
                  "create_period", "create_nature", "add_pool", "document_pool",
+                 "export_validated_period",
                  "set_driver", "validate_period"):
         setattr(service, name, MagicMock())
     service.BASES = ("UNITS", "KG", "HOURS_LABOR", "HOURS_MACHINE", "KWH", "DIRECT_COST")
@@ -288,3 +289,40 @@ def test_ui_audit_failure_disables_write_forms(ui):
     ui.st.error.assert_called()
     ui.st.form.assert_not_called()
     _assert_no_writes(ui.svc)
+
+
+def test_validated_period_can_export_json_on_explicit_action(ui):
+    ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
+    ui.st.button.side_effect = lambda label, **_kw: label == "Préparer l'export analytique validé"
+    ui.svc.export_validated_period.return_value = {
+        "format": "erp_cost_validated_export_v1",
+        "period": {"period_id": "P-TEST", "statut": "VALIDE"},
+        "pools": [], "of_snapshots": [], "drivers": [],
+    }
+    ui.view.show_cost_reference(False)
+    ui.svc.export_validated_period.assert_called_once_with("P-TEST")
+    ui.st.download_button.assert_called_once()
+    kw = ui.st.download_button.call_args.kwargs
+    assert kw["mime"] == "application/json"
+    assert "erp_cost_validated_export_v1" in kw["data"]
+
+
+def test_draft_period_never_exposes_export(ui):
+    ui.view.show_cost_reference(True)
+    ui.svc.export_validated_period.assert_not_called()
+    ui.st.download_button.assert_not_called()
+
+
+def test_export_error_does_not_expose_file(ui):
+    ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
+    ui.st.button.side_effect = lambda label, **_kw: label == "Préparer l'export analytique validé"
+    ui.svc.export_validated_period.side_effect = PermissionError("Finance denied")
+    ui.view.show_cost_reference(False)
+    ui.st.error.assert_called()
+    ui.st.download_button.assert_not_called()
+
+
+def test_validated_export_never_invoked_without_button(ui):
+    ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
+    ui.view.show_cost_reference(False)
+    ui.svc.export_validated_period.assert_not_called()
