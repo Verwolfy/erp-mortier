@@ -109,44 +109,77 @@ def list_natures() -> list[dict]:
     return _fetch_all(q, ("nature_code",))
 
 
-def get_period_report(period_id: str) -> dict:
+_REPORT_SECTIONS = (
+    "pools", "drivers", "allocations", "summaries",
+    "scf_reconciliation", "validation_drift",
+)
+
+
+def get_period_report(period_id: str, *, sections=None) -> dict:
+    """Charge uniquement les sections demandées, avec un audit global.
+
+    Sans sélection : conserve le contrat historique et charge tout le rapport.
+    Une section non demandée vaut [] mais figure explicitement hors de
+    loaded_sections ; ne jamais la présenter comme une liste chargée vide.
+    """
     _read_allowed()
     key = _ident(period_id)
-    client = _client()
-    pools = _fetch_all(
-        client.table("erp_cost_pools").select(
-            "pool_id,nature_code,base_imputation,montant_dzd,justificatif,statut"
-        ).eq("period_id", key), ("pool_id",))
-    drivers = _fetch_all(
-        client.table("erp_cost_drivers").select(
-            "of_id,base_imputation,valeur,justificatif"
-        ).eq("period_id", key), ("of_id", "base_imputation"))
-    allocations = _fetch_all(
-        client.table("erp_cost_allocations").select(
+    if sections is None:
+        requested = _REPORT_SECTIONS
+    elif isinstance(sections, (tuple, list)) and sections and all(
+        isinstance(name, str) and name in _REPORT_SECTIONS for name in sections
+    ):
+        requested = tuple(dict.fromkeys(sections))
+    else:
+        raise ValueError("Sélection de sections analytiques invalide")
+
+    cfg = {
+        "pools": (
+            "erp_cost_pools",
+            "pool_id,nature_code,base_imputation,montant_dzd,justificatif,statut",
+            ("pool_id",),
+        ),
+        "drivers": (
+            "erp_cost_drivers",
+            "of_id,base_imputation,valeur,justificatif",
+            ("of_id", "base_imputation"),
+        ),
+        "allocations": (
+            "erp_cost_allocations",
             "pool_id,of_id,nature_code,base_imputation,montant_impute_dzd,"
-            "cout_direct_of_dzd,quantite_produite"
-        ).eq("period_id", key), ("pool_id", "of_id"))
-    summaries = _fetch_all(
-        client.table("erp_cost_of_summary").select(
+            "cout_direct_of_dzd,quantite_produite",
+            ("pool_id", "of_id"),
+        ),
+        "summaries": (
+            "erp_cost_of_summary",
             "of_id,quantite_produite,cout_direct_of_dzd,charges_imputees_dzd,"
-            "cout_analytique_total_dzd,cout_analytique_par_unite_dzd"
-        ).eq("period_id", key), ("of_id",))
-    scf_reconciliation = _fetch_all(
-        client.table("erp_cost_scf_reconciliation").select(
+            "cout_analytique_total_dzd,cout_analytique_par_unite_dzd",
+            ("of_id",),
+        ),
+        "scf_reconciliation": (
+            "erp_cost_scf_reconciliation",
             "pool_id,nature_code,montant_impute_dzd,reference_scf,scf_ligne_id,"
-            "compte,montant_debit_scf_dzd,solde_non_impute_dzd,rapprochement_ok"
-        ).eq("period_id", key), ("pool_id",))
-    validation_drift = _fetch_all(
-        client.table("erp_cost_of_validation_drift").select(
+            "compte,montant_debit_scf_dzd,solde_non_impute_dzd,rapprochement_ok",
+            ("pool_id",),
+        ),
+        "validation_drift": (
+            "erp_cost_of_validation_drift",
             "of_id,statut_of_valide,statut_of_actuel,quantite_validee,quantite_actuelle,"
             "cout_direct_valide_dzd,cout_direct_actuel_dzd,charges_validees_dzd,"
             "charges_actuelles_dzd,cout_total_valide_dzd,cout_total_actuel_dzd,"
-            "derive_detectee,captured_at"
-        ).eq("period_id", key), ("of_id",))
-    audit = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
-    return {"pools": pools, "drivers": drivers, "allocations": allocations,
-            "summaries": summaries, "scf_reconciliation": scf_reconciliation,
-            "validation_drift": validation_drift, "audit": audit}
+            "derive_detectee,captured_at",
+            ("of_id",),
+        ),
+    }
+    client = _client()
+    report = {name: [] for name in _REPORT_SECTIONS}
+    for name in requested:
+        table_name, columns, order_by = cfg[name]
+        query = client.table(table_name).select(columns).eq("period_id", key)
+        report[name] = _fetch_all(query, order_by)
+    report["audit"] = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
+    report["loaded_sections"] = list(requested)
+    return report
 
 def create_period(label: str, start: str, end: str) -> str:
     _allowed()
