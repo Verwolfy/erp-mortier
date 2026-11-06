@@ -95,12 +95,12 @@ def test_missing_finance_read_permission_has_actionable_message(ui):
 
 def test_missing_service_key_has_distinct_safe_message(ui):
     class StockClientConfigurationError(Exception):
-        pass
+        configuration_reason = "missing"
 
     ui.svc.list_natures.side_effect = StockClientConfigurationError("private token")
     ui.view.show_cost_reference(True)
     ui.st.error.assert_called_once()
-    assert "non configuré" in ui.st.error.call_args.args[0]
+    assert "absente" in ui.st.error.call_args.args[0]
     assert "private token" not in str(ui.st.error.call_args.args)
     ui.st.form.assert_not_called()
     _assert_no_writes(ui.svc)
@@ -357,3 +357,23 @@ def test_validated_export_never_invoked_without_button(ui):
     ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
     ui.view.show_cost_reference(False)
     ui.svc.export_validated_period.assert_not_called()
+
+
+@pytest.mark.parametrize("reason,expected", [
+    ("missing", "absente"),
+    ("empty_key", "vide"),
+    ("url", "URL Supabase invalide"),
+    ("environment", "politique d'environnement refusée"),
+    ("client", "Initialisation"),
+])
+def test_stock_client_error_is_actionable_and_never_leaks_secrets(ui, reason, expected):
+    class StockClientConfigurationError(Exception):
+        def __init__(self):
+            self.configuration_reason = reason
+            super().__init__("secret-ne-jamais-afficher")
+    ui.svc.list_periods.side_effect = StockClientConfigurationError()
+    ui.view.show_cost_reference(True)
+    assert expected in ui.st.error.call_args.args[0]
+    assert "secret-ne-jamais-afficher" not in str(ui.st.error.call_args.args)
+    assert "secret-ne-jamais-afficher" not in str(ui.st.info.call_args.args)
+    _assert_no_writes(ui.svc)
