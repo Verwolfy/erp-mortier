@@ -1,12 +1,13 @@
-## 6 novembre 2026 — fiabilisation du précontrôle des coûts industriels (phase de tests)
+## 6 novembre 2026 — fiabilisation du précontrôle des coûts industriels (fusionnée sur main)
 
 - **Périmètre :** ajout au service `modules/production/cost_service.py` d'un précontrôle explicite des périodes (`get_validation_preflight`) avec lecture des charges, assiettes, rapprochement SCF, OF terminés de la période et audit. La RPC transactionnelle SQL demeure l'autorité finale.
 - **Sécurité des écritures :** confirmation stricte des retours `INSERT/UPSERT` dans `create_period`, `add_pool`, `set_driver`, `create_nature`. En cas de confirmation absente, retour incertain et instruction de consulter Supabase avant nouvel essai.
 - **Interface :** bouton manuel de précontrôle (lecture seule), détails des blocages, revérification avant appel de la validation irréversible ; guide utilisateur enrichi.
-- **Tests :** fichier `tests/test_industrial_cost_preflight.py` ajouté (droits, données manquantes, audit nul, preuves SCF, incohérences, confirmations d'écriture) et UI adaptée ; CI à exécuter avant fusion.
+- **Tests et publication :** PR [#40](https://github.com/Verwolfy/erp-mortier/pull/40) fusionnée dans `main` par `a13727799db42f8f372b1d877082b6cc5d6a53f5`. Tests PR : [`42261358418`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261358418) `success`, **2 666 passed, 7 skipped, 133 warnings, 0 failed** ; audit [`42261358416`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261358416) `success`. Tests post-fusion [`42261592376`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261592376) `success` ; audit post-fusion [`42261592288`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261592288) `success`. Un test de doublure a été adapté pour simuler correctement la réponse d'insertion sans atténuer les contrôles.
 - **Données production :** aucune modification ni validation effectuée. Deux brouillons de novembre sans charge ; OF terminés en octobre ; zéro pièce SCF validée. Aucune réécriture de dates, aucune génération de montant.
 - **Documentation :** `docs/CAMPAGNE_PREVALIDATION_COUTS_INDUSTRIELS_20261106.md`.
-- **Prochaine action :** PR, revue diff, tests complets, correction des échecs, fusion sur `main` uniquement après CI verte ; preuve de redéploiement Streamlit encore indisponible.
+- **Contrôle final Supabase principal (SQL lecture seule) :** 2 périodes BROUILLON, 0 VALIDE, 0 charges, 0 assiette, 0 preuve SCF, 0 pièce SCF VALIDE, 0 OF terminé éligible en novembre. Aucun montant inventé ni validation forcée.
+- **Prochaine action :** vérifier la version réellement servie par Streamlit et obtenir les pièces SCF réelles validées, montants réels et mesures d'OF dans les périodes ; tant que ces prérequis n'existent pas, aucune clôture de période n'est acceptable. Les 7 tests ignorés et 133 avertissements existants restent à examiner.
 
 ---
 
