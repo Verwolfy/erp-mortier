@@ -71,10 +71,24 @@ def _fetch_all(query, order_by: tuple[str, ...], *, page_size: int = _REPORT_PAG
     for col in order_by:
         query = query.order(col)
     rows: list[dict] = []
+    previous_key = None
     while True:
-        chunk = query.range(len(rows), len(rows) + page_size - 1).execute().data or []
+        response = query.range(len(rows), len(rows) + page_size - 1).execute()
+        chunk = response.data
+        if chunk is None:
+            raise RuntimeError("Page analytique sans données : résultat incomplet")
         if len(chunk) > page_size or len(rows) + len(chunk) > _REPORT_MAX_ROWS:
             raise RuntimeError("Volume analytique supérieur à la limite de sécurité")
+        # Une suppression/insertion entre deux requêtes paginées peut décaler
+        # les offsets. Refuser les clés répétées ou hors ordre plutôt que
+        # publier un rapport financièrement incohérent.
+        for entry in chunk:
+            key = tuple(entry.get(col) for col in order_by)
+            if any(value is None for value in key):
+                raise RuntimeError("Clé de pagination analytique manquante")
+            if previous_key is not None and key <= previous_key:
+                raise RuntimeError("Pagination analytique instable : doublon ou ordre rompu")
+            previous_key = key
         rows.extend(chunk)
         if len(chunk) < page_size:
             return rows
