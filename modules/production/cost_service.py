@@ -20,6 +20,15 @@ def _allowed() -> None:
         raise PermissionError("Écriture analytique interdite : droits Production et Finance requis")
 
 
+def can_manage_costs() -> bool:
+    """Droits d'écriture effectivement relus depuis la session serveur."""
+    try:
+        _allowed()
+    except PermissionError:
+        return False
+    return True
+
+
 def _ident(value: str) -> str:
     if not isinstance(value, str) or not (1 <= len(value.strip()) <= 128):
         raise ValueError("Identifiant invalide")
