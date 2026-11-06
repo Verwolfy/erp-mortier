@@ -93,13 +93,14 @@ def show_cost_reference(can_write: bool) -> None:
     with st.expander("Associer une pièce justificative à une charge"):
         with st.form("cost_document_pool"):
             pool_ref = st.text_input("Identifiant du pool analytique")
-            real_document = st.text_input("Référence de la pièce réelle ou piste documentaire")
+            scf_piece = st.text_input("UUID de la pièce SCF validée")
+            explanation = st.text_area("Motif de rattachement à la fabrication (10 caractères minimum)")
             if st.form_submit_button("Documenter la charge"):
                 try:
-                    document_pool(period_id, pool_ref, real_document)
-                    st.success("Charge marquée DOCUMENTE. Vérifier l'audit avant validation.")
+                    document_pool(period_id, pool_ref, scf_piece, explanation)
+                    st.success("Pièce SCF liée. Vérifier l’audit avant validation.")
                 except Exception:
-                    st.error("Documentation refusée : période, droits ou pièce justificative incorrects.")
+                    st.error("Documentation refusée : pièce SCF non validée, période ou droits incorrects.")
     with st.expander("Ajouter une charge de période"):
         with st.form("cost_add_pool"):
             nature = st.selectbox("Nature de charge", [x["nature_code"] for x in natures],
