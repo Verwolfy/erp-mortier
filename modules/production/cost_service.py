@@ -80,9 +80,16 @@ def get_period_report(period_id: str) -> dict:
     scf_reconciliation = client.table("erp_cost_scf_reconciliation").select(
         "pool_id,nature_code,montant_impute_dzd,reference_scf,scf_ligne_id,compte,montant_debit_scf_dzd,solde_non_impute_dzd,rapprochement_ok"
     ).eq("period_id", key).limit(500).execute().data or []
+    validation_drift = client.table("erp_cost_of_validation_drift").select(
+        "of_id,statut_of_valide,statut_of_actuel,quantite_validee,quantite_actuelle,"
+        "cout_direct_valide_dzd,cout_direct_actuel_dzd,charges_validees_dzd,"
+        "charges_actuelles_dzd,cout_total_valide_dzd,cout_total_actuel_dzd,"
+        "derive_detectee,captured_at"
+    ).eq("period_id", key).limit(1000).execute().data or []
     audit = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
     return {"pools": pools, "drivers": drivers, "allocations": allocations,
-            "summaries": summaries, "scf_reconciliation": scf_reconciliation, "audit": audit}
+            "summaries": summaries, "scf_reconciliation": scf_reconciliation,
+            "validation_drift": validation_drift, "audit": audit}
 
 
 def create_period(label: str, start: str, end: str) -> str:
