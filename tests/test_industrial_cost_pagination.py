@@ -272,3 +272,42 @@ def test_explicit_multiple_sections_does_not_fetch_other_tables(svc):
     assert result["loaded_sections"] == ["pools", "validation_drift"]
     assert len(result["pools"]) == 1
     assert len(result["validation_drift"]) == 1
+
+
+def test_optional_audit_avoids_heavy_rpc(svc):
+    mod, _, client = svc
+    client.return_value.table.return_value = Query([{"pool_id": "POOL-1"}])
+    result = mod.get_period_report(
+        "P-REPORT", sections=("pools",), include_audit=False)
+    assert result["audit"] is None
+    assert result["audit_calculated"] is False
+    assert len(result["pools"]) == 1
+    client.return_value.rpc.assert_not_called()
+
+
+def test_default_report_still_audits(svc):
+    mod, _, client = svc
+    client.return_value.table.return_value = Query([])
+    client.return_value.rpc.return_value.execute.return_value.data = {"audit_ok": True}
+    result = mod.get_period_report("P-REPORT")
+    assert result["audit_calculated"] is True
+    assert result["audit"] == {"audit_ok": True}
+    client.return_value.rpc.assert_called_once_with(
+        "erp_cost_period_audit", {"p_period_id": "P-REPORT"})
+
+
+def test_invalid_audit_flag_is_rejected_before_rpc(svc):
+    mod, _, client = svc
+    with pytest.raises(ValueError, match="audit invalide"):
+        mod.get_period_report("P-REPORT", sections=("pools",), include_audit="false")
+    client.return_value.table.assert_not_called()
+    client.return_value.rpc.assert_not_called()
+
+
+def test_explicit_audit_is_not_cached_across_reads(svc):
+    mod, _, client = svc
+    client.return_value.table.return_value = Query([])
+    client.return_value.rpc.return_value.execute.return_value.data = {"audit_ok": True}
+    mod.get_period_report("P-REPORT", sections=("pools",), include_audit=True)
+    mod.get_period_report("P-REPORT", sections=("pools",), include_audit=True)
+    assert client.return_value.rpc.call_count == 2
