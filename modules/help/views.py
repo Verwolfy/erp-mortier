@@ -149,6 +149,15 @@ les quantités enregistrées.
 - **Production et CQ :** suivre les ordres et effectuer le contrôle qualité
   avant la clôture. Vérifier quantités, conditionnement et consommations.
 - **Consommations et contrôles :** consulter l'historique associé aux OF.
+- **Coûts industriels :** sélectionner une période par son libellé ET ses
+  dates. Une liste de charges vide ne signifie pas une erreur de connexion.
+  Les charges analytiques doivent être justifiées par une pièce SCF validée,
+  puis réparties sur des OF terminés dans les dates de la période.
+  L'audit mesure l'équilibre de répartition, pas l'existence de justificatifs :
+  **0 DZD réparti sur 0 DZD peut apparaître équilibré, sans que la période
+  soit validable**. Ne pas utiliser le bouton de validation avant présence
+  des charges, assiettes et pièces SCF validées et contrôle des dates.
+  Les coûts analytiques ne modifient ni le CUMP ni les écritures du journal SCF.
 
 La clôture peut modifier les stocks de matières, d'emballages et de produits
 finis. Ne pas clôturer un OF pour tester l'écran. Conserver la référence de
