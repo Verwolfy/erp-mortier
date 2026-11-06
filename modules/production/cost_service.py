@@ -68,9 +68,12 @@ def get_period_report(period_id: str) -> dict:
     drivers = client.table("erp_cost_drivers").select("of_id,base_imputation,valeur,justificatif").eq("period_id", key).limit(2000).execute().data or []
     allocations = client.table("erp_cost_allocations").select("of_id,nature_code,base_imputation,montant_impute_dzd,cout_direct_of_dzd,quantite_produite").eq("period_id", key).limit(2000).execute().data or []
     summaries = client.table("erp_cost_of_summary").select("of_id,quantite_produite,cout_direct_of_dzd,charges_imputees_dzd,cout_analytique_total_dzd,cout_analytique_par_unite_dzd").eq("period_id", key).limit(1000).execute().data or []
+    scf_reconciliation = client.table("erp_cost_scf_reconciliation").select(
+        "pool_id,nature_code,montant_impute_dzd,reference_scf,scf_ligne_id,compte,montant_debit_scf_dzd,solde_non_impute_dzd,rapprochement_ok"
+    ).eq("period_id", key).limit(500).execute().data or []
     audit = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
     return {"pools": pools, "drivers": drivers, "allocations": allocations,
-            "summaries": summaries, "audit": audit}
+            "summaries": summaries, "scf_reconciliation": scf_reconciliation, "audit": audit}
 
 
 def create_period(label: str, start: str, end: str) -> str:
