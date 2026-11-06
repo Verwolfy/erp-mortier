@@ -104,6 +104,12 @@ BEGIN
  IF NOT v_rejected THEN RAISE EXCEPTION 'Double imputation ligne SCF acceptee'; END IF;
  DELETE FROM public.erp_cost_pools WHERE pool_id='IT26_IND_POOL_DUP';
  UPDATE public.erp_cost_pools SET statut='DOCUMENTE' WHERE period_id='IT26_IND_PERIOD';
+ IF (SELECT count(*) FROM public.erp_cost_scf_reconciliation
+     WHERE period_id='IT26_IND_PERIOD' AND rapprochement_ok IS TRUE
+       AND montant_debit_scf_dzd=200
+       AND solde_non_impute_dzd>=0)<>2 THEN
+  RAISE EXCEPTION 'Rapprochement unitaire SCF incorrect';
+ END IF;
  a:=public.erp_cost_validate_period('IT26_IND_PERIOD');
  IF a->>'audit_ok'<>'true' OR
   (SELECT statut FROM public.erp_cost_periods WHERE period_id='IT26_IND_PERIOD')<>'VALIDE'
