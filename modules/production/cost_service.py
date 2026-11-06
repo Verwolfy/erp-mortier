@@ -115,8 +115,8 @@ _REPORT_SECTIONS = (
 )
 
 
-def get_period_report(period_id: str, *, sections=None) -> dict:
-    """Charge uniquement les sections demandées, avec un audit global.
+def get_period_report(period_id: str, *, sections=None, include_audit: bool = True) -> dict:
+    """Charge les sections demandées; audit optionnel, jamais mis en cache.
 
     Sans sélection : conserve le contrat historique et charge tout le rapport.
     Une section non demandée vaut [] mais figure explicitement hors de
@@ -124,6 +124,8 @@ def get_period_report(period_id: str, *, sections=None) -> dict:
     """
     _read_allowed()
     key = _ident(period_id)
+    if not isinstance(include_audit, bool):
+        raise ValueError("Paramètre audit invalide")
     if sections is None:
         requested = _REPORT_SECTIONS
     elif isinstance(sections, (tuple, list)) and sections and all(
@@ -177,7 +179,9 @@ def get_period_report(period_id: str, *, sections=None) -> dict:
         table_name, columns, order_by = cfg[name]
         query = client.table(table_name).select(columns).eq("period_id", key)
         report[name] = _fetch_all(query, order_by)
-    report["audit"] = client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
+    report["audit"] = (client.rpc("erp_cost_period_audit", {"p_period_id": key}).execute().data
+                       if include_audit else None)
+    report["audit_calculated"] = include_audit
     report["loaded_sections"] = list(requested)
     return report
 
