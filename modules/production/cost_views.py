@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from modules.production.cost_service import (
-    BASES, add_pool, create_period, create_nature, document_pool,
+    BASES, add_pool, can_manage_costs, create_period, create_nature, document_pool,
     get_period_report, list_natures, list_periods, set_driver, validate_period,
 )
 
@@ -48,7 +48,7 @@ def show_cost_reference(can_write: bool) -> None:
         except Exception:
             st.error("Calcul analytique non disponible : contrôler le référentiel de la période.")
 
-    if not can_write:
+    if not can_write or not can_manage_costs():
         st.caption("Consultation uniquement. Écriture réservée aux profils habilités en Production et Finance.")
         return
 
