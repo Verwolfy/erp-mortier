@@ -1,11 +1,14 @@
 """Écran du référentiel analytique industriel (aucune écriture de stock)."""
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import streamlit as st
 
 from modules.production.cost_service import (
     BASES, add_pool, can_manage_costs, create_period, create_nature, document_pool,
+    export_validated_period,
     get_period_report, list_natures, list_periods, set_driver, validate_period,
 )
 
@@ -80,6 +83,22 @@ def show_cost_reference(can_write: bool) -> None:
         except Exception:
             st.error("Calcul analytique non disponible : contrôler le référentiel de la période.")
             return
+
+    if periods and next((p["statut"] for p in periods
+                         if p["period_id"] == selected), "") == "VALIDE":
+        st.caption("Export figé des coûts analytiques : distinct de la comptabilité légale SCF.")
+        if st.button("Préparer l'export analytique validé", key="cost_export_prepare"):
+            try:
+                payload = export_validated_period(selected)
+                st.download_button(
+                    "Télécharger l'export JSON",
+                    data=json.dumps(payload, ensure_ascii=False, indent=2),
+                    file_name="couts_analytiques_valides.json",
+                    mime="application/json",
+                    key="cost_export_download",
+                )
+            except Exception:
+                st.error("Export refusé : période non validée, preuves ou droits insuffisants.")
 
     if not can_write or not can_manage_costs():
         st.caption("Consultation uniquement. Écriture réservée aux profils habilités en Production et Finance.")
