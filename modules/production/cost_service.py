@@ -186,8 +186,8 @@ def document_pool(period_id: str, pool_id: str, scf_piece_id: str, scf_line_id: 
     client = _client()
     pools = client.table("erp_cost_pools").select("pool_id,statut,montant_dzd").eq(
         "period_id", _ident(period_id)).eq("pool_id", key).limit(2).execute().data or []
-    if len(pools) != 1 or pools[0]["statut"] != "SIMULATION":
-        raise ValueError("Charge absente ou déjà documentée")
+    if len(pools) != 1 or pools[0]["statut"] not in ("SIMULATION", "DOCUMENTE"):
+        raise ValueError("Charge absente ou non documentable")
     pieces = client.table("scf_pieces").select("piece_id,statut,date_validation").eq(
         "piece_id", piece_id).limit(2).execute().data or []
     if (len(pieces) != 1 or pieces[0]["statut"] != "VALIDEE"
