@@ -139,7 +139,7 @@ def test_validation_error_never_claims_success(ui):
 
 def test_documenting_pool_sends_scf_piece_line_and_reason(ui):
     ui.st.form_submit_button.side_effect = lambda label: label == "Documenter la charge"
-    ui.st.text_input.side_effect = lambda label: {
+    ui.st.text_input.side_effect = lambda label, **kw: {
         "Identifiant du pool analytique": "POOL-TEST",
         "UUID de la pièce SCF validée": "11111111-1111-4111-8111-111111111111",
     }.get(label, "TEST")
