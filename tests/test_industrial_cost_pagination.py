@@ -224,3 +224,51 @@ def test_full_report_rejects_duplicate_second_page(svc):
     with pytest.raises(RuntimeError, match="instable"):
         mod.get_period_report("P-REPORT")
     client.return_value.rpc.assert_not_called()
+
+
+def test_report_selected_section_only_fetches_one_dataset(svc):
+    mod, _, client = svc
+    query = Query([{"pool_id": f"{i:05d}"} for i in range(1201)])
+    client.return_value.table.return_value = query
+    client.return_value.rpc.return_value.execute.return_value.data = {"audit_ok": False}
+    result = mod.get_period_report("P-REPORT", sections=("pools",))
+    assert len(result["pools"]) == 1201
+    assert result["loaded_sections"] == ["pools"]
+    for name in ("drivers", "allocations", "summaries",
+                 "scf_reconciliation", "validation_drift"):
+        assert result[name] == []
+        assert name not in result["loaded_sections"]
+    assert client.return_value.table.call_count == 1
+    assert query.calls == [(0, 499), (500, 999), (1000, 1499)]
+    client.return_value.rpc.assert_called_once()
+
+
+@pytest.mark.parametrize("bad", ((), ("invalid",), "pools", ["pools", "unknown"], None))
+def test_invalid_section_selection_fails_closed(svc, bad):
+    mod, _, client = svc
+    if bad is None:
+        # None retains the backward compatible complete report.
+        return
+    with pytest.raises(ValueError, match="sections"):
+        mod.get_period_report("P-REPORT", sections=bad)
+    client.return_value.table.assert_not_called()
+
+
+def test_explicit_multiple_sections_does_not_fetch_other_tables(svc):
+    mod, _, client = svc
+    names = []
+    data = {
+        "erp_cost_pools": Query([{"pool_id": "POOL-1"}]),
+        "erp_cost_of_validation_drift": Query([{"of_id": "OF-1"}]),
+    }
+    def open_table(name):
+        names.append(name)
+        return data[name]
+    client.return_value.table.side_effect = open_table
+    client.return_value.rpc.return_value.execute.return_value.data = {"audit_ok": True}
+    result = mod.get_period_report(
+        "P-REPORT", sections=("pools", "validation_drift", "pools"))
+    assert names == ["erp_cost_pools", "erp_cost_of_validation_drift"]
+    assert result["loaded_sections"] == ["pools", "validation_drift"]
+    assert len(result["pools"]) == 1
+    assert len(result["validation_drift"]) == 1
