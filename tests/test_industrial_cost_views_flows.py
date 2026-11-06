@@ -205,3 +205,26 @@ def test_six_decimal_driver_kept_exact(ui):
     ui.view.show_cost_reference(True)
     ui.svc.set_driver.assert_called_once_with(
         "P-TEST", "TEST", "UNITS", "0.123456", "TEST")
+
+
+def test_validated_period_displays_snapshot_drift_warning(ui):
+    ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
+    ui.svc.get_period_report.return_value["validation_drift"] = [{
+        "of_id": "OF-TEST", "derive_detectee": True,
+        "cout_direct_valide_dzd": "100", "cout_direct_actuel_dzd": "101",
+    }]
+    ui.view.show_cost_reference(False)
+    ui.st.error.assert_called_once()
+    ui.st.form.assert_not_called()
+    ui.svc.validate_period.assert_not_called()
+
+
+def test_validated_period_displays_conform_snapshot(ui):
+    ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
+    ui.svc.get_period_report.return_value["validation_drift"] = [{
+        "of_id": "OF-TEST", "derive_detectee": False,
+        "cout_direct_valide_dzd": "100", "cout_direct_actuel_dzd": "100",
+    }]
+    ui.view.show_cost_reference(False)
+    ui.st.success.assert_called_once()
+    ui.st.error.assert_not_called()
