@@ -104,20 +104,23 @@ def show_cost_reference(can_write: bool) -> None:
                     st.success("Pièce SCF liée. Vérifier l’audit avant validation.")
                 except Exception:
                     st.error("Documentation refusée : pièce SCF non validée, période ou droits incorrects.")
-    with st.expander("Ajouter une charge de période"):
-        with st.form("cost_add_pool"):
-            nature = st.selectbox("Nature de charge", [x["nature_code"] for x in natures],
-                                  format_func=lambda code: next(
-                                      (n["libelle"] for n in natures if n["nature_code"] == code), code))
-            base = st.selectbox("Clé d'imputation", BASES)
-            amount = st.number_input("Montant analytique (DZD)", min_value=0.0, value=0.0, step=1.0)
-            reference = st.text_input("Justificatif / hypothèse (obligatoire)")
-            if st.form_submit_button("Enregistrer la charge"):
-                try:
-                    add_pool(period_id, nature, base, str(amount), reference)
-                    st.success("Charge analytique enregistrée en simulation.")
-                except Exception:
-                    st.error("Charge refusée : vérifier droits, période, montant et justificatif.")
+    if not natures:
+        st.warning("Aucune nature active. Créer une nature avant de saisir une charge.")
+    else:
+        with st.expander("Ajouter une charge de période"):
+            with st.form("cost_add_pool"):
+                nature = st.selectbox("Nature de charge", [x["nature_code"] for x in natures],
+                                      format_func=lambda code: next(
+                                          (n["libelle"] for n in natures if n["nature_code"] == code), code))
+                base = st.selectbox("Clé d'imputation", BASES)
+                amount = st.number_input("Montant analytique (DZD)", min_value=0.0, value=0.0, step=1.0)
+                reference = st.text_input("Justificatif / hypothèse (obligatoire)")
+                if st.form_submit_button("Enregistrer la charge"):
+                    try:
+                        add_pool(period_id, nature, base, str(amount), reference)
+                        st.success("Charge analytique enregistrée en simulation.")
+                    except Exception:
+                        st.error("Charge refusée : vérifier droits, période, montant et justificatif.")
     with st.expander("Renseigner une assiette pour un OF terminé"):
         with st.form("cost_add_driver"):
             of_id = st.text_input("Identifiant de l'OF terminé")
