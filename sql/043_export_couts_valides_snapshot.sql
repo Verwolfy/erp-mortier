@@ -1,6 +1,7 @@
 -- 043 — Export analytique cohérent, borné et en lecture seule.
 -- Lot 048. Un appel SQL STABLE partage un snapshot MVCC unique.
 -- Ne pas qualifier cet export de comptabilité légale certifiée.
+-- Les nombres financiers sont des chaînes décimales exactes, jamais des floats JSON.
 BEGIN;
 CREATE OR REPLACE FUNCTION public.erp_cost_export_validated(p_period_id text)
 RETURNS jsonb
@@ -80,13 +81,13 @@ BEGIN
       'date_debut',v_period.date_debut,'date_fin',v_period.date_fin,
       'statut',v_period.statut),
    'totals',jsonb_build_object(
-      'charges_dzd',v_pool_total,
-      'impute_valide_dzd',v_alloc_total,
+      'charges_dzd',v_pool_total::text,
+      'impute_valide_dzd',v_alloc_total::text,
       'pools',v_pool_count,'of',v_of_count,'assiettes',v_driver_count),
    'pools',(
       SELECT coalesce(jsonb_agg(
         jsonb_build_object('pool_id',p.pool_id,'nature_code',p.nature_code,
-          'base_imputation',p.base_imputation,'montant_dzd',p.montant_dzd,
+          'base_imputation',p.base_imputation,'montant_dzd',p.montant_dzd::text,
           'statut',p.statut,'piece_id',e.piece_id,
           'scf_ligne_id',e.scf_ligne_id,'explication',e.explication_imputation)
         ORDER BY p.pool_id),'[]'::jsonb)
@@ -96,10 +97,10 @@ BEGIN
    'of_snapshots',(
       SELECT coalesce(jsonb_agg(
         jsonb_build_object('of_id',s.of_id,'statut_of',s.statut_of,
-          'quantite_produite',s.quantite_produite,
-          'cout_direct_of_dzd',s.cout_direct_of_dzd,
-          'charges_imputees_dzd',s.charges_imputees_dzd,
-          'cout_analytique_total_dzd',s.cout_analytique_total_dzd,
+          'quantite_produite',s.quantite_produite::text,
+          'cout_direct_of_dzd',s.cout_direct_of_dzd::text,
+          'charges_imputees_dzd',s.charges_imputees_dzd::text,
+          'cout_analytique_total_dzd',s.cout_analytique_total_dzd::text,
           'captured_at',s.captured_at)
         ORDER BY s.of_id),'[]'::jsonb)
       FROM public.erp_cost_of_validation_snapshot s
@@ -107,7 +108,7 @@ BEGIN
    'drivers',(
       SELECT coalesce(jsonb_agg(
         jsonb_build_object('of_id',d.of_id,
-          'base_imputation',d.base_imputation,'valeur',d.valeur,
+          'base_imputation',d.base_imputation,'valeur',d.valeur::text,
           'justificatif',d.justificatif)
         ORDER BY d.of_id,d.base_imputation),'[]'::jsonb)
       FROM public.erp_cost_drivers d WHERE d.period_id=p_period_id)
