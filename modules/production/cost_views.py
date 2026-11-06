@@ -37,6 +37,8 @@ def show_cost_reference(can_write: bool) -> None:
             st.json(audit)
             st.write("Charges de période")
             st.dataframe(pd.DataFrame(report["pools"]), use_container_width=True, hide_index=True)
+            st.write("Rapprochement documentaire et plafond par ligne SCF")
+            st.dataframe(pd.DataFrame(report["scf_reconciliation"]), use_container_width=True, hide_index=True)
             st.write("Clés et mesures par OF")
             st.dataframe(pd.DataFrame(report["drivers"]), use_container_width=True, hide_index=True)
             st.write("Synthèse des coûts analytiques par OF")
