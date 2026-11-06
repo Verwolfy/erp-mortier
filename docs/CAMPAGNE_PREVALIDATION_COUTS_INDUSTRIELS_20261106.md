@@ -36,5 +36,15 @@ Dépôt `Verwolfy/erp-mortier`, fonctionnalité `Production & Nomenclatures > Co
 - Aucun coût n'est calculable sur les brouillons de novembre tant que les données correspondantes n'existent pas.
 - Une validation par un expert-comptable algérien reste indispensable avant toute production réglementaire.
 
-## Preuves de CI
-À compléter après création de la PR et exécution effective des workflows. Ne pas qualifier les tests d'OK avant leur résultat.
+## Preuves de CI (complétées)
+- PR [#40](https://github.com/Verwolfy/erp-mortier/pull/40), correctif final `44b485a27f3c7b1f9da1815edb0da7e7a3c41fe3`.
+- [CI PR tests `42261358418`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261358418) : `completed/success`, sortie brute `2666 passed, 7 skipped, 133 warnings in 28.25s`.
+- [CI PR audit `42261358416`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261358416) : `completed/success`.
+- Merge `a13727799db42f8f372b1d877082b6cc5d6a53f5` sur `main` : [tests `42261592376`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261592376) et [audit `42261592288`](https://github.com/Verwolfy/erp-mortier/actions/runs/42261592288), tous deux `completed/success`.
+- Un échec de CI intermédiaire sur le test `test_authorized_period_creation_uses_brouillon` était dû à la mauvaise doublure de retour `table.execute` au lieu de `table.insert().execute`. Fixture corrigée ; la nouvelle exigence de confirmation des insertions n'a pas été supprimée.
+- Les 7 tests ignorés et 133 avertissements restent visibles et ne sont pas qualifiés comme résolus.
+
+## Contrôle post-fusion de Supabase principal (lecture seule)
+`periodes_brouillon=2, periodes_validees=0, charges=0, assiettes=0, preuves_scf=0, pieces_scf_validees=0, of_eligibles_novembre=0`.
+
+**Verdict :** corrections logicielles et contrôles automatisés publiés ; clôture d'une période réelle et preuve de redéploiement Streamlit non réalisées, faute de pièces SCF valides, montants réels et OF datés dans les périodes.
