@@ -30,29 +30,42 @@ def show_cost_reference(can_write: bool) -> None:
             [p["period_id"] for p in periods],
             format_func=lambda k: next(
                 (p["libelle"] + " — " + p["statut"] for p in periods if p["period_id"] == k), k))
+        section_labels = {
+            "pools": "Charges de période",
+            "drivers": "Clés et mesures par OF",
+            "allocations": "Détail des imputations calculées",
+            "summaries": "Synthèse analytique par OF",
+            "scf_reconciliation": "Rapprochement SCF",
+            "validation_drift": "Instantané validé et dérives",
+        }
+        section = st.selectbox(
+            "Section du rapport",
+            list(section_labels),
+            format_func=lambda code: section_labels[code],
+            index=5 if next((p["statut"] for p in periods
+                             if p["period_id"] == selected), "") == "VALIDE" else 0,
+        )
         try:
-            report = get_period_report(selected)
+            # Ne pas charger l'ensemble des tableaux au moindre changement de filtre.
+            report = get_period_report(selected, sections=(section,))
             audit = report.get("audit") or {}
             st.caption("Audit de complétude : " + ("CONFORME" if audit.get("audit_ok") else "À compléter"))
             st.json(audit)
-            st.write("Charges de période")
-            st.dataframe(pd.DataFrame(report["pools"]), use_container_width=True, hide_index=True)
-            st.write("Rapprochement documentaire et plafond par ligne SCF")
-            st.dataframe(pd.DataFrame(report["scf_reconciliation"]), use_container_width=True, hide_index=True)
-            st.write("Clés et mesures par OF")
-            st.dataframe(pd.DataFrame(report["drivers"]), use_container_width=True, hide_index=True)
-            st.write("Synthèse des coûts analytiques par OF")
-            st.dataframe(pd.DataFrame(report["summaries"]), use_container_width=True, hide_index=True)
-            if report.get("validation_drift"):
+            st.caption("Section chargée : " + section_labels[section] +
+                       ". Les autres tableaux ne sont pas téléchargés.")
+            if section == "validation_drift":
                 rows = report["validation_drift"]
-                if any(r.get("derive_detectee") for r in rows):
-                    st.error("Écart après validation : au moins un OF ou coût analytique a changé.")
+                if rows:
+                    if any(r.get("derive_detectee") for r in rows):
+                        st.error("Écart après validation : au moins un OF ou coût analytique a changé.")
+                    else:
+                        st.success("Instantanés OF conformes à la validation analytique.")
                 else:
-                    st.success("Instantanés OF conformes à la validation analytique.")
-                st.write("Instantané de validation et contrôle des dérives")
+                    st.info("Aucun instantané disponible pour cette période.")
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-            st.write("Détail des imputations calculées — aucune écriture comptable")
-            st.dataframe(pd.DataFrame(report["allocations"]), use_container_width=True, hide_index=True)
+            else:
+                st.dataframe(pd.DataFrame(report[section]),
+                             use_container_width=True, hide_index=True)
         except Exception:
             st.error("Calcul analytique non disponible : contrôler le référentiel de la période.")
             return
