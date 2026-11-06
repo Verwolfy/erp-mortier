@@ -90,6 +90,14 @@ def test_report_error_does_not_write(ui):
     _assert_no_writes(ui.svc)
 
 
+def test_incomplete_report_blocks_all_write_forms(ui):
+    ui.svc.get_period_report.side_effect = ConnectionError("last page unavailable")
+    ui.view.show_cost_reference(True)
+    ui.st.error.assert_called()
+    ui.st.form.assert_not_called()
+    _assert_no_writes(ui.svc)
+
+
 def test_locked_period_has_no_edit_form(ui):
     ui.svc.list_periods.return_value[0]["statut"] = "VALIDE"
     ui.view.show_cost_reference(True)
