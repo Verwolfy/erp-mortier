@@ -104,6 +104,19 @@ BEGIN
  IF NOT v_rejected THEN RAISE EXCEPTION 'Double imputation ligne SCF acceptee'; END IF;
  DELETE FROM public.erp_cost_pools WHERE pool_id='IT26_IND_POOL_DUP';
  UPDATE public.erp_cost_pools SET statut='DOCUMENTE' WHERE period_id='IT26_IND_PERIOD';
+ -- La RPC est strictement idempotente sur une preuve déjà existante et identique.
+ IF (SELECT public.erp_cost_document_pool_atomic('IT26_IND_PERIOD','IT26_IND_POOL_E',
+    e.piece_id,e.scf_ligne_id,e.explication_imputation)->>'documented'
+    FROM public.erp_cost_pool_scf_evidence e WHERE e.pool_id='IT26_IND_POOL_E') IS DISTINCT FROM 'true'
+ THEN RAISE EXCEPTION 'RPC documentaire non idempotente'; END IF;
+ -- Une répétition ambiguë avec une autre justification doit échouer.
+ v_rejected:=false;
+ BEGIN
+  PERFORM public.erp_cost_document_pool_atomic('IT26_IND_PERIOD','IT26_IND_POOL_E',
+     e.piece_id,e.scf_ligne_id,'[TEST] justification volontairement differente')
+    FROM public.erp_cost_pool_scf_evidence e WHERE e.pool_id='IT26_IND_POOL_E';
+ EXCEPTION WHEN SQLSTATE '23514' THEN v_rejected:=true; END;
+ IF NOT v_rejected THEN RAISE EXCEPTION 'Preuve différente acceptée'; END IF;
  IF (SELECT count(*) FROM public.erp_cost_scf_reconciliation
      WHERE period_id='IT26_IND_PERIOD' AND rapprochement_ok IS TRUE
        AND montant_debit_scf_dzd=200
