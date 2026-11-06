@@ -36,3 +36,9 @@ Commit `9fc89c229cd8ee50104d4733253d135caf0f05a2` :
 2. Contrôler formellement une piste d'approbation de l'imputation et vérifier l'absence de double imputation d'une pièce dans plusieurs charges (l'unicité actuelle impose déjà une seule charge par pièce).
 3. Mettre en place si nécessaire la réconciliation quantitative pièce SCF ↔ coût imputé avec règles comptables approuvées, sans inventer de données officielles.
 4. Supabase TEST doit être à nouveau suspendu `INACTIVE`.
+
+## Complément de sûreté — suppression concurrente de justificatifs
+
+Le test du premier déploiement a identifié une marge de durcissement : une suppression de lien SCF par une transaction concurrente doit prendre le même verrou de période que la validation analytique. Le correctif a été versionné dans `sql/039_verrouillage_suppression_preuve_couts.sql`, avec un test qui refuse la suppression de la preuve d'une période validée. **Au moment de cette mise à jour, 039 n'avait pas encore été appliqué sur TEST ni sur la production** : la restauration du projet TEST était encore `COMING_UP`. Ne pas présenter 039 comme déployé tant qu'une preuve d'application et le test SQL de régression ne sont pas disponibles.
+
+CI associée au test renforcé `ebd4034568bca30920330191e77924012ee4b7eb` : [tests ERP réussis](https://github.com/Verwolfy/erp-mortier/actions/runs/42196086184) et audit associé à revérifier sur la page GitHub Actions. Le navigateur Streamlit authentifié n'a pas été exercé.
