@@ -46,6 +46,44 @@ def charger_donnees(table_name: str) -> pd.DataFrame:
         current[table_name] = fetch_data(table_name)
     return pd.DataFrame(current[table_name]).copy(deep=True)
 
+
+# Un préfixe DEMO/SIM est un indice de données d'exercice, jamais une
+# qualification comptable automatique ni une autorisation de suppression.
+_PROVENANCE_SOURCES = (
+    ("factures", "facture_id", "Factures"),
+    ("reglements", "reglement_id", "Règlements"),
+    ("ordres_fabrication", "of_id", "OF"),
+    ("commandes_achats", "commande_achat_id", "Commandes achats"),
+    ("pipeline", "opportunite_id", "CRM"),
+    ("employes", "employe_id", "RH"),
+)
+
+
+def get_dashboard_data_provenance() -> dict:
+    """Diagnostic agrégé, lecture seule, sur les tables déjà nécessaires aux KPI.
+
+    Une donnée marquée par un préfixe n'est PAS exclue des KPI : la
+    qualification métier est indépendante de ce simple indice lexical.
+    Toute lecture incomplète doit échouer explicitement.
+    """
+    sections = []
+    total_marked = 0
+    for table, identifier, display in _PROVENANCE_SOURCES:
+        frame = charger_donnees(table)
+        if frame.empty:
+            sections.append({"Source": display, "Références DEMO/SIM": 0, "Total": 0})
+            continue
+        if identifier not in frame or not frame[identifier].map(
+                lambda val: isinstance(val, str) and bool(val.strip())).all():
+            raise DataReadError("Identifiants de provenance non qualifiés")
+        labels = frame[identifier].str.strip().str.upper()
+        marked = int(labels.str.startswith(("DEMO", "SIM")).sum())
+        total_marked += marked
+        sections.append({"Source": display, "Références DEMO/SIM": marked,
+                         "Total": len(frame)})
+    return {"marked": total_marked, "sources": sections}
+
+
 def get_kpis_direction() -> dict:
     now = get_local_now()
     documents = validated_documents(charger_donnees("factures"))
