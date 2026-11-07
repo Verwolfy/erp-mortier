@@ -1,3 +1,14 @@
+## 7 novembre 2026 — mode de démonstration KPI/SIM isolé (PR #47)
+
+- **Décision utilisateur :** conserver les références `DEMO/SIM` pour les développements/tests et préparer leur retrait **uniquement à la finalisation de l'ERP**, après qualification métier et sauvegardes approuvées ; aucune suppression anticipée.
+- **Livraison :** [PR #47](https://github.com/Verwolfy/erp-mortier/pull/47), commit de fusion `72bbe47912952d8953d723e60b6bc06a12b2dd3b`. Nouvel interrupteur `Mode démonstration` au sein de `Tableaux de bord & KPIs`, 9 rubriques couvertes par des données fictives explicites `DEMO-KPI/SIM-KPI` construites en mémoire dans `modules/dashboards/demo.py`.
+- **Isolation forte :** les mêmes fonctions métier calculent les KPI à partir d'un contexte de données fictives `dashboard_read_scope(demo_rows=...)`; aucun accès Supabase depuis les indicateurs pendant le rendu démo, aucune écriture, aucun repli silencieux vers le réel sur source manquante. L'état réel revient à la sortie du contexte. Les droits Dashboards continuent à s'appliquer.
+- **Tests** : [ERP run 42412911317](https://github.com/Verwolfy/erp-mortier/actions/runs/42412911317) **success, 2741 passed, 1 warning**, et [audit run 42412911239](https://github.com/Verwolfy/erp-mortier/actions/runs/42412911239) **success**. Couverture : neuf tableaux, totaux, dates, exclure brouillons des indicateurs validés, test aucun réseau/référence sans préfixe, anti-contamination et retour au réel.
+- **Précaution métier :** les valeurs fictives (y compris prix/FX/montants) ne représentent aucun tarif, taux fiscal/social, déclaration, comptabilisation ni opération de stock. Ne jamais fusionner jeu de formation et rapports réels. Les références `DEMO/SIM` déjà présentes dans la production demeurent intactes et signalées comme non homologuées.
+- **Suite** : vérifier le sélecteur et les neuf graphiques dans la session Streamlit hébergée ; vérifier la CI du commit final `main` ; envisager export de snapshots/tests visuels avant homologation. Aucun retrait de `DEMO/SIM` avant la fin du projet.
+
+---
+
 ## 7 novembre 2026 — refonte KPI et graphiques industriels (PR #46)
 
 - **Action accomplie** : [PR #46](https://github.com/Verwolfy/erp-mortier/pull/46) fusionnée dans `main`, commit `d628e30a58b1e65cd7628b94b6c2302586f4dd44`. 9 onglets ERP conservés avec contrôles RBAC, lecture stricte et cache par rendu inchangés.
