@@ -75,8 +75,8 @@ def _show_dashboards_page_impl():
         show_context_help(st, "dashboard.pnl")
         st.caption("Facturation brute validée hors avoirs et coûts produits actuels, non historiques. OPEX = décaissements validés classés OPEX. Paie = nets enregistrés des mois sélectionnés, tous statuts de paiement, sans cotisations employeur ni preuve de validation. Choisir des mois complets si des fiches existent ; aucun prorata journalier. Ce solde mélange facturation et décaissements : il ne constitue pas un résultat comptable.")
         c_deb_pnl, c_fin_pnl = st.columns(2)
-        date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
-        date_fin_pnl = c_fin_pnl.date_input("Date de fin", _current_month_end(datetime.date.today()), key="f_pnl", on_change=_mark_dashboards_activity)
+        date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity, help=field_help("Date de début", module="dashboards"))
+        date_fin_pnl = c_fin_pnl.date_input("Date de fin", _current_month_end(datetime.date.today()), key="f_pnl", on_change=_mark_dashboards_activity, help=field_help("Date de fin", module="dashboards"))
 
         if date_deb_pnl <= date_fin_pnl:
             ts_deb_pnl, ts_fin_pnl = pd.Timestamp(date_deb_pnl), pd.Timestamp(date_fin_pnl) + pd.Timedelta(days=1, seconds=-1)
@@ -103,8 +103,8 @@ def _show_dashboards_page_impl():
         show_context_help(st, "dashboard.ventes")
         st.caption("Factures validées uniquement. Facturation brute hors avoirs ; ratio des avoirs validés suivi séparément. Créances globales, indépendantes de la période sélectionnée.")
         c_deb, c_fin = st.columns(2)
-        date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v", on_change=_mark_dashboards_activity)
-        date_fin = c_fin.date_input("Date de fin", datetime.date.today(), key="f_v", on_change=_mark_dashboards_activity)
+        date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v", on_change=_mark_dashboards_activity, help=field_help("Date de début", module="dashboards"))
+        date_fin = c_fin.date_input("Date de fin", datetime.date.today(), key="f_v", on_change=_mark_dashboards_activity, help=field_help("Date de fin", module="dashboards"))
 
         if date_deb <= date_fin:
             ts_deb, ts_fin = pd.Timestamp(date_deb), pd.Timestamp(date_fin) + pd.Timedelta(days=1, seconds=-1)
@@ -133,8 +133,8 @@ def _show_dashboards_page_impl():
         show_context_help(st, "dashboard.achats")
         st.caption("Retards globaux, indépendants de la période : commandes en attente ou partiellement réceptionnées, échéance antérieure à aujourd’hui.")
         c_deb_a, c_fin_a = st.columns(2)
-        date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a", on_change=_mark_dashboards_activity)
-        date_fin_a = c_fin_a.date_input("Date de fin", datetime.date.today(), key="f_a", on_change=_mark_dashboards_activity)
+        date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a", on_change=_mark_dashboards_activity, help=field_help("Date de début", module="dashboards"))
+        date_fin_a = c_fin_a.date_input("Date de fin", datetime.date.today(), key="f_a", on_change=_mark_dashboards_activity, help=field_help("Date de fin", module="dashboards"))
 
         if date_deb_a <= date_fin_a:
             ts_deb_a, ts_fin_a = pd.Timestamp(date_deb_a), pd.Timestamp(date_fin_a) + pd.Timedelta(days=1, seconds=-1)
@@ -155,14 +155,14 @@ def _show_dashboards_page_impl():
                 st.markdown("**Évolution des Prix d'Achat**")
                 df_evo = kpis_a["evolution_prix"]
                 if not df_evo.empty:
-                    mp_choisie = st.selectbox("Sélectionnez une Matière", options=df_evo["mp_id"].unique().tolist(), on_change=_mark_dashboards_activity)
+                    mp_choisie = st.selectbox("Sélectionnez une Matière", options=df_evo["mp_id"].unique().tolist(), on_change=_mark_dashboards_activity, help=field_help("Sélectionnez une Matière", module="dashboards"))
                     st.line_chart(df_evo[df_evo["mp_id"] == mp_choisie].sort_values(by="date_obj").set_index("date_obj")["prix_unitaire"])
 
     # --- 5. STOCKS ---
     with onglets[4], read_section("Stocks"):
         st.subheader("Analyse Financière des Stocks", help=topic_help("dashboard.stocks"))
         show_context_help(st, "dashboard.stocks")
-        jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7, on_change=_mark_dashboards_activity)
+        jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7, on_change=_mark_dashboards_activity, help=field_help("Fenêtre d'alerte péremption (Jours)", module="dashboards"))
         kpis_s = get_kpis_stocks(jours_alerte_peremption=jours)
 
         if kpis_s.get("lots_sans_date", 0):
@@ -188,8 +188,8 @@ def _show_dashboards_page_impl():
         st.subheader("Performance de Production", help=topic_help("dashboard.production"))
         show_context_help(st, "dashboard.production")
         c_deb_p, c_fin_p = st.columns(2)
-        date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p", on_change=_mark_dashboards_activity)
-        date_fin_p = c_fin_p.date_input("Date de fin", datetime.date.today(), key="f_p", on_change=_mark_dashboards_activity)
+        date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p", on_change=_mark_dashboards_activity, help=field_help("Date de début", module="dashboards"))
+        date_fin_p = c_fin_p.date_input("Date de fin", datetime.date.today(), key="f_p", on_change=_mark_dashboards_activity, help=field_help("Date de fin", module="dashboards"))
 
         if date_deb_p <= date_fin_p:
             ts_deb_p, ts_fin_p = pd.Timestamp(date_deb_p), pd.Timestamp(date_fin_p) + pd.Timedelta(days=1, seconds=-1)
@@ -210,8 +210,8 @@ def _show_dashboards_page_impl():
         show_context_help(st, "dashboard.crm")
         st.caption("Pipeline ouvert global. Conversion et valeurs gagnées : opportunités créées dans la période, selon leur statut actuel ; ce ne sont pas des ventes facturées ni des clôtures datées.")
         c_deb_c, c_fin_c = st.columns(2)
-        date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c", on_change=_mark_dashboards_activity)
-        date_fin_c = c_fin_c.date_input("Date de fin", datetime.date.today(), key="f_c", on_change=_mark_dashboards_activity)
+        date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c", on_change=_mark_dashboards_activity, help=field_help("Date de début", module="dashboards"))
+        date_fin_c = c_fin_c.date_input("Date de fin", datetime.date.today(), key="f_c", on_change=_mark_dashboards_activity, help=field_help("Date de fin", module="dashboards"))
 
         if date_deb_c <= date_fin_c:
             ts_deb_c, ts_fin_c = pd.Timestamp(date_deb_c), pd.Timestamp(date_fin_c) + pd.Timedelta(days=1, seconds=-1)
@@ -251,8 +251,8 @@ def _show_dashboards_page_impl():
         st.subheader("Flux de Trésorerie & Rapprochement", help=topic_help("dashboard.finance"))
         show_context_help(st, "dashboard.finance")
         c_deb_f, c_fin_f = st.columns(2)
-        date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f", on_change=_mark_dashboards_activity)
-        date_fin_f = c_fin_f.date_input("Date de fin", datetime.date.today(), key="f_f", on_change=_mark_dashboards_activity)
+        date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f", on_change=_mark_dashboards_activity, help=field_help("Date de début", module="dashboards"))
+        date_fin_f = c_fin_f.date_input("Date de fin", datetime.date.today(), key="f_f", on_change=_mark_dashboards_activity, help=field_help("Date de fin", module="dashboards"))
 
         if date_deb_f <= date_fin_f:
             ts_deb_f, ts_fin_f = pd.Timestamp(date_deb_f), pd.Timestamp(date_fin_f) + pd.Timedelta(days=1, seconds=-1)
