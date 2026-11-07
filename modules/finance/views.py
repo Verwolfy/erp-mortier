@@ -176,11 +176,11 @@ def _operation_panel(kind: str, user_id: str) -> bool:
     if record["status"] == "uncertain":
         st.warning("Transaction non confirmée. Ne créez pas un deuxième règlement ou lettrage.")
         st.info("La reprise réutilise exactement la même référence, les mêmes montants et le même identifiant.")
-        if st.button("Réessayer la même opération", key=f"finance_retry_{kind}_{user_id}", on_click=_mark_finance_activity):
+        if st.button("Réessayer la même opération", key=f"finance_retry_{kind}_{user_id}", on_click=_mark_finance_activity, help=field_help("Réessayer la même opération", module="finance")):
             _execute_operation(kind, user_id)
     else:
         st.success(f"Opération confirmée : {record['document_id']}")
-        if st.button("Préparer une nouvelle opération", key=f"finance_new_{kind}_{user_id}", on_click=_mark_finance_activity):
+        if st.button("Préparer une nouvelle opération", key=f"finance_new_{kind}_{user_id}", on_click=_mark_finance_activity, help=field_help("Préparer une nouvelle opération", module="finance")):
             del st.session_state[key]
             st.rerun()
     return True
@@ -288,11 +288,11 @@ def _accounts_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None
     if _operation_panel("account", user_id):
         return
     with st.form(f"finance_create_account_{user_id}"):
-        nom = st.text_input("Nom du compte")
-        type_c = st.selectbox("Type de compte", ["Banque", "Caisse", "Tiers client", "Tiers fournisseur"])
-        numero = st.text_input("Numéro comptable ou bancaire (unique)")
-        solde = st.number_input("Solde initial (DZD)", min_value=0.0, step=0.01, format="%.2f")
-        if st.form_submit_button("Enregistrer le compte", type="primary", on_click=_mark_finance_activity):
+        nom = st.text_input("Nom du compte", help=field_help("Nom du compte", module="finance"))
+        type_c = st.selectbox("Type de compte", ["Banque", "Caisse", "Tiers client", "Tiers fournisseur"], help=field_help("Type de compte", module="finance"))
+        numero = st.text_input("Numéro comptable ou bancaire (unique)", help=field_help("Numéro comptable ou bancaire (unique)", module="finance"))
+        solde = st.number_input("Solde initial (DZD)", min_value=0.0, step=0.01, format="%.2f", help=field_help("Solde initial (DZD)", module="finance"))
+        if st.form_submit_button("Enregistrer le compte", type="primary", on_click=_mark_finance_activity, help=field_help("Enregistrer le compte", module="finance")):
             try:
                 payload = {"nom_compte": _required(nom, "Nom du compte"),
                            "type_compte": type_c, "numero_compte": _required(numero, "Numéro de compte"),
@@ -319,7 +319,7 @@ def _payment_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
     if not cash:
         st.warning("Créez d'abord un compte Banque ou Caisse actif.")
         return
-    type_flux = st.radio("Sens du règlement", ["ENCAISSEMENT", "DECAISSEMENT"], horizontal=True, on_change=_mark_finance_activity)
+    type_flux = st.radio("Sens du règlement", ["ENCAISSEMENT", "DECAISSEMENT"], horizontal=True, on_change=_mark_finance_activity, help=field_help("Sens du règlement", module="finance"))
     try:
         counterparties = _active_account_rows(accounts, _COUNTER_TYPES[type_flux])
         partner_table = "clients" if type_flux == "ENCAISSEMENT" else "fournisseurs"
@@ -346,16 +346,16 @@ def _payment_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
         st.warning("Aucun identifiant partenaire utilisable.")
         return
     with st.form(f"finance_payment_{user_id}"):
-        date_reg = st.date_input("Date de l'opération")
-        partner_id = st.selectbox("Partenaire", list(partner_options), format_func=partner_options.get)
-        cash_id = st.selectbox("Compte Banque / Caisse", list(cash), format_func=cash.get)
-        counter_id = st.selectbox("Compte de contrepartie", list(counterparties), format_func=counterparties.get)
+        date_reg = st.date_input("Date de l'opération", help=field_help("Date de l'opération", module="finance"))
+        partner_id = st.selectbox("Partenaire", list(partner_options), format_func=partner_options.get, help=field_help("Partenaire", module="finance"))
+        cash_id = st.selectbox("Compte Banque / Caisse", list(cash), format_func=cash.get, help=field_help("Compte Banque / Caisse", module="finance"))
+        counter_id = st.selectbox("Compte de contrepartie", list(counterparties), format_func=counterparties.get, help=field_help("Compte de contrepartie", module="finance"))
         raw_modes = liste_to_dict(get_liste("ModePaiement"))
         modes = list(raw_modes) if raw_modes else ["ESPECES", "CHEQUE", "VIREMENT"]
-        mode_paiement = st.selectbox("Mode de paiement", modes)
-        reference = st.text_input("Référence de règlement unique (obligatoire)")
-        montant = st.number_input("Montant (DZD)", min_value=0.01, step=0.01, format="%.2f")
-        if st.form_submit_button("Enregistrer le règlement", type="primary", on_click=_mark_finance_activity):
+        mode_paiement = st.selectbox("Mode de paiement", modes, help=field_help("Mode de paiement", module="finance"))
+        reference = st.text_input("Référence de règlement unique (obligatoire)", help=field_help("Référence de règlement unique (obligatoire)", module="finance"))
+        montant = st.number_input("Montant (DZD)", min_value=0.01, step=0.01, format="%.2f", help=field_help("Montant (DZD)", module="finance"))
+        if st.form_submit_button("Enregistrer le règlement", type="primary", on_click=_mark_finance_activity, help=field_help("Enregistrer le règlement", module="finance")):
             try:
                 if cash_id == counter_id:
                     raise ValueError("Les deux comptes doivent être distincts")
@@ -379,7 +379,7 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
         return
     if _operation_panel("allocate", user_id):
         return
-    doc_type = st.radio("Document à régler", ["FactureClient", "FactureFournisseur"], horizontal=True, on_change=_mark_finance_activity)
+    doc_type = st.radio("Document à régler", ["FactureClient", "FactureFournisseur"], horizontal=True, on_change=_mark_finance_activity, help=field_help("Document à régler", module="finance"))
     flow = "ENCAISSEMENT" if doc_type == "FactureClient" else "DECAISSEMENT"
     try:
         ouverts = _open_payments(reglements, flow)
@@ -391,7 +391,7 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
         return
     options = {r["reglement_id"]: f"{r['reglement_id']} — solde : {r['restant']} DZD"
                for _, r in ouverts.iterrows()}
-    reg_id = st.selectbox("Règlement à affecter", list(options), format_func=options.get, on_change=_mark_finance_activity)
+    reg_id = st.selectbox("Règlement à affecter", list(options), format_func=options.get, on_change=_mark_finance_activity, help=field_help("Règlement à affecter", module="finance"))
     reg = ouverts[ouverts["reglement_id"] == reg_id].iloc[0]
     table = "factures" if doc_type == "FactureClient" else "factures_fournisseurs"
     try:
@@ -411,10 +411,10 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
     invoice_options = {item["document_id"]: f"{item['document_id']} — dû : {item['reste']} DZD"
                        for item in eligible}
     with st.form(f"finance_allocation_{user_id}"):
-        document_id = st.selectbox("Facture à solder", list(invoice_options), format_func=invoice_options.get)
+        document_id = st.selectbox("Facture à solder", list(invoice_options), format_func=invoice_options.get, help=field_help("Facture à solder", module="finance"))
         montant = st.number_input("Montant à affecter (DZD)", min_value=0.01,
-                                  step=0.01, format="%.2f")
-        if st.form_submit_button("Valider le lettrage", type="primary", on_click=_mark_finance_activity):
+                                  step=0.01, format="%.2f", help=field_help("Montant à affecter (DZD)", module="finance"))
+        if st.form_submit_button("Valider le lettrage", type="primary", on_click=_mark_finance_activity, help=field_help("Valider le lettrage", module="finance")):
             try:
                 due = next(item["reste"] for item in eligible if item["document_id"] == document_id)
                 val = _money(montant, "Montant appliqué")
@@ -569,7 +569,7 @@ def _quittances_rapprochement_tab(user_id: str) -> None:
         "exceptions et règle juridique datée doivent être validés. "
         "Le timbre historique des factures n'est pas recalculé."
     )
-    if not st.button("Vérifier les encaissements", key="finance_quittances_verifier"):
+    if not st.button("Vérifier les encaissements", key="finance_quittances_verifier", help=field_help("Vérifier les encaissements", module="finance")):
         st.info("Contrôle à la demande, sans modification de la comptabilité.")
         return
     _mark_finance_activity()
@@ -651,7 +651,7 @@ def _scf_balance_tab(user_id: str) -> None:
         st.info("Accès à la balance SCF non disponible pour ce profil.")
         return
 
-    if not st.button("Charger la balance SCF", key="finance_scf_load"):
+    if not st.button("Charger la balance SCF", key="finance_scf_load", help=field_help("Charger la balance SCF", module="finance")):
         st.info("Lecture à la demande ; aucune pièce n'est modifiée.")
         return
     _mark_finance_activity()
@@ -720,11 +720,11 @@ def _accuses_internes_tab(user_id: str, can_write: bool,
     reglement_id = st.selectbox(
         "Règlement encaissé", list(choix), format_func=choix.get,
         key="finance_accuse_reglement", on_change=_mark_finance_activity,
-    )
+     help=field_help("Règlement encaissé", module="finance"))
     if st.button(
         "Émettre un accusé interne", key="finance_accuse_emettre",
         on_click=_mark_finance_activity,
-    ):
+     help=field_help("Émettre un accusé interne", module="finance")):
         _start_operation("receipt", user_id, {"reglement_id": reglement_id})
 
 
@@ -740,7 +740,7 @@ def _audit_finance_vers_scf_tab(
         "comme plan SCF et aucune écriture n'est transférée."
     )
     if not st.button("Contrôler les écritures de trésorerie",
-                     key="finance_scf_pre_audit"):
+                     key="finance_scf_pre_audit", help=field_help("Contrôler les écritures de trésorerie", module="finance")):
         return
     _mark_finance_activity()
     access = _finance_access()
@@ -798,7 +798,7 @@ def _preflight_reglementaire_tab(user_id: str) -> None:
     st.subheader("Préparation des référentiels fiscaux et SCF", help=topic_help("finance.reglementaire"))
     show_context_help(st, "finance.reglementaire")
     st.caption("Contrôle de disponibilité, sans calcul de facture ni écriture comptable.")
-    if not st.button("Contrôler les référentiels", key="finance_preflight_reglementaire"):
+    if not st.button("Contrôler les référentiels", key="finance_preflight_reglementaire", help=field_help("Contrôler les référentiels", module="finance")):
         return
     _mark_finance_activity()
     access = _finance_access()
@@ -836,7 +836,7 @@ def _correspondances_finance_scf_tab(user_id: str, comptes: pd.DataFrame) -> Non
         "Comparaison exacte, sans inférence ni écriture automatique. "
         "Un numéro identique n'homologue pas une imputation comptable."
     )
-    if not st.button("Comparer les comptes", key="finance_scf_correspondances"):
+    if not st.button("Comparer les comptes", key="finance_scf_correspondances", help=field_help("Comparer les comptes", module="finance")):
         return
     _mark_finance_activity()
     access = _finance_access()
