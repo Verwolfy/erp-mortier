@@ -38,6 +38,6 @@ show_dashboards_page()
     assert "Finance" in at.tabs[-1].label
     # Vérifier une couverture réelle de métriques, pas seulement des onglets.
     assert len(at.metric) >= 20
-    assert any("MODE DÉMONSTRATION" in str(item.message)
+    assert any("MODE DÉMONSTRATION" in str(item.value)
                for item in at.warning), "Bannière démo absente"
-    assert not any("Erreur" in str(item.message) for item in at.error)
+    assert not any("Erreur" in str(item.value) for item in at.error)
