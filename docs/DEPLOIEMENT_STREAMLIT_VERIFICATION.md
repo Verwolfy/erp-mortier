@@ -11,8 +11,9 @@
   vérification : `SOF-ERP-COUTS-20261107-PRECHECK-02`. Ce texte
   est visible sans révéler les clés serveur et ne constitue pas à lui seul
   une preuve d'exécution des contrôles SQL.
-- L'URL de l'application Streamlit hébergée n'est pas démontrée dans ce dépôt.
-  Ne jamais l'inventer à partir du nom du dépôt.
+- URL **cible d'observation publique**, déjà configurée dans `.github/workflows/streamlit-shell-observe.yml` : `https://nextgent-erp.streamlit.app/`.
+  Ce paramètre de workflow n'établit pas à lui seul que l'application réelle y est déployée,
+  ni que son code correspond à `main`. Le contrôle anonyme ne consulte pas les écrans protégés.
 - Identifiant visuel à rechercher **après authentification et accès au module Ventes** :
   `Version interface Ventes : SOF-ERP-20261030-EXO-HIST-02`
 
@@ -22,8 +23,9 @@ Il ne s'agit **pas** d'un SHA Git, ni d'une preuve de conformité de la facturat
 
 ## Contrôle du déploiement effectif
 
-1. Identifier l'URL Streamlit réelle et le fournisseur d'hébergement. Aucune
-   URL de l'application n'a été prouvée dans le dépôt GitHub à ce jour.
+1. Vérifier dans l'hébergement que l'URL réelle correspond à la cible publique
+   `https://nextgent-erp.streamlit.app/` enregistrée dans le workflow d'observation.
+   Une URL codée dans GitHub n'est pas une preuve de rattachement du déploiement.
 2. Si Streamlit Community Cloud est utilisé, ouvrir l'espace de travail du
    propriétaire du dépôt dans `share.streamlit.io` ; vérifier le dépôt
    `Verwolfy/erp-mortier`, la branche `main` et `app.py`.
