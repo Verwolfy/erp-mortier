@@ -18,8 +18,13 @@ from modules.production.cost_service import (
 )
 
 
+COST_INTERFACE_MARKER = "SOF-ERP-COUTS-20261107-PRECHECK-02"
+
+
 def show_cost_reference(can_write: bool) -> None:
     st.subheader("Référentiel des coûts industriels analytiques")
+    # Repère public de déploiement, sans jeton, URL privée ni identité.
+    st.caption("Version interface Coûts industriels : " + COST_INTERFACE_MARKER)
     st.info("Les montants sont des coûts analytiques séparés du CUMP et du journal SCF. "
             "Aucune imputation aux stocks n'est réalisée depuis cet écran.")
     try:

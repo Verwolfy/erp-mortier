@@ -65,6 +65,23 @@ def _assert_no_writes(svc):
         getattr(svc, name).assert_not_called()
 
 
+def test_cost_interface_version_marker_requires_no_backend_data(ui):
+    ui.svc.list_periods.return_value = []
+    ui.view.show_cost_reference(False)
+    ui.st.caption.assert_any_call(
+        "Version interface Coûts industriels : SOF-ERP-COUTS-20261107-PRECHECK-02")
+    _assert_no_writes(ui.svc)
+
+
+def test_cost_interface_version_marker_visible_even_on_backend_error(ui):
+    ui.svc.list_periods.side_effect = RuntimeError("secret-token-must-stay-hidden")
+    ui.view.show_cost_reference(False)
+    ui.st.caption.assert_any_call(
+        "Version interface Coûts industriels : SOF-ERP-COUTS-20261107-PRECHECK-02")
+    assert "secret-token-must-stay-hidden" not in str(ui.st.caption.call_args_list)
+    _assert_no_writes(ui.svc)
+
+
 def test_read_only_profile_never_exposes_forms(ui):
     ui.view.show_cost_reference(False)
     ui.st.form.assert_not_called()
