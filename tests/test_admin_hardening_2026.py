@@ -89,14 +89,18 @@ def test_primary_key_and_spoofed_columns_blocked(service):
 
 
 def test_single_allowed_update_requires_matching_confirmation(service):
+    service.fetch_data_paginated.return_value = _df().to_dict("records")
     assert service.sauvegarder_modifications("Clients", "client_id", _df(), {
-        "0": {"nom": "Client B"}
+        "0": {"nom": "Client C"}
     }) is True
-    service.update_hybrid.assert_called_once_with("clients", "client_id", "CLI-001", {"nom": "Client B"})
+    service.update_hybrid.assert_called_once_with("clients", "client_id", "CLI-001", {"nom": "Client C"})
+    service.fetch_data_paginated.assert_called_once_with(
+        "clients", order_column="client_id", page_size=500, max_rows=10000)
 
 
 @pytest.mark.parametrize("response", [None, [], ["unexpected"], [{"client_id": "CLI-002"}]])
 def test_update_not_confirmed_never_succeeds(service, response):
+    service.fetch_data_paginated.return_value = _df().to_dict("records")
     service.update_hybrid.return_value = response
     with pytest.raises(RuntimeError):
         service.sauvegarder_modifications("Clients", "client_id", _df(), {"0": {"nom": "Autre"}})
@@ -168,4 +172,71 @@ def test_editable_fields_excludes_technical_columns(service):
 def test_active_status_rejects_invalid_values(service):
     with pytest.raises(ValueError, match="OUI ou NON"):
         service.sauvegarder_modifications("Clients", "client_id", _df(), {"0": {"actif": "INVALID"}})
+    service.update_hybrid.assert_not_called()
+
+
+@pytest.mark.parametrize("sheet,pk,rows,target,updates", [
+    ("Clients", "client_id", [
+        {"client_id": "CLI-001", "nom": "Alpha", "nif": "123", "rc": "21-04"},
+        {"client_id": "CLI-002", "nom": "Bêta", "nif": "987", "rc": "21-05"},
+    ], "CLI-001", {"nom": " beta "}),
+    ("Clients", "client_id", [
+        {"client_id": "CLI-001", "nom": "Alpha", "nif": "123", "rc": "21-04"},
+        {"client_id": "CLI-002", "nom": "Bêta", "nif": "987", "rc": "21-05"},
+    ], "CLI-001", {"nif": " 9 8 7 "}),
+    ("Fournisseurs", "fournisseur_id", [
+        {"fournisseur_id": "FRN-001", "nom": "Alpha", "nif": "123", "rc": "21-04"},
+        {"fournisseur_id": "FRN-002", "nom": "Beta", "nif": "987", "rc": "21-05"},
+    ], "FRN-001", {"rc": "21/05"}),
+])
+def test_duplicate_identity_update_blocks_all_writes(
+        service, sheet, pk, rows, target, updates):
+    service.fetch_data_paginated.return_value = rows
+    frame = pd.DataFrame(rows)
+    with pytest.raises(ValueError, match="fiche"):
+        service.sauvegarder_modifications(
+            sheet, pk, frame, {"0": updates})
+    service.update_hybrid.assert_not_called()
+
+
+def test_self_identity_can_be_updated_without_false_duplicate(service):
+    rows = [
+        {"client_id": "CLI-001", "nom": "Sarl Alpha", "nif": "123456"},
+        {"client_id": "CLI-002", "nom": "Sarl Beta", "nif": "987654"},
+    ]
+    service.fetch_data_paginated.return_value = rows
+    result = service.sauvegarder_modifications(
+        "Clients", "client_id", pd.DataFrame(rows),
+        {"0": {"nom": "  SARL ALPHA ", "nif": "123-456"}})
+    assert result is True
+    service.update_hybrid.assert_called_once()
+
+
+def test_nonidentity_edit_does_not_trigger_duplicate_lookup(service):
+    service.sauvegarder_modifications(
+        "Clients", "client_id", _df(), {"0": {"adresse": "Nouvelle adresse"}})
+    service.fetch_data_paginated.assert_not_called()
+    service.update_hybrid.assert_called_once()
+
+
+@pytest.mark.parametrize("invalid", [
+    [], [{"client_id": "CLI-002", "nom": "Bêta"}],
+    [{"client_id": "CLI-001", "nom": "Alpha"},
+     {"client_id": "CLI-001", "nom": "Alpha 2"}],
+    [{"client_id": "CLI-001", "nom": "Alpha"},
+     {"client_id": "", "nom": "Sans identifiant"}],
+])
+def test_missing_corrupted_or_incomplete_tier_catalogue_blocks_update(service, invalid):
+    service.fetch_data_paginated.return_value = invalid
+    with pytest.raises(RuntimeError):
+        service.sauvegarder_modifications(
+            "Clients", "client_id", _df(), {"0": {"nom": "Nouvelle Alpha"}})
+    service.update_hybrid.assert_not_called()
+
+
+def test_read_failure_blocks_identity_edit(service):
+    service.fetch_data_paginated.side_effect = RuntimeError("lecture Supabase impossible")
+    with pytest.raises(RuntimeError):
+        service.sauvegarder_modifications(
+            "Clients", "client_id", _df(), {"0": {"nif": "NOV999"}})
     service.update_hybrid.assert_not_called()
