@@ -2,6 +2,7 @@
 Interface utilisateur du module RH.
 """
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
 from core.strict_reads import DataReadError
@@ -68,7 +69,8 @@ def show_rh_page():
     tab1, tab2 = onglets[:2]
 
     with tab1:
-        st.subheader("Employés")
+        st.subheader("Employés", help=topic_help("rh.employes"))
+        show_context_help(st, "rh.employes")
         if can_write:
             with st.expander("➕ Ajouter un employé"):
                 with st.form("form_employe"):
@@ -105,7 +107,8 @@ def show_rh_page():
             st.info("Aucun employé enregistré.")
 
     with tab2:
-        st.subheader("Demandes de Congés")
+        st.subheader("Demandes de Congés", help=topic_help("rh.conges"))
+        show_context_help(st, "rh.conges")
         if can_write:
             liste_employes = {row["employe_id"]: f"{row['employe_id']} - {row['nom']}"
                               for _, row in df_emp.iterrows() if str(row.get("actif", "")) == "OUI"}
@@ -151,7 +154,8 @@ def show_rh_page():
             st.info("Aucune demande de congé.")
     if can_read_paie:
         with onglets[2]:
-            st.subheader("Simulation IRG - traitements et salaires")
+            st.subheader("Simulation IRG - traitements et salaires", help=topic_help("rh.irg"))
+            show_context_help(st, "rh.irg")
             st.warning(
                 "Simulation interne uniquement : ni bulletin de paie, "
                 "ni calcul fiscal homologué, ni déclaration."
@@ -213,7 +217,8 @@ def show_rh_page():
 
 def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
     """Atelier arithmétique borné au jeu SIM-RH ; aucune écriture ou règle légale."""
-    st.subheader("Atelier de paie fictive")
+    st.subheader("Atelier de paie fictive", help=topic_help("rh.simulation"))
+    show_context_help(st, "rh.simulation")
     st.warning("TEST UNIQUEMENT — montants et taux arbitraires ; aucun calcul CNAS ou IRG officiel, aucun bulletin, paiement ou déclaration. Ne pas utiliser pour une paie réelle.")
     st.caption("Exemple fixe : retenue de test 5 %, contribution de test 10 %, retenue forfaitaire de test 1 000 DZD. Ces valeurs ne sont pas des taux légaux.")
     required = {"employe_id", "nom", "actif"}
@@ -274,7 +279,8 @@ def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
 
 def _preflight_paie_tab(user_role: str) -> None:
     """Diagnostic des règles IRG/CNAS ; n'émet aucune fiche de paie."""
-    st.subheader("Préparation des références IRG et CNAS")
+    st.subheader("Préparation des références IRG et CNAS", help=topic_help("rh.pae"))
+    show_context_help(st, "rh.pae")
     st.caption("Statut réglementaire uniquement, sans données nominatives de salarié.")
     from core.utils import get_local_now
     date_paie = st.date_input(
