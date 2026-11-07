@@ -186,7 +186,11 @@ def test_read_only_role_can_view_history_not_write(ui):
     ui.achats.creer_bon_reception.assert_not_called()
     # L'historique est désormais chargé uniquement après clic explicite.
     ui.achats.get_commandes.assert_not_called()
-    ui.st.button.assert_called_with("Afficher l'historique Achats", key="ng_achats_history_load", on_click=ui.mod._mark_achats_activity)
+    call = ui.st.button.call_args
+    assert call.args == ("Afficher l'historique Achats",)
+    assert call.kwargs["key"] == "ng_achats_history_load"
+    assert call.kwargs["on_click"] is ui.mod._mark_achats_activity
+    assert isinstance(call.kwargs["help"], str)
     ui.st.form.assert_not_called()
 
 
