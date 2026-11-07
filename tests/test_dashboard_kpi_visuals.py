@@ -206,6 +206,10 @@ def test_ratio_nd_and_waterfall_are_pure_local_visuals():
     assert list(waterfall.measure) == ["absolute", "relative", "relative",
                                      "relative", "total"]
     assert list(waterfall.y) == [1200, -600, -250, -150, 0]
+    # Un total Plotly est y=0 techniquement, mais doit montrer 200 DZD
+    # au survol ; les montants négatifs restent signés.
+    assert list(waterfall.customdata) == [1200, -600, -250, -150, 200]
+    assert "%{customdata:,.2f} DZD" in waterfall.hovertemplate
 
 
 def test_provenance_detects_demo_and_sim_without_removing_rows(monkeypatch):
