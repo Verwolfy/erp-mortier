@@ -47,7 +47,8 @@ def test_page_wrapper_opens_and_closes_read_scope(monkeypatch):
     events = []
 
     @contextmanager
-    def scope():
+    def scope(*, demo_rows=None):
+        assert demo_rows is None
         events.append("enter")
         try:
             yield
