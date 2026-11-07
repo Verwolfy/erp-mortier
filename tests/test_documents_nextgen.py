@@ -30,6 +30,31 @@ def test_refus_documents_malformes():
         validate_draft(doc)
 
 
+def test_export_pdf_n_utilise_plus_ln_ni_dest_deprecies():
+    import warnings
+
+    facture = new_draft("Facture")
+    facture["items"] = [{
+        "reference": "REF", "designation": "Échantillon",
+        "unite": "SAC", "quantite": "2", "prix_unitaire": "150",
+    }]
+    livraison = new_draft("Bon de livraison")
+    livraison["items"] = [{"reference": "REF", "designation": "Échantillon",
+                           "unite": "SAC", "quantite": "2"}]
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always", DeprecationWarning)
+        assert export_pdf(facture).startswith(b"%PDF")
+        assert export_pdf(livraison).startswith(b"%PDF")
+    forbidden = [
+        str(item.message)
+        for item in captured
+        if issubclass(item.category, DeprecationWarning)
+        and ('parameter "ln"' in str(item.message)
+             or '"dest" parameter' in str(item.message))
+    ]
+    assert forbidden == []
+
+
 def test_generation_brouillon_pdf_et_word():
     doc = new_draft("Bon de consommation")
     doc.update(numero="BCONS-EXEMPLE", tiers_nom="Atelier", objet="Essai hors ligne")
