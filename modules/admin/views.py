@@ -5,6 +5,7 @@ Intègre le filtrage en cascade dynamique Pays -> Wilaya.
 Gestion dynamique des listes de référence synchronisées avec import_data.py.
 """
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
 from core.security_service import is_security_manager, STANDARD_ROLES, STANDARD_MODULES
@@ -64,8 +65,7 @@ def _creation_confirmee(operation, data: dict, label: str) -> bool:
 
 def gerer_listes_reference():
     """Interface pour ajouter et modifier les catégories, pays, wilayas, etc."""
-    st.subheader("⚙️ Gestion des Listes de Choix (Menus déroulants)")
-
+    st.subheader("⚙️ Gestion des Listes de Choix (Menus déroulants)", help=topic_help("admin.listes"))
     df_listes = pd.DataFrame(fetch_data("listes_reference"))
 
     listes_existantes = []
@@ -209,7 +209,7 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
 def _creer_brouillon_exoneration() -> None:
     """Formulaire de demande en attente, sans qualification fiscale automatique."""
     st.divider()
-    st.subheader("Préparer une attestation client — À VALIDER")
+    st.subheader("Préparer une attestation client — À VALIDER", help=topic_help("admin.exonerations"))
     st.caption(
         "La création d'un brouillon n'accorde aucune exonération. "
         "Référence de pièce réelle et portée SKU obligatoires. "
@@ -447,7 +447,8 @@ def _controle_exonerations_tva(dossiers: list[dict]) -> None:
 
 def _revue_exonerations_tva_clients() -> None:
     """Consultation privée sans création, validation ni révocation depuis l'ERP."""
-    st.subheader("Attestations d'exonération TVA clients — revue sécurisée")
+    st.subheader("Attestations d'exonération TVA clients — revue sécurisée", help=topic_help("admin.exonerations"))
+    show_context_help(st, "admin.exonerations")
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
@@ -480,7 +481,8 @@ def _revue_exonerations_tva_clients() -> None:
 
 def _revue_qualification_fiscale_sku() -> None:
     """Revue documentaire des SKU depuis Supabase, sans écriture fiscale."""
-    st.subheader("Qualification TVA des SKU actifs — revue documentaire")
+    st.subheader("Qualification TVA des SKU actifs — revue documentaire", help=topic_help("admin.tva"))
+    show_context_help(st, "admin.tva")
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
@@ -524,7 +526,7 @@ def _revue_qualification_fiscale_sku() -> None:
 def _revue_nextgen_preparation() -> None:
     """Diagnostic uniquement; aucune habilitation fiscale conférée."""
     st.divider()
-    st.subheader("NextGen — préparation des SKU et matières")
+    st.subheader("NextGen — préparation des SKU et matières", help=topic_help("admin.qualite"))
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
@@ -600,7 +602,8 @@ def show_admin_page():
         show_documents_page()
 
     with tab_qualite:
-        st.subheader("Contrôle transversal des référentiels")
+        st.subheader("Contrôle transversal des référentiels", help=topic_help("admin.qualite"))
+        show_context_help(st, "admin.qualite")
         st.caption("Audit en lecture seule : Clients, Fournisseurs, Produits, SKU et Matières premières. Aucune correction automatique.")
         if st.button("Analyser les référentiels autorisés", key="ng_admin_audit_quality"):
             from modules.admin.data_quality import audit_autorise
@@ -705,7 +708,8 @@ def show_admin_page():
 
     # --- CLIENTS ---
     with tab1:
-        st.subheader("Gestion des Clients")
+        st.subheader("Gestion des Clients", help=topic_help("admin.clients"))
+        show_context_help(st, "admin.clients")
         if can_write and st.checkbox("Préparer : ➕ Ajouter un client",
                                      value=False, key="ng_admin_create_client"):
             with st.expander("➕ Ajouter un client"):
@@ -763,7 +767,8 @@ def show_admin_page():
 
     # --- FOURNISSEURS ---
     with tab2:
-        st.subheader("Gestion des Fournisseurs")
+        st.subheader("Gestion des Fournisseurs", help=topic_help("admin.fournisseurs"))
+        show_context_help(st, "admin.fournisseurs")
         if can_write and st.checkbox("Préparer : ➕ Ajouter un fournisseur",
                                      value=False, key="ng_admin_create_fournisseur"):
             with st.expander("➕ Ajouter un fournisseur"):
@@ -820,7 +825,8 @@ def show_admin_page():
 
     # --- MATIERES PREMIERES ---
     with tab3:
-        st.subheader("Matières Premières")
+        st.subheader("Matières Premières", help=topic_help("admin.matieres"))
+        show_context_help(st, "admin.matieres")
         if can_write and st.checkbox("Préparer : ➕ Nouvelle Matière Première",
                                      value=False, key="ng_admin_create_mp"):
             with st.expander("➕ Nouvelle Matière Première"):
@@ -875,7 +881,8 @@ def show_admin_page():
 
     # --- PRODUITS ---
     with tab4:
-        st.subheader("Produits Finis")
+        st.subheader("Produits Finis", help=topic_help("admin.produits"))
+        show_context_help(st, "admin.produits")
         if can_write and st.checkbox("Préparer : ➕ Nouveau Produit",
                                      value=False, key="ng_admin_create_product"):
             with st.expander("➕ Nouveau Produit"):
@@ -904,7 +911,8 @@ def show_admin_page():
 
     # --- SKUs ---
     with tab5:
-        st.subheader("Conditionnements (SKU)")
+        st.subheader("Conditionnements (SKU)", help=topic_help("admin.sku"))
+        show_context_help(st, "admin.sku")
         if can_write and st.checkbox("Préparer la création d’un SKU",
                                      value=False, key="ng_admin_create_sku"):
             df_pf = get_dataframe("Produits", only_active=True)
@@ -970,6 +978,7 @@ def show_admin_page():
 
     # --- LISTES DE CHOIX ---
     with tab_listes:
+        show_context_help(st, "admin.listes")
         if can_write:
             if st.checkbox("Ouvrir la gestion des listes de choix",
                            value=False, key="ng_admin_open_reference_lists"):
@@ -1006,7 +1015,8 @@ def show_user_management():
 
     # ONGLET 1 : Création de compte
     with tab1:
-        st.subheader("Ajouter un nouvel accès")
+        st.subheader("Ajouter un nouvel accès", help=topic_help("admin.utilisateur"))
+        show_context_help(st, "admin.utilisateur")
         with st.form("form_add_user", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
@@ -1031,7 +1041,8 @@ def show_user_management():
 
     # ONGLET 2 : Gestion des permissions
     with tab2:
-        st.subheader("Attribuer des droits d'accès à un rôle")
+        st.subheader("Attribuer des droits d'accès à un rôle", help=topic_help("admin.permissions"))
+        show_context_help(st, "admin.permissions")
         st.info("Rappel : Les statuts doivent s'écrire 'OUI' ou 'NON'.")
 
         with st.form("form_add_perm", clear_on_submit=True):
@@ -1060,7 +1071,8 @@ def show_user_management():
 
     # ONGLET 3 : Consultation rapide
     with tab3:
-        st.subheader("Annuaire des Utilisateurs")
+        st.subheader("Annuaire des Utilisateurs", help=topic_help("admin.annuaire"))
+        show_context_help(st, "admin.annuaire")
         df_users = get_users()
         if not df_users.empty:
             cols_a_afficher = [col for col in df_users.columns if col != "hash_mdp"]
@@ -1068,7 +1080,7 @@ def show_user_management():
         else:
             st.write("Aucun utilisateur trouvé.")
 
-        st.subheader("Matrice des Permissions")
+        st.subheader("Matrice des Permissions", help=topic_help("admin.annuaire"))
         df_perms = get_permissions()
         if not df_perms.empty:
             st.dataframe(df_perms, use_container_width=True, hide_index=True)
@@ -1077,7 +1089,8 @@ def show_user_management():
 
     # ONGLET 4 : Piste d'audit (Logs)
     with tab4:
-        st.subheader("Historique des Actions (Audit Trail)")
+        st.subheader("Historique des Actions (Audit Trail)", help=topic_help("admin.audit"))
+        show_context_help(st, "admin.audit")
         st.info("Les créations sensibles réalisées via RPC sont auditées atomiquement ; les anciennes actions peuvent être en mode best-effort.")
 
         if st.button("🔄 Rafraîchir les logs", on_click=_mark_admin_activity):
