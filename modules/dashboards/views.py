@@ -9,6 +9,8 @@ import datetime
 import plotly.graph_objects as go
 from config.roles import has_permission
 from core.strict_reads import DataReadError, read_section
+from modules.dashboards.demo import SCENARIO_VERSION, build_demo_dataset
+from core.utils import get_local_now
 from modules.dashboards.service import (
     get_kpis_direction, get_kpis_pnl, get_kpis_ventes, get_kpis_achats,
     get_kpis_stocks, get_kpis_production, get_kpis_crm,
@@ -57,13 +59,18 @@ def _mark_dashboards_activity() -> None:
 
 def show_dashboards_page():
     from modules.dashboards.service import dashboard_read_scope
-    with dashboard_read_scope():
+    # Sélection de source uniquement pour les neuf lectures Dashboard.
+    # Aucune donnée simulée n'est enregistrée ou mêlée à Supabase.
+    demo_rows = (build_demo_dataset(get_local_now())
+                 if st.session_state.get("_erp_dashboard_demo_mode", False)
+                 else None)
+    with dashboard_read_scope(demo_rows=demo_rows):
         return _show_dashboards_page_impl()
 
 
 def _show_dashboards_page_impl():
     st.title("📊 Tableaux de bord & KPIs")
-    st.caption("Version Dashboards : SOF-ERP-20261101-READ-01 / SOF-ERP-20261102-KPI-05")
+    st.caption("Version Dashboards : SOF-ERP-20261107-DEMO-01 / SOF-ERP-20261102-KPI-05")
 
     user_role = st.session_state.get("user", {}).get("role", "")
     can_read = has_permission(user_role, "Dashboards", "lecture")
@@ -78,25 +85,40 @@ def _show_dashboards_page_impl():
         "🏭 Stocks", "⚙️ Production", "🤝 CRM", "👥 RH", "🏦 Finance"
     ])
 
-    # Qualité des sources : indices agrégés, sans exposer de références ni
-    # présumer qu'un code DEMO/SIM est nécessairement fictif.
-    try:
-        provenance = get_dashboard_data_provenance()
-    except (PermissionError, DataReadError):
-        st.info("Provenance des données non vérifiable pour ce profil : "
-                "les KPI ne sont pas certifiés comme données réelles.")
+    st.toggle(
+        "Mode démonstration — scénarios fictifs des 9 tableaux de bord",
+        key="_erp_dashboard_demo_mode", value=False,
+        on_change=_mark_dashboards_activity,
+        help="Activer pour remplacer toutes les lectures Dashboard par un jeu "
+             "local DEMO/SIM ; aucune requête de données ni écriture Supabase. "
+             "Désactiver pour retrouver la consultation normale.")
+    if st.session_state.get("_erp_dashboard_demo_mode", False):
+        st.warning(
+            f"**MODE DÉMONSTRATION — {SCENARIO_VERSION}** : tous les chiffres "
+            "et graphiques ci-dessous sont fictifs, générés uniquement en mémoire. "
+            "Ils ne reflètent ni les comptes, ni le stock, ni la production réelle. "
+            "Aucune écriture ou synchronisation en base.")
     else:
-        if provenance["marked"]:
-            st.warning(
-                f"Provenance à qualifier : {provenance['marked']} référence(s) "
-                "avec préfixe DEMO/SIM détectée(s) parmi les sources métier. "
-                "Ces lignes restent incluses dans les KPI ; ne pas prendre "
-                "ces indicateurs pour des résultats d'exploitation homologués.")
-            with st.expander("Voir le nombre de références DEMO/SIM par source"):
-                st.dataframe(pd.DataFrame(provenance["sources"]),
-                             use_container_width=True, hide_index=True)
-                st.caption("Les préfixes sont des indices seulement : "
-                           "ne rien supprimer ou exclure sans revue métier.")
+        # Préfixes DEMO/SIM présents dans la base réelle conservés pour le
+        # développement : leur nature doit être validée avant homologation.
+        try:
+            provenance = get_dashboard_data_provenance()
+        except (PermissionError, DataReadError):
+            st.info("Provenance des données non vérifiable pour ce profil : "
+                    "les KPI ne sont pas certifiés comme données réelles.")
+        else:
+            if provenance["marked"]:
+                st.warning(
+                    f"Provenance à qualifier : {provenance['marked']} référence(s) "
+                    "avec préfixe DEMO/SIM détectée(s) parmi les sources métier. "
+                    "Ces lignes restent incluses dans les KPI ; ne pas prendre "
+                    "ces indicateurs pour des résultats d'exploitation homologués.")
+                with st.expander("Voir le nombre de références DEMO/SIM par source"):
+                    st.dataframe(pd.DataFrame(provenance["sources"]),
+                                 use_container_width=True, hide_index=True)
+                    st.caption("Ces préfixes sont des indices ; les données de "
+                               "développement actuelles restent conservées "
+                               "jusqu'à la finalisation de l'ERP.")
 
     # --- 1. VUE DIRECTION ---
     with onglets[0], read_section("Direction"):
