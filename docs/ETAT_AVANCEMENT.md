@@ -1,3 +1,15 @@
+## 7 novembre 2026 — aides contextuelles clic et survol dans les modules ERP
+
+- **Demande** : ajouter des infobulles expliquant notion, exécution et précautions dans les rubriques ERP. Capture de référence : Production → Consommations et contrôles → Historique Production.
+- **Implémentation** : PR [#45](https://github.com/Verwolfy/erp-mortier/pull/45) fusionnée dans `main` via `3f9379b70b833a3e2250662507a9f8684f0a3241`. Catalogue central `modules/help/contextual.py` avec **68 rubriques**, `show_context_help` (popover au clic et explication au survol), `topic_help` (survol du sous-titre) et `field_help` (infobulle des champs/actions), couvrant plus de 300 contrôles statiques.
+- **Modules** : Navigation, authentification, Administration/Sécurité, Achats, Stocks, Production/OF/CQ/Coûts, Ventes, CRM, Finance/SCF, RH, Tableaux de bord, Documents et Guide. Titres, onglets et rôles d'origine conservés. Les aides d'onglets sont dans leur contenu, car `st.tabs` 1.38 ne prend pas de bouton dans son libellé.
+- **Tests** : [suite ERP PR 42405752388](https://github.com/Verwolfy/erp-mortier/actions/runs/42405752388) **success, 2711 passed, 0 failed, 1 warning** ; [audit PR 42405752425](https://github.com/Verwolfy/erp-mortier/actions/runs/42405752425) **success** ; [CRM lecture seule PR 42405752383](https://github.com/Verwolfy/erp-mortier/actions/runs/42405752383) **success**. Un premier run échoué sur des doublures Streamlit non adaptées à `popover` et `help`, puis corrigé et revérifié sans retirer les contrôles métier.
+- **Documentation** : `docs/guide/aide_contextuelle_erp.md`, rubrique « ⓘ Aide contextuelle » ajoutée au Guide. Aucune requête ni écriture dans les popovers ; confidentialité, lecture seule et sauvegarde des résultats incertains rappelées.
+- **Inchangés** : aucune modification SQL, RLS/GRANT, secrets, traitements métier, flux financiers ou permissions. Le déploiement visuel Streamlit et les tooltips sur mobile sont à vérifier en session authentifiée ; une CI verte ne le prouve pas.
+- **Prochaine action** : vérifier les CI du dernier commit documentaire sur `main` ; contrôler dans Streamlit le clic, le survol et l'accessibilité du bouton d'aide, sans créer de transaction de test.
+
+---
+
 ## 7 novembre 2026 — observation publique Streamlit (résultat réel)
 
 - **PR #44 fusionnée** : [observer Streamlit](https://github.com/Verwolfy/erp-mortier/pull/44), commit `32d312767b8e799d8ac78fd51d6e4881af5c4a84`. Le workflow GitHub surveille les changements du module Production/Coûts et permet un lancement manuel. Aucune donnée métier ni migration Supabase modifiée.
