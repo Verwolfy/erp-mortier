@@ -78,7 +78,7 @@ def show_cost_reference(can_write: bool) -> None:
             [p["period_id"] for p in periods],
             format_func=lambda k: next(
                 (f"{p['libelle']} — {p['date_debut']} au {p['date_fin']} — {p['statut']}"
-                 for p in periods if p["period_id"] == k), k))
+                 for p in periods if p["period_id"] == k), k), help=field_help("Période de référence", module="production"))
         section_labels = {
             "pools": "Charges de période",
             "drivers": "Clés et mesures par OF",
@@ -93,11 +93,11 @@ def show_cost_reference(can_write: bool) -> None:
             format_func=lambda code: section_labels[code],
             index=5 if next((p["statut"] for p in periods
                              if p["period_id"] == selected), "") == "VALIDE" else 0,
-        )
+         help=field_help("Section du rapport", module="production"))
         audit_requested = st.checkbox(
             "Calculer l'audit complet de la période (vérification coûteuse)",
             value=False, key="cost_report_full_audit",
-        )
+         help=field_help("Calculer l'audit complet de la période (vérification coûteuse)", module="production"))
         try:
             # L'audit complet est calculé à la demande et jamais mis en cache.
             # La RPC de validation le recalculera obligatoirement.
@@ -150,7 +150,7 @@ def show_cost_reference(can_write: bool) -> None:
     if periods and next((p["statut"] for p in periods
                          if p["period_id"] == selected), "") == "VALIDE":
         st.caption("Export figé des coûts analytiques : distinct de la comptabilité légale SCF.")
-        if st.button("Préparer l'export analytique validé", key="cost_export_prepare"):
+        if st.button("Préparer l'export analytique validé", key="cost_export_prepare", help=field_help("Préparer l'export analytique validé", module="production")):
             try:
                 payload = export_validated_period(selected)
                 st.download_button(
@@ -169,10 +169,10 @@ def show_cost_reference(can_write: bool) -> None:
 
     with st.expander("Nouvelle période analytique", expanded=False):
         with st.form("cost_create_period"):
-            label = st.text_input("Libellé de période")
-            start = st.date_input("Début de période")
-            end = st.date_input("Fin de période")
-            if st.form_submit_button("Créer la période"):
+            label = st.text_input("Libellé de période", help=field_help("Libellé de période", module="production"))
+            start = st.date_input("Début de période", help=field_help("Début de période", module="production"))
+            end = st.date_input("Fin de période", help=field_help("Fin de période", module="production"))
+            if st.form_submit_button("Créer la période", help=field_help("Créer la période", module="production")):
                 try:
                     created = create_period(label, start.isoformat(), end.isoformat())
                     st.success(f"Période créée : {created}")
@@ -188,12 +188,12 @@ def show_cost_reference(can_write: bool) -> None:
         format_func=lambda k: next(
             (f"{p['libelle']} — {p['date_debut']} au {p['date_fin']}"
              for p in editable if p["period_id"] == k), k),
-        key="cost_period_edit")
+        key="cost_period_edit", help=field_help("Période brouillon à compléter", module="production"))
     with st.expander("Précontrôle avant validation (lecture seule)"):
         st.caption(
             "Vérifie charges, assiettes, OF dans la période, pièces SCF validées "
             "et équilibre des imputations. Aucune comptabilisation ni validation.")
-        if st.button("Vérifier les prérequis", key="cost_preflight_button"):
+        if st.button("Vérifier les prérequis", key="cost_preflight_button", help=field_help("Vérifier les prérequis", module="production")):
             try:
                 check = get_validation_preflight(period_id)
                 st.json(check["counts"])
@@ -212,8 +212,8 @@ def show_cost_reference(can_write: bool) -> None:
             "Validation irréversible : exige charges, OF terminés dans les dates, "
             "assiettes et pièces SCF validées. Le contrôle est relancé avant toute RPC.")
         agree = st.checkbox("Je confirme les montants et les clés d'imputation",
-                            key="cost_validate_ack")
-        if st.button("Valider la période", disabled=not agree, key="cost_validate_button"):
+                            key="cost_validate_ack", help=field_help("Je confirme les montants et les clés d'imputation", module="production"))
+        if st.button("Valider la période", disabled=not agree, key="cost_validate_button", help=field_help("Valider la période", module="production")):
             try:
                 check = get_validation_preflight(period_id)
                 if check["ready"] is not True:
@@ -228,10 +228,10 @@ def show_cost_reference(can_write: bool) -> None:
                 st.error("Validation refusée : précontrôle ou validation SQL non confirmés.")
     with st.expander("Créer une nature de charge"):
         with st.form("cost_new_nature"):
-            nature_code = st.text_input("Code nature (MAJUSCULES)")
-            nature_label = st.text_input("Libellé de la nature")
-            nature_desc = st.text_area("Description / périmètre")
-            if st.form_submit_button("Créer la nature"):
+            nature_code = st.text_input("Code nature (MAJUSCULES)", help=field_help("Code nature (MAJUSCULES)", module="production"))
+            nature_label = st.text_input("Libellé de la nature", help=field_help("Libellé de la nature", module="production"))
+            nature_desc = st.text_area("Description / périmètre", help=field_help("Description / périmètre", module="production"))
+            if st.form_submit_button("Créer la nature", help=field_help("Créer la nature", module="production")):
                 try:
                     create_nature(nature_code, nature_label, nature_desc)
                     st.success("Nature créée, sans montant automatique.")
@@ -241,11 +241,11 @@ def show_cost_reference(can_write: bool) -> None:
         st.caption("Seules les pièces SCF déjà VALIDÉES avec une ligne au débit "
                    "suffisante peuvent justifier une charge. Un brouillon SCF est refusé.")
         with st.form("cost_document_pool"):
-            pool_ref = st.text_input("Identifiant du pool analytique")
-            scf_piece = st.text_input("UUID de la pièce SCF validée")
-            scf_line = st.number_input("Identifiant numérique de la ligne SCF au débit", min_value=1, step=1, value=1)
-            explanation = st.text_area("Motif de rattachement à la fabrication (10 caractères minimum)")
-            if st.form_submit_button("Documenter la charge"):
+            pool_ref = st.text_input("Identifiant du pool analytique", help=field_help("Identifiant du pool analytique", module="production"))
+            scf_piece = st.text_input("UUID de la pièce SCF validée", help=field_help("UUID de la pièce SCF validée", module="production"))
+            scf_line = st.number_input("Identifiant numérique de la ligne SCF au débit", min_value=1, step=1, value=1, help=field_help("Identifiant numérique de la ligne SCF au débit", module="production"))
+            explanation = st.text_area("Motif de rattachement à la fabrication (10 caractères minimum)", help=field_help("Motif de rattachement à la fabrication (10 caractères minimum)", module="production"))
+            if st.form_submit_button("Documenter la charge", help=field_help("Documenter la charge", module="production")):
                 try:
                     document_pool(period_id, pool_ref, scf_piece, int(scf_line), explanation)
                     st.success("Pièce SCF liée. Vérifier l’audit avant validation.")
@@ -258,11 +258,11 @@ def show_cost_reference(can_write: bool) -> None:
             with st.form("cost_add_pool"):
                 nature = st.selectbox("Nature de charge", [x["nature_code"] for x in natures],
                                       format_func=lambda code: next(
-                                          (n["libelle"] for n in natures if n["nature_code"] == code), code))
-                base = st.selectbox("Clé d'imputation", BASES)
+                                          (n["libelle"] for n in natures if n["nature_code"] == code), code), help=field_help("Nature de charge", module="production"))
+                base = st.selectbox("Clé d'imputation", BASES, help=field_help("Clé d'imputation", module="production"))
                 amount = st.text_input("Montant analytique (DZD)", value="0", help="Saisir jusqu’à 6 décimales, sans arrondi flottant.")
-                reference = st.text_input("Justificatif / hypothèse (obligatoire)")
-                if st.form_submit_button("Enregistrer la charge"):
+                reference = st.text_input("Justificatif / hypothèse (obligatoire)", help=field_help("Justificatif / hypothèse (obligatoire)", module="production"))
+                if st.form_submit_button("Enregistrer la charge", help=field_help("Enregistrer la charge", module="production")):
                     try:
                         add_pool(period_id, nature, base, amount, reference)
                         st.success("Charge analytique enregistrée en simulation.")
@@ -273,11 +273,11 @@ def show_cost_reference(can_write: bool) -> None:
                    "de la période sélectionnée. Les OF d'octobre ne peuvent pas "
                    "être imputés à une période de novembre.")
         with st.form("cost_add_driver"):
-            of_id = st.text_input("Identifiant de l'OF terminé")
-            driver = st.selectbox("Clé mesurée", BASES)
+            of_id = st.text_input("Identifiant de l'OF terminé", help=field_help("Identifiant de l'OF terminé", module="production"))
+            driver = st.selectbox("Clé mesurée", BASES, help=field_help("Clé mesurée", module="production"))
             value = st.text_input("Valeur de la clé", value="0", help="Saisir jusqu’à 6 décimales, sans arrondi flottant.")
-            reference = st.text_input("Source de la mesure / justificatif")
-            if st.form_submit_button("Enregistrer l'assiette"):
+            reference = st.text_input("Source de la mesure / justificatif", help=field_help("Source de la mesure / justificatif", module="production"))
+            if st.form_submit_button("Enregistrer l'assiette", help=field_help("Enregistrer l'assiette", module="production")):
                 try:
                     set_driver(period_id, of_id, driver, value, reference)
                     st.success("Assiette enregistrée.")
