@@ -1,3 +1,15 @@
+## 7 novembre 2026 — correction ergonomie Dashboard DEMO et infobulle waterfall (PR #49)
+
+- **Fusion GitHub :** [PR #49](https://github.com/Verwolfy/erp-mortier/pull/49), commit `f37a8b70c2360d6d546d4fc9e4221ca3c641d05d`.
+- **Interface :** le mode DEMO et sa bannière de provenance sont désormais créés avant les neuf onglets Streamlit ; auparavant le sélecteur se trouvait après le bloc d'onglets. Les dates par défaut des KPI passent par `get_local_now()` (fuseau ERP), pas la date système du serveur.
+- **Visualisation :** dans la cascade P&L indicative, le tooltip de la dernière barre affiche le solde réel via `customdata`, plutôt que `y=0` réservé à la mesure de total Plotly. Aucun calcul financier modifié ; ce n'est pas un EBITDA légal.
+- **Tests de branche :** [ERP 42415338891](https://github.com/Verwolfy/erp-mortier/actions/runs/42415338891) `success`, **2 744 passed, 0 failed, 1 warning tiers** ; [audit 42415338897](https://github.com/Verwolfy/erp-mortier/actions/runs/42415338897) `success`. Le premier passage avait révélé un test figé sur `datetime.date.today()` (1 échec sur 2 744), corrigé sans changer le P&L.
+- **Validation visuelle** : la recette documentée dans `docs/KPI_DEMO_VISUAL_QA_20261107.md` demande contrôle navigateur et mobile authentifiés. L'URL candidate `https://nextgent-erp.streamlit.app/` retourne HTTP 303 vers `share.streamlit.io` en lecture anonyme ; aucune preuve de version déployée obtenue.
+- **Sécurité et données** : aucune écriture Supabase, aucune suppression `DEMO/SIM`, aucune modification SQL/RLS/GRANT/secrets. Les scénarios restent exclusivement fictifs et en mémoire lorsqu'on active DEMO.
+- **Prochaine étape** : vérifier les workflows du dernier commit documentaire de `main`; ensuite, vérifier le SHA et l'affichage de l'application hébergée avec une session autorisée (sans divulgation de secrets).
+
+---
+
 ## 7 novembre 2026 — smoke test Streamlit des neuf tableaux DEMO (PR #48)
 
 - **Périmètre utilisateur :** conserver les références `DEMO/SIM` existantes jusqu'à la finalisation de l'ERP, utiliser les scénarios fictifs en mémoire pour tester les KPI et les graphiques ; aucune suppression ni insertion dans Supabase.
