@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 from config.roles import has_permission
 from core.db_service import fetch_data, get_supabase_client
@@ -178,7 +179,8 @@ def show_stocks_page():
 
     # --- ONGLET 1 : ÉTAT DES STOCKS ---
     with tab1:
-        st.subheader("Consultation des stocks actuels")
+        st.subheader("Consultation des stocks actuels", help=topic_help("stocks.etat"))
+        show_context_help(st, "stocks.etat")
         sous_tab_vrac, sous_tab_emb, sous_tab_pf = st.tabs(["🧪 Matières Premières (Vrac)", "📦 Emballages", "🛍️ Produits Finis"])
         df_stock = get_stock_actuel_mp()
 
@@ -191,6 +193,8 @@ def show_stocks_page():
             df_emb = pd.DataFrame()
 
         with sous_tab_vrac:
+
+            show_context_help(st, "stocks.vrac")
             if not df_vrac.empty:
                 st.dataframe(
                     df_vrac[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
@@ -200,6 +204,8 @@ def show_stocks_page():
                 st.info("Aucun stock actuel disponible pour les Matières Premières (Vrac).")
 
         with sous_tab_emb:
+
+            show_context_help(st, "stocks.emballages")
             if not df_emb.empty:
                 st.dataframe(
                     df_emb[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
@@ -209,6 +215,8 @@ def show_stocks_page():
                 st.info("Aucun stock actuel disponible pour les Emballages.")
 
         with sous_tab_pf:
+
+            show_context_help(st, "stocks.pf")
             df_stock_pf = get_stock_actuel_pf()
             df_skus = get_skus_actifs()
             df_prods = get_produits()
@@ -226,7 +234,8 @@ def show_stocks_page():
 
     # --- ONGLET 2 : ENTRÉE MANUELLE ---
     with tab2:
-        st.subheader("Ajustement / Entrée manuelle")
+        st.subheader("Ajustement / Entrée manuelle", help=topic_help("stocks.entree"))
+        show_context_help(st, "stocks.entree")
         st.info("Les entrées de PF passent uniquement par la Production. Une réception "
                 "déjà enregistrée dans Achats ne doit pas être saisie à nouveau ici.")
 
@@ -275,7 +284,8 @@ def show_stocks_page():
 
     # --- ONGLET 3 : HISTORIQUE DES MOUVEMENTS ---
     with tab3:
-        st.subheader("Historique des mouvements")
+        st.subheader("Historique des mouvements", help=topic_help("stocks.historique"))
+        show_context_help(st, "stocks.historique")
         st.caption("Consultation paginée : 50 mouvements maximum par registre et par clic.")
         page_stock = st.number_input(
             "Page des mouvements", min_value=1, max_value=1000,
