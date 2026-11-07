@@ -11,6 +11,7 @@ from config.roles import has_permission
 from core.security_service import is_security_manager, STANDARD_ROLES, STANDARD_MODULES
 from core.listes_service import get_liste, liste_to_dict
 from core.db_service import fetch_data, insert_hybrid, update_hybrid
+from modules.admin.tier_dedup import DuplicateTierError
 from modules.admin.service import (
     get_dataframe, EDITABLE_FIELDS, add_fournisseur, add_matiere_premiere,
     add_produit, add_sku, add_client, sauvegarder_modifications,
@@ -52,6 +53,9 @@ def _creation_confirmee(operation, data: dict, label: str) -> bool:
     """Affiche le succès seulement après réponse positive du service."""
     try:
         identifiant = operation(data)
+    except DuplicateTierError as exc:
+        st.warning(str(exc))
+        return False
     except (ValueError, RuntimeError, PermissionError):
         st.error("Enregistrement non confirmé. Vérifiez Supabase avant tout nouvel essai.")
         return False
@@ -710,6 +714,9 @@ def show_admin_page():
     with tab1:
         st.subheader("Gestion des Clients", help=topic_help("admin.clients"))
         show_context_help(st, "admin.clients")
+        st.caption("Avant l'enregistrement : contrôle des doublons par nom, NIF et RC "
+                   "dans le référentiel Clients. Une fiche suspecte est bloquée "
+                   "et doit être vérifiée dans la recherche.")
         if can_write and st.checkbox("Préparer : ➕ Ajouter un client",
                                      value=False, key="ng_admin_create_client", help=field_help("Préparer : ➕ Ajouter un client", module="admin")):
             with st.expander("➕ Ajouter un client"):
@@ -769,6 +776,9 @@ def show_admin_page():
     with tab2:
         st.subheader("Gestion des Fournisseurs", help=topic_help("admin.fournisseurs"))
         show_context_help(st, "admin.fournisseurs")
+        st.caption("Avant l'enregistrement : contrôle des doublons par nom, NIF et RC "
+                   "dans le référentiel Fournisseurs. Une fiche suspecte est bloquée "
+                   "et doit être vérifiée dans la recherche.")
         if can_write and st.checkbox("Préparer : ➕ Ajouter un fournisseur",
                                      value=False, key="ng_admin_create_fournisseur", help=field_help("Préparer : ➕ Ajouter un fournisseur", module="admin")):
             with st.expander("➕ Ajouter un fournisseur"):
