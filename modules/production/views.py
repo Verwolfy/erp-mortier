@@ -133,13 +133,13 @@ def _document_panel(kind: str, user_id: str) -> bool:
         st.error("Création non confirmée : vérifier dans Supabase (operation_id : "
                  + str(record.get("operation_id", "identifiant indisponible"))
                  + "). Ne PAS créer une nouvelle opération avant vérification.")
-        if st.checkbox("J'ai vérifié le résultat dans Supabase", key=f"verify_{kind}_{user_id}"):
-            if st.button("Terminer la vérification", key=f"reset_{kind}_{user_id}", on_click=_mark_production_activity):
+        if st.checkbox("J'ai vérifié le résultat dans Supabase", key=f"verify_{kind}_{user_id}", help=field_help("J'ai vérifié le résultat dans Supabase", module="production")):
+            if st.button("Terminer la vérification", key=f"reset_{kind}_{user_id}", on_click=_mark_production_activity, help=field_help("Terminer la vérification", module="production")):
                 del st.session_state[key]
                 st.rerun()
     else:
         st.success(f"Document {record['document_id']} créé.")
-        if st.button("Préparer un nouveau document", key=f"new_{kind}_{user_id}", on_click=_mark_production_activity):
+        if st.button("Préparer un nouveau document", key=f"new_{kind}_{user_id}", on_click=_mark_production_activity, help=field_help("Préparer un nouveau document", module="production")):
             del st.session_state[key]
             st.rerun()
     return True
@@ -228,11 +228,11 @@ def _closure_panel(user_id: str, can_stock: bool) -> bool:
     if record["status"] == "uncertain":
         st.warning("Clôture non confirmée : ne pas modifier la quantité ni le contrôle qualité.")
         st.write("Vérifiez d'abord l'état de l'OF dans Supabase. La reprise rejoue la même demande.")
-        if st.button("Réessayer la même clôture", key=f"retry_close_{user_id}", on_click=_mark_production_activity):
+        if st.button("Réessayer la même clôture", key=f"retry_close_{user_id}", on_click=_mark_production_activity, help=field_help("Réessayer la même clôture", module="production")):
             _execute_closure(user_id, can_stock)
     else:
         st.success(f"OF {p['of_id']} clôturé et confirmé.")
-        if st.button("Traiter un autre OF", key=f"next_close_{user_id}", on_click=_mark_production_activity):
+        if st.button("Traiter un autre OF", key=f"next_close_{user_id}", on_click=_mark_production_activity, help=field_help("Traiter un autre OF", module="production")):
             del st.session_state[key]
             st.rerun()
     return True
@@ -260,13 +260,13 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
         st.warning("Configurer d'abord les produits et matières premières actifs.")
         return
     pf_labels = {r["pf_id"]: f"{r['pf_id']} - {r['nom']}" for _, r in products.iterrows()}
-    pf_id = st.selectbox("Produit fabriqué", list(pf_labels), format_func=lambda x: pf_labels[x], on_change=_mark_production_activity)
+    pf_id = st.selectbox("Produit fabriqué", list(pf_labels), format_func=lambda x: pf_labels[x], on_change=_mark_production_activity, help=field_help("Produit fabriqué", module="production"))
     pf_row = products[products["pf_id"] == pf_id].iloc[0]
     production_unit = str(pf_row.get("unite_production") or "").strip()
-    version = st.text_input("Version", value="v1.0")
+    version = st.text_input("Version", value="v1.0", help=field_help("Version", module="production"))
     yield_qty = st.number_input(f"Rendement par batch ({production_unit or 'unité PF'})", min_value=0.001,
                                 value=1000.0, step=10.0)
-    instructions = st.text_area("Instructions de fabrication")
+    instructions = st.text_area("Instructions de fabrication", help=field_help("Instructions de fabrication", module="production"))
     cart_key = _cart_key(user_id)
     batch = str(yield_qty)
     cart = st.session_state.get(cart_key)
@@ -292,10 +292,10 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
             or any(existing not in labels for existing in cart_ids)):
             st.error("Ancien panier invalide : emballage, matière inactive ou doublon. Vider la recette.")
             return
-    mp_id = st.selectbox("Composant", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity)
+    mp_id = st.selectbox("Composant", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity, help=field_help("Composant", module="production"))
     qte = st.number_input("Quantité MP nécessaire pour le batch (dans l'unité de stock de la MP)",
-                          min_value=0.000001, step=1.0)
-    if st.button("Ajouter le composant", key=f"add_recipe_{user_id}", on_click=_mark_production_activity):
+                          min_value=0.000001, step=1.0, help=field_help("Quantité MP nécessaire pour le batch (dans l'unité de stock de la MP)", module="production"))
+    if st.button("Ajouter le composant", key=f"add_recipe_{user_id}", on_click=_mark_production_activity, help=field_help("Ajouter le composant", module="production")):
         if mp_id in {line["mp_id"] for line in cart["lines"]}:
             st.error("Matière déjà présente : évitez les lignes en double.")
         else:
@@ -309,7 +309,7 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
         return
 
     st.dataframe(pd.DataFrame(cart["lines"]), hide_index=True, use_container_width=True)
-    if st.button("Vider la recette", key=f"clear_recipe_{user_id}", on_click=_mark_production_activity):
+    if st.button("Vider la recette", key=f"clear_recipe_{user_id}", on_click=_mark_production_activity, help=field_help("Vider la recette", module="production")):
         cart["lines"] = []
         st.rerun()
 
@@ -328,8 +328,8 @@ def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials
         st.warning("Bilan de masse désactivé : unités hétérogènes ou différentes de kg. Vérifier les unités et densités avant validation métier.")
 
     confirmed = st.checkbox("Je confirme les quantités, les unités et le rendement de ce batch",
-                            key=f"recipe_unit_ack_{user_id}_{pf_id}_{batch}")
-    if st.button("Sauvegarder la recette", key=f"save_recipe_{user_id}", disabled=not confirmed, on_click=_mark_production_activity):
+                            key=f"recipe_unit_ack_{user_id}_{pf_id}_{batch}", help=field_help("Je confirme les quantités, les unités et le rendement de ce batch", module="production"))
+    if st.button("Sauvegarder la recette", key=f"save_recipe_{user_id}", disabled=not confirmed, on_click=_mark_production_activity, help=field_help("Sauvegarder la recette", module="production")):
         try:
             lines = [{"mp_id": line["mp_id"],
                       "quantite_par_unite": _line_per_unit(line["quantite_batch"], yield_qty)}
@@ -410,7 +410,7 @@ def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
     product_names = {r["pf_id"]: r["nom"] for _, r in products.iterrows()}
     labels = {r["sku_id"]: f"{product_names.get(r['pf_id'], 'Produit inconnu')} - {r.get('format', '')} ({r['sku_id']})"
               for _, r in skus.iterrows()}
-    sku = st.selectbox("SKU", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity)
+    sku = st.selectbox("SKU", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity, help=field_help("SKU", module="production"))
     sku_row = skus[skus["sku_id"] == sku].iloc[0]
     pf_id = sku_row["pf_id"]
     try:
@@ -426,10 +426,10 @@ def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
     recipes_dict = {r["recette_id"]: f"{r['version']} (batch : {r['rendement_unite']} {spec['pf_unit']})"
                     for _, r in matches.iterrows()}
     with st.form(f"new_of_{user_id}"):
-        recipe = st.selectbox("Recette", list(recipes_dict), format_func=lambda x: recipes_dict[x])
-        quantity = st.number_input("Quantité prévue (unités SKU entières)", min_value=1, step=1)
-        date_planif = st.date_input("Date planifiée")
-        notes = st.text_input("Notes de fabrication")
+        recipe = st.selectbox("Recette", list(recipes_dict), format_func=lambda x: recipes_dict[x], help=field_help("Recette", module="production"))
+        quantity = st.number_input("Quantité prévue (unités SKU entières)", min_value=1, step=1, help=field_help("Quantité prévue (unités SKU entières)", module="production"))
+        date_planif = st.date_input("Date planifiée", help=field_help("Date planifiée", module="production"))
+        notes = st.text_input("Notes de fabrication", help=field_help("Notes de fabrication", module="production"))
         allowed = True
         try:
             base_qty = _sku_base_quantity(quantity, spec)
@@ -438,7 +438,7 @@ def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
         except ValueError as exc:
             st.error(str(exc))
             allowed = False
-        if st.form_submit_button("Créer l'OF", disabled=not allowed, on_click=_mark_production_activity) and allowed:
+        if st.form_submit_button("Créer l'OF", disabled=not allowed, on_click=_mark_production_activity, help=field_help("Créer l'OF", module="production")) and allowed:
             payload = {"pf_id": pf_id, "recette_id": recipe, "sku_id": sku,
                        "quantite_prevue": int(_decimal(quantity, "Quantité OF")),
                        "date_planification": str(date_planif), "notes": notes}
@@ -497,9 +497,9 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
             spec_error = str(exc)
     with st.form(f"quality_{user_id}_{of_id}"):
         st.subheader(f"Contrôle qualité / clôture de l'OF {of_id}")
-        conforme = st.radio("Produit conforme ?", ["OUI", "NON"], key=f"qc_{of_id}")
-        remarks = st.text_area("Remarques / motif de rejet")
-        controller = st.text_input("Contrôleur")
+        conforme = st.radio("Produit conforme ?", ["OUI", "NON"], key=f"qc_{of_id}", help=field_help("Produit conforme ?", module="production"))
+        remarks = st.text_area("Remarques / motif de rejet", help=field_help("Remarques / motif de rejet", module="production"))
+        controller = st.text_input("Contrôleur", help=field_help("Contrôleur", module="production"))
         needs_valid = True
         qty = 0
         pack_qty = 0
@@ -518,7 +518,7 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
                     planned = Decimal(1)
                     needs_valid = False
                 qty = st.number_input("Quantité réellement produite (unités SKU entières)",
-                                      min_value=1, value=int(planned), step=1)
+                                      min_value=1, value=int(planned), step=1, help=field_help("Quantité réellement produite (unités SKU entières)", module="production"))
                 try:
                     base_qty = _sku_base_quantity(qty, spec)
                     pack_qty = int(_decimal(qty, "Emballages"))
@@ -539,10 +539,10 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
             st.info("OF rejeté : aucune matière consommée, aucun emballage déduit ni PF entré en stock.")
         recipe_ack = (st.checkbox("Je confirme les unités KG/L, le facteur de conversion, "
                                   "les quantités MP et le nombre d'emballages",
-                                  key=f"qc_recipe_ack_{user_id}_{of_id}")
+                                  key=f"qc_recipe_ack_{user_id}_{of_id}", help=field_help("Je confirme les unités KG/L, le facteur de conversion, ", module="production"))
                       if conforme == "OUI" else True)
         disabled = not needs_valid or (conforme == "OUI" and not can_stock)
-        if st.form_submit_button("Valider et clôturer cet OF", disabled=disabled, on_click=_mark_production_activity) and not disabled:
+        if st.form_submit_button("Valider et clôturer cet OF", disabled=disabled, on_click=_mark_production_activity, help=field_help("Valider et clôturer cet OF", module="production")) and not disabled:
             if not recipe_ack:
                 st.error("Confirmation des quantites obligatoire.")
                 return
@@ -580,11 +580,11 @@ def _followup_tab(user_id: str, can_write: bool, can_stock: bool,
         st.info("Aucun OF actif.")
         return
     labels = {r["of_id"]: f"{r['of_id']} — {r['statut']}" for _, r in active.iterrows()}
-    of_id = st.selectbox("OF à traiter", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity)
+    of_id = st.selectbox("OF à traiter", list(labels), format_func=lambda x: labels[x], on_change=_mark_production_activity, help=field_help("OF à traiter", module="production"))
     of = active[active["of_id"] == of_id].iloc[0]
     state = of["statut"]
     if state == "PLANIFIE":
-        if st.button("Démarrer la production", key=f"start_{user_id}_{of_id}", on_click=_mark_production_activity):
+        if st.button("Démarrer la production", key=f"start_{user_id}_{of_id}", on_click=_mark_production_activity, help=field_help("Démarrer la production", module="production")):
             try:
                 result = changer_statut_of(of_id, "EN_COURS")
                 if not isinstance(result, dict) or result.get("statut") != "EN_COURS":
@@ -632,9 +632,9 @@ def show_production_page() -> None:
         st.caption("Chargement manuel pour éviter les requêtes historiques inutiles.")
         page_production = st.number_input(
             "Page des historiques Production", min_value=1, max_value=1000,
-            value=1, step=1, key="ng_production_history_page")
+            value=1, step=1, key="ng_production_history_page", help=field_help("Page des historiques Production", module="production"))
         if st.button("Afficher l'historique Production", key="ng_production_load_history",
-                     on_click=_mark_production_activity):
+                     on_click=_mark_production_activity, help=field_help("Afficher l'historique Production", module="production")):
             from modules.production.service import (
                 get_consommations_of_page, get_controles_qualite_page,
             )
