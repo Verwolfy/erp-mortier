@@ -6,6 +6,7 @@ import json
 from uuid import uuid4
 
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 COMPANY = "SARL NEXT GENRATION BUILDING SOLUTIONS"
 ADDRESS = "ERRICH Bt N°3, BLOC N°3, Et N°2, SECTION N° 7, ILOT N°48, BOUIRA"
@@ -177,6 +178,7 @@ def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
 
 def show_documents_page():
     st.title("Documents administratifs NEXTGEN")
+    show_context_help(st, "documents.edition")
     st.caption("20 modèles administratifs + fiches techniques et FDS - exports PDF/DOCX sans écriture Supabase")
     st.warning("Aucune pièce officielle n'est émise ici. Le QR fournit un identifiant unique, pas encore un suivi en ligne.")
     group = st.selectbox("Module", list(DOCUMENTS) + ["Fiches produits"], key="doc_group")
@@ -197,7 +199,8 @@ def show_documents_page():
         st.session_state[doc_key] = new_draft(kind)
         st.session_state["nextgen_doc_type"] = kind
     doc = st.session_state[doc_key]
-    st.subheader("Reprendre un brouillon")
+    st.subheader("Reprendre un brouillon", help=topic_help("documents.import"))
+    show_context_help(st, "documents.import")
     import_file = st.file_uploader(
         "Importer un brouillon JSON exporté précédemment (300 Ko maximum)",
         type=["json"], key="ng_draft_import",
@@ -328,7 +331,8 @@ def show_documents_page():
     columns = columns_for(kind)
     if not doc["items"]:
         doc["items"] = [{key: "" for key, _ in columns}]
-    st.subheader("Lignes")
+    st.subheader("Lignes", help=topic_help("documents.lignes"))
+    show_context_help(st, "documents.lignes")
     st.caption("Saisie simplifiée, sans composant DataFrame.")
     actions = st.columns(2)
     if actions[0].button("➕ Ajouter une ligne", key="ng_line_add"):
@@ -394,7 +398,8 @@ def show_documents_page():
     else:
         st.caption("Empreinte SHA-256 locale (sans preuve d'émission ou de certification) :")
         st.code(fingerprint, language=None)
-    st.subheader("Identité visuelle")
+    st.subheader("Identité visuelle", help=topic_help("documents.logo"))
+    show_context_help(st, "documents.logo")
     st.caption("Logo officiel HD NEXTGEN installé par défaut (2048 × 868 pixels).")
     uploaded_logo = st.file_uploader(
         "Logo officiel haute définition (JPG ou PNG, 4 Mo maximum)",
