@@ -1,3 +1,14 @@
+## 7 novembre 2026 — smoke test Streamlit des neuf tableaux DEMO (PR #48)
+
+- **Périmètre utilisateur :** conserver les références `DEMO/SIM` existantes jusqu'à la finalisation de l'ERP, utiliser les scénarios fictifs en mémoire pour tester les KPI et les graphiques ; aucune suppression ni insertion dans Supabase.
+- **Résultat technique :** [PR #48](https://github.com/Verwolfy/erp-mortier/pull/48) fusionnée dans `main`, commit `5e7b87939066baf792a1d7e53a112a87a4519fd5`. `tests/test_dashboard_demo_streamlit_smoke.py` utilise le vrai moteur de rendu `streamlit.testing.v1.AppTest` avec 9 onglets, au moins 20 métriques, bannière démo et zéro exception. Les deux appels de lecture vers Supabase sont remplacés par un échec explicite : aucune contamination possible en mode démonstration. Les tests de calculs et isolation restent couverts par `tests/test_dashboard_demo_mode.py`.
+- **Contrôles de branche :** [tests ERP 42413494220](https://github.com/Verwolfy/erp-mortier/actions/runs/42413494220) `success`, **2742 passed, 0 failed, 1 warning de dépendance** ; [audit 42413494313](https://github.com/Verwolfy/erp-mortier/actions/runs/42413494313) `success`.
+- **Observation hébergée :** workflow `.github/workflows/streamlit-shell-observe.yml` déclenché également sur `modules/dashboards/views.py`, `service.py` et `demo.py`. Un éventuel HTTP 303 ne rapporte que l'hôte de redirection, jamais son chemin ou paramètre secret. Une observation anonyme ne confirme **ni la version déployée, ni les neuf panneaux authentifiés, ni l'affichage réel sur mobile**.
+- **Conservation / intégrité :** aucun changement de schéma, RLS/GRANT, paramètres secrets, droits applicatifs ou données réelles ; pas de migration ni de suppression `DEMO/SIM`.
+- **Suite :** vérifier les tests et audit GitHub du dernier commit documentaire `main`, consulter l'observateur public ; contrôle visuel dans Streamlit Cloud via une session authentifiée, sans révéler de clés ni déclencher de transactions métier. Une validation pixel/ergonomie nécessite une vraie session, car AppTest est un test de rendu tête-less.
+
+---
+
 ## 7 novembre 2026 — mode de démonstration KPI/SIM isolé (PR #47)
 
 - **Décision utilisateur :** conserver les références `DEMO/SIM` pour les développements/tests et préparer leur retrait **uniquement à la finalisation de l'ERP**, après qualification métier et sauvegardes approuvées ; aucune suppression anticipée.
