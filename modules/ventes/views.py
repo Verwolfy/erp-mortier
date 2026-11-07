@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 from config.roles import has_permission
 from core.db_service import fetch_data_paginated, get_supabase_client
@@ -335,7 +336,8 @@ def _dossier_client_exoneration_a_revoir(client_id: str) -> bool:
 
 
 def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
-    st.subheader("Créer une facture ou un avoir (brouillon)")
+    st.subheader("Créer une facture ou un avoir (brouillon)", help=topic_help("ventes.facture"))
+    show_context_help(st, "ventes.facture")
     st.warning(
         "Attention : le calcul historique des brouillons utilise encore une TVA "
         "uniforme et un éventuel timbre sur facture. La classification fiscale "
@@ -473,7 +475,8 @@ def _draft_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
 
 
 def _order_tab(user_id: str, can_write: bool) -> None:
-    st.subheader("Commandes clients")
+    st.subheader("Commandes clients", help=topic_help("ventes.commandes"))
+    show_context_help(st, "ventes.commandes")
     st.caption("Commande et livraison distinctes de la facturation : aucun nouveau document facture n'est cr\u00e9\u00e9.")
     # Ne jamais autoriser une seconde tentative avec de nouvelles donn\u00e9es avant confirmation.
     if _operation_panel("order", user_id):
@@ -560,7 +563,8 @@ def _order_tab(user_id: str, can_write: bool) -> None:
 
 
 def _ship_tab(user_id: str, can_write: bool) -> None:
-    st.subheader("Expédition / Bons de livraison")
+    st.subheader("Expédition / Bons de livraison", help=topic_help("ventes.bl"))
+    show_context_help(st, "ventes.bl")
     st.info("Un BL est rattaché à une vraie commande client, jamais à un numéro de facture.")
     if not can_write:
         st.info("Mode lecture seule")
@@ -627,7 +631,8 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
 
 
 def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None:
-    st.subheader("Factures et workflow")
+    st.subheader("Factures et workflow", help=topic_help("ventes.suivi"))
+    show_context_help(st, "ventes.suivi")
     if not can_write:
         st.caption("Consultation paginée des factures : 50 lignes au maximum.")
         page = st.number_input("Page des factures", min_value=1, max_value=1000,
@@ -704,7 +709,8 @@ def show_ventes_page() -> None:
 
 def _controle_tva_sku_tab(user_id: str) -> None:
     """Photographie des dossiers TVA SKU ; aucun taux injecté en facture."""
-    st.subheader("État de qualification fiscale TVA par SKU")
+    st.subheader("État de qualification fiscale TVA par SKU", help=topic_help("ventes.tva"))
+    show_context_help(st, "ventes.tva")
     st.caption(
         "Règle métier ventes : TVA normale de 19 % (paramètre réglementaire), "
         "ou exonération client à 0 % uniquement sur attestation validée et "
