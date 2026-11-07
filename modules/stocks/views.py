@@ -131,7 +131,7 @@ def _display_entry_status(user_id: str) -> bool:
     st.code(record["operation_id"])
     if record["status"] == "confirmed":
         st.success("Entrée confirmée. Une nouvelle entrée nécessite une action explicite.")
-        if st.button("Préparer une nouvelle entrée", key=f"stock_new_{user_id}", on_click=_mark_stocks_activity):
+        if st.button("Préparer une nouvelle entrée", key=f"stock_new_{user_id}", on_click=_mark_stocks_activity, help=field_help("Préparer une nouvelle entrée", module="stocks")):
             del st.session_state[key]
             st.rerun()
     else:
@@ -139,7 +139,7 @@ def _display_entry_status(user_id: str) -> bool:
                    "pour cette même réception.")
         st.info("Réessayer conserve exactement l'article, la quantité, le prix, "
                 "la référence et l'identifiant de l'essai initial.")
-        if st.button("Réessayer la même opération", key=f"stock_retry_{user_id}", on_click=_mark_stocks_activity):
+        if st.button("Réessayer la même opération", key=f"stock_retry_{user_id}", on_click=_mark_stocks_activity, help=field_help("Réessayer la même opération", module="stocks")):
             _execute_entry(user_id)
     return True
 
@@ -244,7 +244,7 @@ def show_stocks_page():
         elif _display_entry_status(user_id):
             pass  # On ne crée pas de deuxième opération si l'essai est incertain/confirmé.
         elif not df_mp_global.empty:
-            type_entree = st.radio("Que souhaitez-vous approvisionner ?", ["🧪 Matière Première (Vrac)", "📦 Emballage"], horizontal=True, on_change=_mark_stocks_activity)
+            type_entree = st.radio("Que souhaitez-vous approvisionner ?", ["🧪 Matière Première (Vrac)", "📦 Emballage"], horizontal=True, on_change=_mark_stocks_activity, help=field_help("Que souhaitez-vous approvisionner ?", module="stocks"))
             if "Emballage" in type_entree:
                 df_mp_filtre = df_mp_global[df_mp_global["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
             else:
@@ -256,13 +256,13 @@ def show_stocks_page():
                 with st.form("form_entree_stock"):
                     c1, c2 = st.columns(2)
                     liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp_filtre.iterrows()}
-                    mp_choisie = c1.selectbox("Article sélectionné", options=list(liste_mp.keys()), format_func=lambda x: liste_mp[x])
-                    quantite = c2.number_input("Quantité réceptionnée", min_value=0.1, step=1.0)
-                    prix_entree = c1.number_input("Prix d'entrée unitaire (DZD)", min_value=0.0, step=10.0)
-                    reference = c2.text_input("Référence (ex: Ajustement validé)")
-                    date_peremption = c1.date_input("Date de péremption")
+                    mp_choisie = c1.selectbox("Article sélectionné", options=list(liste_mp.keys()), format_func=lambda x: liste_mp[x], help=field_help("Article sélectionné", module="stocks"))
+                    quantite = c2.number_input("Quantité réceptionnée", min_value=0.1, step=1.0, help=field_help("Quantité réceptionnée", module="stocks"))
+                    prix_entree = c1.number_input("Prix d'entrée unitaire (DZD)", min_value=0.0, step=10.0, help=field_help("Prix d'entrée unitaire (DZD)", module="stocks"))
+                    reference = c2.text_input("Référence (ex: Ajustement validé)", help=field_help("Référence (ex: Ajustement validé)", module="stocks"))
+                    date_peremption = c1.date_input("Date de péremption", help=field_help("Date de péremption", module="stocks"))
 
-                    submitted = st.form_submit_button("Valider l'entrée en stock", type="primary", on_click=_mark_stocks_activity)
+                    submitted = st.form_submit_button("Valider l'entrée en stock", type="primary", on_click=_mark_stocks_activity, help=field_help("Valider l'entrée en stock", module="stocks"))
                 if submitted:
                     if not isinstance(reference, str) or not reference.strip():
                         st.error("Veuillez saisir une référence.")
@@ -290,12 +290,12 @@ def show_stocks_page():
         page_stock = st.number_input(
             "Page des mouvements", min_value=1, max_value=1000,
             value=1, step=1, key="ng_stocks_history_page"
-        )
+        , help=field_help("Page des mouvements", module="stocks"))
         from core.history_filters import history_period_inputs
         period = history_period_inputs("ng_stocks_history")
         if period is not None and st.button(
                 "Afficher les mouvements de stock", key="ng_stocks_history_load",
-                on_click=_mark_stocks_activity):
+                on_click=_mark_stocks_activity, help=field_help("Afficher les mouvements de stock", module="stocks")):
             from core.strict_reads import fetch_history_page_strict, DataReadError
             try:
                 mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock), date_column="date", **period)
