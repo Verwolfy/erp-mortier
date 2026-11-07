@@ -176,12 +176,12 @@ def _pending_panel(kind: str, user_id: str) -> bool:
     if record["status"] == "uncertain":
         st.warning("Transaction non confirmée. Ne créez pas une seconde opération identique.")
         st.info("La reprise réutilise exactement le même document, les mêmes quantités et le même identifiant.")
-        if st.button("Réessayer la même opération", key=f"achat_retry_{kind}_{user_id}", on_click=_mark_achats_activity):
+        if st.button("Réessayer la même opération", key=f"achat_retry_{kind}_{user_id}", on_click=_mark_achats_activity, help=field_help("Réessayer la même opération", module="achats")):
             _execute_operation(kind, user_id)
     else:
         st.success(f"{('Commande' if kind == 'commande' else 'Réception')} "
                    f"{record['document_id']} confirmée.")
-        if st.button("Préparer une nouvelle opération", key=f"achat_new_{kind}_{user_id}", on_click=_mark_achats_activity):
+        if st.button("Préparer une nouvelle opération", key=f"achat_new_{kind}_{user_id}", on_click=_mark_achats_activity, help=field_help("Préparer une nouvelle opération", module="achats")):
             del st.session_state[key]
             st.rerun()
     return True
@@ -289,12 +289,12 @@ def show_achats_page():
                 liste_fournisseurs = {row["fournisseur_id"]: f"{row['fournisseur_id']} - {row['nom']}"
                                      for _, row in df_fournisseurs.iterrows()}
                 fournisseur_id = col1.selectbox("Fournisseur", options=list(liste_fournisseurs),
-                                                format_func=lambda x: liste_fournisseurs[x])
-                type_achat = col2.selectbox("Type d'achat", ["Matière Première", "Emballage", "Frais Généraux"])
+                                                format_func=lambda x: liste_fournisseurs[x], help=field_help("Fournisseur", module="achats"))
+                type_achat = col2.selectbox("Type d'achat", ["Matière Première", "Emballage", "Frais Généraux"], help=field_help("Type d'achat", module="achats"))
                 col3, col4, col5 = st.columns(3)
                 dict_devise = liste_to_dict(get_liste("Devise", strict=True)) or {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
                 devise = col3.selectbox("Devise", options=list(dict_devise),
-                                       format_func=lambda x: dict_devise.get(x, x))
+                                       format_func=lambda x: dict_devise.get(x, x), help=field_help("Devise", module="achats"))
                 # Les prix du panier sont saisis dans la devise selectionnee.
                 currency_key = f"achats_panier_devise_{user_id}"
                 previous_currency = st.session_state.get(currency_key)
@@ -307,21 +307,21 @@ def show_achats_page():
                      "Taux (DZD pour 1 unité de devise)",
                      min_value=0.000001, value=1.0, step=0.1,
                      disabled=str(devise).upper() == "DZD",
-                     key=f"achat_taux_{str(devise).upper()}")
+                     key=f"achat_taux_{str(devise).upper()}", help=field_help("Taux (DZD pour 1 unité de devise)", module="achats"))
                 if str(devise).upper() == "DZD":
                     taux_change = 1.0
                 st.caption("Exemple : 1 EUR = 150 DZD → taux = 150. La valorisation du stock est toujours en DZD.")
-                date_voulue = col5.date_input("Date de livraison souhaitée")
+                date_voulue = col5.date_input("Date de livraison souhaitée", help=field_help("Date de livraison souhaitée", module="achats"))
                 st.divider()
                 st.subheader("2. Lignes de Commande", help=topic_help("achats.commande"))
                 with st.expander("➕ Ajouter un article", expanded=True):
                     c_mp, c_qte, c_prix, c_btn = st.columns([3, 1, 1, 1])
                     liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
                     mp_choisie = c_mp.selectbox("Article", options=list(liste_mp),
-                                               format_func=lambda x: liste_mp[x])
-                    qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=0.001, format="%.3f")
+                                               format_func=lambda x: liste_mp[x], help=field_help("Article", module="achats"))
+                    qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=0.001, format="%.3f", help=field_help("Quantité en unité de stock", module="achats"))
                     prix_u = c_prix.number_input(f"Prix unitaire ({devise})", min_value=0.0, step=1.0)
-                    if c_btn.button("Ajouter", use_container_width=True):
+                    if c_btn.button("Ajouter", use_container_width=True, help=field_help("Ajouter", module="achats")):
                         mp_row = df_mp[df_mp["mp_id"] == mp_choisie].iloc[0]
                         unit = str(mp_row.get("unite_stock") or "Unité")
                         st.session_state[_cart_key(user_id)].append({
@@ -339,7 +339,7 @@ def show_achats_page():
                                          for x in st.session_state[_cart_key(user_id)]), Decimal(0))
                     total_local = total_devise * Decimal(str(taux_change))
                     st.caption(f"Total : {total_devise:,.2f} {devise} = {total_local:,.2f} DZD (taux saisi)")
-                    if st.button("🗑️ Vider", on_click=_mark_achats_activity):
+                    if st.button("🗑️ Vider", on_click=_mark_achats_activity, help=field_help("🗑️ Vider", module="achats")):
                         st.session_state[_cart_key(user_id)] = []
                         st.rerun()
                 else:
@@ -350,13 +350,13 @@ def show_achats_page():
                 dict_mode = liste_to_dict(get_liste("ModePaiement", strict=True)) or {
                     "Virement": "Virement", "Chèque": "Chèque", "Espèces": "Espèces"}
                 mode = c_mode.selectbox("Mode de paiement", options=list(dict_mode),
-                                        format_func=lambda x: dict_mode.get(x, x))
+                                        format_func=lambda x: dict_mode.get(x, x), help=field_help("Mode de paiement", module="achats"))
                 dict_delai = liste_to_dict(get_liste("ConditionPaiement", strict=True)) or {
                     "Comptant": "Comptant", "30 jours": "30 jours", "60 jours": "60 jours"}
                 delai = c_delai.selectbox("Délai de paiement", options=list(dict_delai),
-                                          format_func=lambda x: dict_delai.get(x, x))
+                                          format_func=lambda x: dict_delai.get(x, x), help=field_help("Délai de paiement", module="achats"))
                 if c_valider.button("✅ Générer la commande", type="primary", use_container_width=True,
-                                    disabled=not st.session_state[_cart_key(user_id)]):
+                                    disabled=not st.session_state[_cart_key(user_id)], help=field_help("✅ Générer la commande", module="achats")):
                     payload = {"fournisseur_id": fournisseur_id, "type_achat": type_achat,
                                "devise": devise, "taux_change": taux_change,
                                "mode_paiement": mode, "delai_paiement": delai,
@@ -385,7 +385,7 @@ def show_achats_page():
                               f"{row['commande_achat_id']} - {row['fournisseur_id']} ({row['date_commande']})"
                               for _, row in available.iterrows()}
                     selected = st.selectbox("Commande à réceptionner", options=list(labels),
-                                            format_func=lambda x: labels[x], on_change=_mark_achats_activity)
+                                            format_func=lambda x: labels[x], on_change=_mark_achats_activity, help=field_help("Commande à réceptionner", module="achats"))
                     if selected:
                         try:
                             lines = get_lignes_achats(selected)
@@ -408,13 +408,13 @@ def show_achats_page():
                                 items_recus = []
                                 with st.form(f"form_reception_{selected}"):
                                     c1, c2 = st.columns(2)
-                                    date_rec = c1.date_input("Date de réception", value=get_local_now())
+                                    date_rec = c1.date_input("Date de réception", value=get_local_now(), help=field_help("Date de réception", module="achats"))
                                     conformite = c2.radio("Contrôle conformité",
                                                           ["CONFORME", "RESERVE", "NON_CONFORME"],
-                                                          horizontal=True)
+                                                          horizontal=True, help=field_help("Contrôle conformité", module="achats"))
                                     c3, c4 = st.columns(2)
-                                    remarques = c3.text_input("Remarques / Observation")
-                                    peremption = c4.date_input("Date de péremption (facultative)", value=None)
+                                    remarques = c3.text_input("Remarques / Observation", help=field_help("Remarques / Observation", module="achats"))
+                                    peremption = c4.date_input("Date de péremption (facultative)", value=None, help=field_help("Date de péremption (facultative)", module="achats"))
                                     st.divider()
                                     for row in balances:
                                         remaining = row["remaining"]
@@ -433,7 +433,7 @@ def show_achats_page():
                                             items_recus.append({"mp_id": row["mp_id"],
                                                                 "quantite_recue": qte,
                                                                 "prix_unitaire": row["prix_unitaire"]})
-                                    submitted = st.form_submit_button("📦 Valider la réception", type="primary", on_click=_mark_achats_activity)
+                                    submitted = st.form_submit_button("📦 Valider la réception", type="primary", on_click=_mark_achats_activity, help=field_help("📦 Valider la réception", module="achats"))
                                 if submitted:
                                     if conformite != "CONFORME":
                                         st.error("Réception non conforme/réservée : aucun stock créé. "
@@ -458,12 +458,12 @@ def show_achats_page():
         page_achats = st.number_input(
             "Page des historiques Achats", min_value=1, max_value=1000,
             value=1, step=1, key="ng_achats_history_page"
-        )
+        , help=field_help("Page des historiques Achats", module="achats"))
         from core.history_filters import history_period_inputs
         period = history_period_inputs("ng_achats_history")
         if period is not None and st.button(
                 "Afficher l'historique Achats", key="ng_achats_history_load",
-                on_click=_mark_achats_activity):
+                on_click=_mark_achats_activity, help=field_help("Afficher l'historique Achats", module="achats")):
             from core.strict_reads import fetch_history_page_strict
             rows_commandes, total_commandes = fetch_history_page_strict(
                 "commandes_achats", page=int(page_achats), date_column="date_commande", **period
