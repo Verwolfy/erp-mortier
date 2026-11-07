@@ -1,3 +1,13 @@
+## 7 novembre 2026 — fermeture technique des garde-fous analytiques
+
+- **Développement fusionné** : PR [#41](https://github.com/Verwolfy/erp-mortier/pull/41), fusion `68d8b1ac28a68158357110273507b21a8b4e446d`. Précontrôle analytique complété : total des charges et total réparti strictement positifs, montant individuel de charge strictement positif, assiette par OF strictement positive, refus explicite des totaux manquants, non finis ou non numériques. Aucun raccourci par équilibre 0 DZD = 0 DZD.
+- **Tests de branche** : GitHub Actions [tests ERP 42361616168](https://github.com/Verwolfy/erp-mortier/actions/runs/42361616168) `success`, [audit 42361616136](https://github.com/Verwolfy/erp-mortier/actions/runs/42361616136) `success`. Les contrôles post-fusion sont distincts et doivent être consignés après exécution.
+- **Schéma et données** : aucune migration SQL, aucun changement RLS/GRANT, aucune modification de secrets ou de données métier ; le précontrôle demeure non transactionnel, `erp_cost_validate_period` reste l'autorité finale.
+- **État de production en lecture seule** : 2 périodes `BROUILLON`, 0 charges, 0 assiettes, 0 périodes validées, 1 pièce SCF `BROUILLON`, 0 pièce SCF `VALIDEE`, 0 OF terminé en novembre sur la fenêtre contrôlée. La clôture comptable n'est pas autorisée dans ces conditions.
+- **Suite** : vérifier les workflows sur `main`, contrôler le déploiement hébergé Streamlit, puis attendre des justificatifs SCF réels validés, des coûts réels et des OF éligibles. Ne pas inventer d'écritures ni réaffecter artificiellement les dates. La validation réglementaire finale doit être conduite par un expert-comptable algérien.
+
+---
+
 ## 6 novembre 2026 — fiabilisation du précontrôle des coûts industriels (fusionnée sur main)
 
 - **Périmètre :** ajout au service `modules/production/cost_service.py` d'un précontrôle explicite des périodes (`get_validation_preflight`) avec lecture des charges, assiettes, rapprochement SCF, OF terminés de la période et audit. La RPC transactionnelle SQL demeure l'autorité finale.
