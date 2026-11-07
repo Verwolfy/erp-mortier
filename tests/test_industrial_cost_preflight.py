@@ -54,7 +54,8 @@ def env(monkeypatch):
     report = {
         "loaded_sections": SECTIONS,
         "audit_calculated": True,
-        "pools": [{"pool_id": "POOL-TEST", "statut": "DOCUMENTE"}],
+        "pools": [{"pool_id": "POOL-TEST", "statut": "DOCUMENTE",
+                   "montant_dzd": "100"}],
         "drivers": [{"of_id": "OF-TEST", "base_imputation": "KWH", "valeur": "10"}],
         "scf_reconciliation": [{
             "pool_id": "POOL-TEST", "rapprochement_ok": True,
@@ -100,6 +101,39 @@ def test_zero_equals_zero_cannot_validate_empty_period(env):
     assert result["counts"]["charges"] == 0
     assert any("Aucune charge" in s for s in result["blockers"])
     assert any("Aucun OF terminé" in s for s in result["blockers"])
+
+
+@pytest.mark.parametrize("zero_target", ["audit", "pool", "driver"])
+def test_zero_cost_or_driver_cannot_pass_preflight(env, zero_target):
+    if zero_target == "audit":
+        env.report["audit"]["total_pools_dzd"] = 0
+        env.report["audit"]["total_impute_dzd"] = 0
+    elif zero_target == "pool":
+        env.report["pools"][0]["montant_dzd"] = "0.000000"
+    else:
+        env.report["drivers"][0]["valeur"] = "0"
+    result = env.svc.get_validation_preflight("P-TEST")
+    assert result["ready"] is False
+    assert any("nul" in b.lower() for b in result["blockers"])
+    env.client.rpc.assert_not_called()
+
+
+@pytest.mark.parametrize("broken", ["NaN", "Infinity", "not-a-number", None])
+def test_invalid_audit_total_fails_closed(env, broken):
+    env.report["audit"]["total_pools_dzd"] = broken
+    with pytest.raises(RuntimeError, match="audit analytique"):
+        env.svc.get_validation_preflight("P-TEST")
+    env.client.rpc.assert_not_called()
+
+
+def test_missing_or_invalid_cost_and_driver_fails_closed(env):
+    env.report["pools"][0].pop("montant_dzd")
+    with pytest.raises(RuntimeError, match="Montant de charge"):
+        env.svc.get_validation_preflight("P-TEST")
+    env.report["pools"][0]["montant_dzd"] = "100"
+    env.report["drivers"][0]["valeur"] = "NaN"
+    with pytest.raises(RuntimeError, match="Assiette non finie"):
+        env.svc.get_validation_preflight("P-TEST")
 
 
 def test_unvalidated_scf_blocks_even_if_math_is_balanced(env):
