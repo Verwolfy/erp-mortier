@@ -179,6 +179,10 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
                 )
 
     st.info("💡 **Astuce :** Double-cliquez sur une cellule pour la modifier. Les menus déroulants s'afficheront.")
+    if sheet_name in {"Clients", "Fournisseurs"}:
+        st.caption("La modification du nom, NIF ou RC est comparée à toutes les "
+                   "autres fiches avant enregistrement. Un doublon est refusé "
+                   "et la fiche existante est indiquée.")
 
     st.data_editor(
         df,
@@ -200,6 +204,9 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
             with st.spinner("Mise à jour dans Google Sheets/Supabase..."):
                 try:
                     success = sauvegarder_modifications(sheet_name, id_col, df, changes)
+                except DuplicateTierError as exc:
+                    st.warning(str(exc))
+                    return
                 except (ValueError, RuntimeError) as exc:
                     st.error(str(exc))
                     return

@@ -9,7 +9,7 @@ import streamlit as st
 from core.db_service import (
     fetch_data, fetch_data_paginated, insert_hybrid, update_hybrid, get_supabase_client
 )
-from modules.admin.tier_dedup import ensure_new_tier
+from modules.admin.tier_dedup import ensure_new_tier, ensure_updated_tier
 from modules.auth.service import hash_password
 from core.utils import generate_unique_id
 from core.security_service import (
@@ -111,6 +111,15 @@ def sauvegarder_modifications(sheet_name: str, id_col: str,
         if value not in {"OUI", "NON"}:
             raise ValueError("Statut actif invalide : OUI ou NON")
         updates["actif"] = value
+
+    # Le tableau d'édition peut être périmé. Avant une modification d'identité,
+    # relire TOUT le référentiel, pas seulement les lignes affichées.
+    if table_name in {"clients", "fournisseurs"} and set(updates) & {"nom", "nif", "rc"}:
+        records = fetch_data_paginated(
+            table_name, order_column=id_col, page_size=500, max_rows=10000)
+        ensure_updated_tier(
+            kind="client" if table_name == "clients" else "fournisseur",
+            target_id=target_id, updates=updates, existing=records)
     result = update_hybrid(table_name, id_col, target_id, updates)
     _confirmed(result, "Modification")
     if result[0].get(id_col) != target_id:
