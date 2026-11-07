@@ -243,6 +243,37 @@ def get_validation_preflight(period_id: str) -> dict:
         blockers.append("Aucune charge de période enregistrée.")
     if not drivers:
         blockers.append("Aucune assiette mesurée par OF terminé.")
+    # L'audit SQL teste l'équilibre, y compris 0 = 0. Le précontrôle
+    # ne doit jamais transformer cet équilibre en feu vert opérationnel.
+    try:
+        total_pools = Decimal(str(audit["total_pools_dzd"]))
+        total_allocated = Decimal(str(audit["total_impute_dzd"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation):
+        raise RuntimeError("Totaux de l'audit analytique manquants ou invalides") from None
+    if not total_pools.is_finite() or not total_allocated.is_finite():
+        raise RuntimeError("Totaux de l'audit analytique non finis")
+    if total_pools <= 0 or total_allocated <= 0:
+        blockers.append("Montants analytiques nuls : aucun coût positif justifié et réparti.")
+    for pool in pools:
+        try:
+            value = Decimal(str(pool["montant_dzd"]))
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            raise RuntimeError("Montant de charge manquant ou invalide") from None
+        if not value.is_finite():
+            raise RuntimeError("Montant de charge non fini")
+        if value <= 0:
+            blockers.append("Au moins une charge est nulle : montant positif requis.")
+            break
+    for driver in drivers:
+        try:
+            value = Decimal(str(driver["valeur"]))
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            raise RuntimeError("Assiette manquante ou invalide") from None
+        if not value.is_finite():
+            raise RuntimeError("Assiette non finie")
+        if value <= 0:
+            blockers.append("Au moins une assiette est nulle : mesure positive requise.")
+            break
     if not summaries:
         blockers.append("Aucune synthèse analytique par OF disponible.")
     undocumented = sum(
