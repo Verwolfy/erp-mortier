@@ -155,7 +155,10 @@ les quantités enregistrées.
   puis réparties sur des OF terminés dans les dates de la période.
   L'audit mesure l'équilibre de répartition, pas l'existence de justificatifs :
   **0 DZD réparti sur 0 DZD peut apparaître équilibré, sans que la période
-  soit validable**. Cliquer sur **Précontrôle avant validation**
+  soit validable**. Une charge doit avoir un montant strictement positif et
+  chaque assiette mesurée doit aussi être positive ; un total analytique nul
+  bloque le précontrôle même lorsque la répartition est équilibrée.
+  Cliquer sur **Précontrôle avant validation**
   puis **Vérifier les prérequis** : ce diagnostic en lecture seule détaille les
   charges, assiettes, rapprochements SCF et OF terminés dans les dates.
   Une période de novembre ne peut pas englober un OF terminé en octobre.
