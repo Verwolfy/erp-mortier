@@ -6,7 +6,10 @@ Respect strict du schéma docs/schema_reference.md.
 import pandas as pd
 import uuid
 import streamlit as st
-from core.db_service import fetch_data, insert_hybrid, update_hybrid, get_supabase_client
+from core.db_service import (
+    fetch_data, fetch_data_paginated, insert_hybrid, update_hybrid, get_supabase_client
+)
+from modules.admin.tier_dedup import ensure_new_tier
 from modules.auth.service import hash_password
 from core.utils import generate_unique_id
 from core.security_service import (
@@ -115,13 +118,28 @@ def sauvegarder_modifications(sheet_name: str, id_col: str,
     return True
 
 # --- FOURNISSEURS, MP, PRODUITS, SKU, CLIENTS ---
+def _create_tier(table: str, kind: str, prefix: str, key: str, data: dict) -> str:
+    """Lecture stricte et paginée AVANT création ; aucune lecture tronquée.
+
+    Une vérification applicative ne remplace pas l'unicité transactionnelle SQL
+    si deux sessions concurrentes soumettent exactement au même instant.
+    """
+    if not isinstance(data, dict):
+        raise ValueError("Fiche tierce invalide")
+    # Contrairement au get_dataframe historique, cette lecture lève une
+    # exception en cas d'échec ou de seuil : jamais 'liste vide' par défaut.
+    records = fetch_data_paginated(
+        table, order_column=key, page_size=500, max_rows=10000)
+    ensure_new_tier(kind=kind, data=data, existing=records)
+    existing_ids = [row[key] for row in records]
+    payload = {**data, key: generate_unique_id(prefix, existing_ids), "actif": "OUI"}
+    _confirmed(insert_hybrid(table, payload), f"Création {kind}")
+    return payload[key]
+
+
 def add_fournisseur(data: dict):
-    df = get_dataframe("Fournisseurs")
-    exist_ids = df["fournisseur_id"].tolist() if not df.empty else []
-    data["fournisseur_id"] = generate_unique_id("FRN", exist_ids)
-    data["actif"] = "OUI"
-    _confirmed(insert_hybrid("fournisseurs", data), "Création fournisseur")
-    return data["fournisseur_id"]
+    return _create_tier("fournisseurs", "fournisseur", "FRN",
+                        "fournisseur_id", data)
 
 def add_matiere_premiere(data: dict):
     df = get_dataframe("MatieresPremieres")
@@ -149,12 +167,7 @@ def add_sku(data: dict):
     return data["sku_id"]
 
 def add_client(data: dict):
-    df = get_dataframe("Clients")
-    exist_ids = df["client_id"].tolist() if not df.empty else []
-    data["client_id"] = generate_unique_id("CLI", exist_ids)
-    data["actif"] = "OUI"
-    _confirmed(insert_hybrid("clients", data), "Création client")
-    return data["client_id"]
+    return _create_tier("clients", "client", "CLI", "client_id", data)
 
 # ==========================================
 # GESTION DES UTILISATEURS ET PERMISSIONS
