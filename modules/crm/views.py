@@ -2,6 +2,7 @@
 Interface utilisateur du module CRM.
 """
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
 from core.strict_reads import fetch_data_strict as fetch_data, read_section
@@ -28,7 +29,8 @@ def show_crm_page():
     tab1, tab2, tab3, tab4 = st.tabs(["🎯 Pipeline (Opportunités)", "📞 Consigner une interaction", "📋 Historique des échanges", "🌐 Demandes NextGen"])
 
     with tab1, read_section("Pipeline"):
-        st.subheader("Gestion du Pipeline")
+        st.subheader("Gestion du Pipeline", help=topic_help("crm.pipeline"))
+        show_context_help(st, "crm.pipeline")
         if can_write:
             with st.expander("➕ Nouvelle Opportunité"):
                 with st.form("form_opp"):
@@ -57,7 +59,8 @@ def show_crm_page():
             st.info("Aucune opportunité en cours.")
 
     with tab2, read_section("Clients CRM"):
-        st.subheader("Consigner une Interaction")
+        st.subheader("Consigner une Interaction", help=topic_help("crm.interaction"))
+        show_context_help(st, "crm.interaction")
         df_clients = get_clients_actifs() if can_write else pd.DataFrame()
 
         if not can_write:
@@ -87,7 +90,8 @@ def show_crm_page():
                     st.rerun()
 
     with tab3, read_section("Historique CRM"):
-        st.subheader("Historique des Interactions")
+        st.subheader("Historique des Interactions", help=topic_help("crm.historique"))
+        show_context_help(st, "crm.historique")
         st.caption("Chargement à la demande pour éviter une lecture inutile à chaque navigation.")
         page_crm = st.number_input(
             "Page historique CRM", min_value=1, max_value=1000, value=1,
@@ -104,7 +108,8 @@ def show_crm_page():
                 st.info("Aucun historique disponible.")
 
     with tab4:
-        st.subheader("Demandes reçues du site NextGen")
+        st.subheader("Demandes reçues du site NextGen", help=topic_help("crm.nextgen"))
+        show_context_help(st, "crm.nextgen")
         # Fixed UI fingerprint allows an authenticated operator to confirm deployed UI version.
         st.caption("Version interface NextGen CRM : SOF-NEXTGEN-CRM-20261101-L9")
         st.caption("Consultation technique non nominative. Aucune conversion client automatique.")
