@@ -748,9 +748,11 @@ def test_exoneration_client_signalee_bloque_brouillon_historique(ui):
 
     ui.mod._draft_tab("USR-1", True, pd.DataFrame())
 
-    ui.st.checkbox.assert_any_call(
-        "Client avec attestation d'exonération TVA (facturation dédiée non activée)",
-        key="vente_exoneration_signalee_CLI-1",
+    assert any(
+        c.args == ("Client avec attestation d'exonération TVA (facturation dédiée non activée)",)
+        and c.kwargs.get("key") == "vente_exoneration_signalee_CLI-1"
+        and isinstance(c.kwargs.get("help"), str)
+        for c in ui.st.checkbox.call_args_list
     )
     assert any(
         "Facture client exonéré bloquée" in call.args[0]
