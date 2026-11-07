@@ -212,11 +212,13 @@ def _show_dashboards_page_impl():
                     matiere = st.selectbox(
                         "Matière achetée", options=sorted(df_evo["mp_id"].unique().tolist()),
                         key="dashboard_achat_matiere",
+                        on_change=_mark_dashboards_activity,
                         help="Comparer uniquement les prix du même article.")
                     unite = st.selectbox(
                         "Unité de stock", options=sorted(
                             df_evo.loc[df_evo["mp_id"] == matiere, "unite_cond"].unique().tolist()),
                         key="dashboard_achat_unite",
+                        on_change=_mark_dashboards_activity,
                         help="Ne pas comparer des prix exprimés dans des unités différentes.")
                     selection = df_evo.loc[
                         (df_evo["mp_id"] == matiere) & (df_evo["unite_cond"] == unite)]
