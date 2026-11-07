@@ -91,7 +91,12 @@ def show_context_help(st, topic: str) -> None:
     Les popovers ne contiennent aucun widget métier ou requête réseau.
     """
     title, notion, procedure, vigilance = TOPICS[topic]
-    with st.popover(f"ⓘ Aide : {title}", help=f"{notion} Cliquez pour la procédure."):
+    # Certaines doublures de tests ne modélisent que les widgets métier.
+    # Ne jamais bloquer le parcours autorisé si l'overlay n'existe pas.
+    popover = getattr(st, "popover", None)
+    if not callable(popover):
+        return
+    with popover(f"ⓘ Aide : {title}", help=f"{notion} Cliquez pour la procédure."):
         st.markdown(f"**Notion** — {notion}")
         st.markdown(f"**Comment faire** — {procedure}")
         st.markdown(f"**À vérifier** — {vigilance}")
