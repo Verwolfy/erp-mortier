@@ -17,6 +17,12 @@ Le module comporte **9 onglets**. Les calculs sont implémentés dans `modules/d
 | RH | Effectif actif, congés en attente, service | Vision stock actuelle, sans absences effectives ni historique fiable | Périmètre conservé : aucune mesure RH inventée |
 | Finance | Entrants, sortants, % montant affecté, soldes indicatifs actuels | Pas de flux net ni série ; taux 0 sans encaissement ; soldes actuels indépendants du filtre | Flux net, non affecté, séries entrées/sorties, ratio N/D |
 
+## 1 bis. Provenance des données de production (constat SQL réel)
+
+Contrôle **lecture seule** du 7 novembre 2026 sur le projet production `erp-mortier` : sur 4 factures, 3 identifiants commencent par `DEMO` ou `SIM` ; sur 3 règlements, 3 ; sur 4 OF, 3 ; sur 4 commandes d'achat, 3 ; sur 4 opportunités CRM, 4 ; sur 12 employés, 12.
+
+**Interprétation limitée :** ces préfixes sont des indices de scénarios d'essai, pas une preuve suffisante de statut fictif. Les KPI historiques peuvent ainsi mélanger activité réelle et dossiers de démonstration. Une bannière non destructive et une ventilation agrégée par source sont proposées en interface. **Aucune suppression, exclusion silencieuse ou modification comptable n'est effectuée.** La séparation officielle réel/formation exige une qualification par l'entreprise et une migration contrôlée si nécessaire.
+
 ## 2. Définitions à appliquer
 - **Facturation brute HT** : somme des `FactureClient` `VALIDE` dans la période, **hors avoirs**. Ne pas appeler « CA net encaissé ».
 - **Créances >30 jours** : soldes des factures client validées non payées, dont le retard dépasse 30 jours. **Instantané global**, même si un filtre de dates est sélectionné.
