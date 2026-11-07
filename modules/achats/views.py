@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 from config.roles import has_permission
 from core.db_service import get_supabase_client
@@ -272,6 +273,7 @@ def show_achats_page():
 
     # --- COMMANDE FOURNISSEUR ---
     with tab1, read_section("Nouvelle commande"):
+        show_context_help(st, "achats.commande")
         if not can_write:
             st.info("🔒 Mode lecture seule.")
         elif _pending_panel("commande", user_id):
@@ -282,7 +284,7 @@ def show_achats_page():
             if df_fournisseurs.empty or df_mp.empty:
                 st.warning("Configurez d'abord les fournisseurs et matières premières actifs.")
             else:
-                st.subheader("1. Informations Fournisseur")
+                st.subheader("1. Informations Fournisseur", help=topic_help("achats.commande"))
                 col1, col2 = st.columns(2)
                 liste_fournisseurs = {row["fournisseur_id"]: f"{row['fournisseur_id']} - {row['nom']}"
                                      for _, row in df_fournisseurs.iterrows()}
@@ -311,7 +313,7 @@ def show_achats_page():
                 st.caption("Exemple : 1 EUR = 150 DZD → taux = 150. La valorisation du stock est toujours en DZD.")
                 date_voulue = col5.date_input("Date de livraison souhaitée")
                 st.divider()
-                st.subheader("2. Lignes de Commande")
+                st.subheader("2. Lignes de Commande", help=topic_help("achats.commande"))
                 with st.expander("➕ Ajouter un article", expanded=True):
                     c_mp, c_qte, c_prix, c_btn = st.columns([3, 1, 1, 1])
                     liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
@@ -343,7 +345,7 @@ def show_achats_page():
                 else:
                     st.info("Aucun article dans la commande.")
                 st.divider()
-                st.subheader("3. Modalités & Validation")
+                st.subheader("3. Modalités & Validation", help=topic_help("achats.commande"))
                 c_mode, c_delai, c_valider = st.columns(3)
                 dict_mode = liste_to_dict(get_liste("ModePaiement", strict=True)) or {
                     "Virement": "Virement", "Chèque": "Chèque", "Espèces": "Espèces"}
@@ -364,7 +366,8 @@ def show_achats_page():
 
     # --- BON DE RÉCEPTION ---
     with tab2, read_section("Réception"):
-        st.subheader("Générer un bon de réception (BR)")
+        st.subheader("Générer un bon de réception (BR)", help=topic_help("achats.reception"))
+        show_context_help(st, "achats.reception")
         if not can_write:
             st.info("🔒 Mode lecture seule.")
         elif _pending_panel("reception", user_id):
@@ -449,7 +452,8 @@ def show_achats_page():
 
     # --- HISTORIQUE ---
     with tab3, read_section("Historique achats"):
-        st.subheader("Commandes et réceptions")
+        st.subheader("Commandes et réceptions", help=topic_help("achats.historique"))
+        show_context_help(st, "achats.historique")
         st.caption("Chargement à la demande : 50 lignes maximum par registre et par page.")
         page_achats = st.number_input(
             "Page des historiques Achats", min_value=1, max_value=1000,
@@ -471,14 +475,14 @@ def show_achats_page():
                 f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
                 f"réceptions {len(rows_receptions)}/{total_receptions}."
             )
-            st.subheader("Commandes d'Achats")
+            st.subheader("Commandes d'Achats", help=topic_help("achats.historique"))
             if rows_commandes:
                 st.dataframe(pd.DataFrame(rows_commandes), use_container_width=True,
                              hide_index=True)
             else:
                 st.info("Aucune commande sur cette page.")
             st.divider()
-            st.subheader("Bons de réception")
+            st.subheader("Bons de réception", help=topic_help("achats.historique"))
             if rows_receptions:
                 st.dataframe(pd.DataFrame(rows_receptions), use_container_width=True,
                              hide_index=True)
