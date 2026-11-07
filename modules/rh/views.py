@@ -2,6 +2,7 @@
 Interface utilisateur du module RH.
 """
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
 from core.strict_reads import DataReadError
@@ -68,19 +69,20 @@ def show_rh_page():
     tab1, tab2 = onglets[:2]
 
     with tab1:
-        st.subheader("Employés")
+        st.subheader("Employés", help=topic_help("rh.employes"))
+        show_context_help(st, "rh.employes")
         if can_write:
             with st.expander("➕ Ajouter un employé"):
                 with st.form("form_employe"):
                     c1, c2 = st.columns(2)
-                    nom = c1.text_input("Nom complet *")
-                    poste = c2.text_input("Poste")
+                    nom = c1.text_input("Nom complet *", help=field_help("Nom complet *", module="rh"))
+                    poste = c2.text_input("Poste", help=field_help("Poste", module="rh"))
                     service = c1.selectbox("Service",
-                                           ["Direction", "Production", "Ventes", "Logistique", "RH", "Maintenance"])
-                    manager = c2.text_input("ID Manager (Optionnel)")
-                    date_embauche = c1.date_input("Date d'embauche")
+                                           ["Direction", "Production", "Ventes", "Logistique", "RH", "Maintenance"], help=field_help("Service", module="rh"))
+                    manager = c2.text_input("ID Manager (Optionnel)", help=field_help("ID Manager (Optionnel)", module="rh"))
+                    date_embauche = c1.date_input("Date d'embauche", help=field_help("Date d'embauche", module="rh"))
 
-                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_rh_activity):
+                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_rh_activity, help=field_help("Enregistrer", module="rh")):
                         fresh = _rh_access()
                         if fresh is None or fresh[0] != user_role or fresh[1] is not True:
                             st.error("Droit RH écriture absent ou révoqué ; ajout interdit.")
@@ -105,7 +107,8 @@ def show_rh_page():
             st.info("Aucun employé enregistré.")
 
     with tab2:
-        st.subheader("Demandes de Congés")
+        st.subheader("Demandes de Congés", help=topic_help("rh.conges"))
+        show_context_help(st, "rh.conges")
         if can_write:
             liste_employes = {row["employe_id"]: f"{row['employe_id']} - {row['nom']}"
                               for _, row in df_emp.iterrows() if str(row.get("actif", "")) == "OUI"}
@@ -117,14 +120,14 @@ def show_rh_page():
                 with st.form("form_conges"):
                     c_emp, c_dates = st.columns(2)
                     emp_choisi = c_emp.selectbox("Employé", options=list(liste_employes.keys()),
-                                                 format_func=lambda x: liste_employes[x])
+                                                 format_func=lambda x: liste_employes[x], help=field_help("Employé", module="rh"))
 
                     c_deb, c_fin = c_dates.columns(2)
-                    date_debut = c_deb.date_input("Date de début")
-                    date_fin = c_fin.date_input("Date de fin")
-                    motif = st.text_input("Motif (Ex: Congé annuel, Maladie)")
+                    date_debut = c_deb.date_input("Date de début", help=field_help("Date de début", module="rh"))
+                    date_fin = c_fin.date_input("Date de fin", help=field_help("Date de fin", module="rh"))
+                    motif = st.text_input("Motif (Ex: Congé annuel, Maladie)", help=field_help("Motif (Ex: Congé annuel, Maladie)", module="rh"))
 
-                    if st.form_submit_button("Soumettre la demande", type="primary", on_click=_mark_rh_activity):
+                    if st.form_submit_button("Soumettre la demande", type="primary", on_click=_mark_rh_activity, help=field_help("Soumettre la demande", module="rh")):
                         fresh = _rh_access()
                         if fresh is None or fresh[0] != user_role or fresh[1] is not True:
                             st.error("Droit RH écriture absent ou révoqué ; congé non enregistré.")
@@ -151,7 +154,8 @@ def show_rh_page():
             st.info("Aucune demande de congé.")
     if can_read_paie:
         with onglets[2]:
-            st.subheader("Simulation IRG - traitements et salaires")
+            st.subheader("Simulation IRG - traitements et salaires", help=topic_help("rh.irg"))
+            show_context_help(st, "rh.irg")
             st.warning(
                 "Simulation interne uniquement : ni bulletin de paie, "
                 "ni calcul fiscal homologué, ni déclaration."
@@ -164,21 +168,21 @@ def show_rh_page():
             date_fiscale = st.date_input(
                 "Date de paie", value=get_local_now().date(),
                 key="rh_irg_date",
-            )
+             help=field_help("Date de paie", module="rh"))
             assiette = st.text_input(
                 "Assiette imposable mensuelle (DZD) - montant exact",
                 key="rh_irg_assiette",
                 placeholder="Ex. 50000.00",
-            )
+             help=field_help("Assiette imposable mensuelle (DZD) - montant exact", module="rh"))
             profil = st.selectbox(
                 "Catégorie de revenu mensuel",
                 ["SALARIE", "HANDICAPE_RETRAITE"],
                 key="rh_irg_profil",
-            )
+             help=field_help("Catégorie de revenu mensuel", module="rh"))
             if st.button(
                 "Simuler IRG", key="rh_irg_simuler",
                 on_click=_mark_rh_activity,
-            ):
+             help=field_help("Simuler IRG", module="rh")):
                 fresh = _rh_access()
                 if fresh is None or fresh[0] != user_role or fresh[2] is not True:
                     st.error("Droit Paie absent ou révoqué ; simulation interdite.")
@@ -213,7 +217,8 @@ def show_rh_page():
 
 def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
     """Atelier arithmétique borné au jeu SIM-RH ; aucune écriture ou règle légale."""
-    st.subheader("Atelier de paie fictive")
+    st.subheader("Atelier de paie fictive", help=topic_help("rh.simulation"))
+    show_context_help(st, "rh.simulation")
     st.warning("TEST UNIQUEMENT — montants et taux arbitraires ; aucun calcul CNAS ou IRG officiel, aucun bulletin, paiement ou déclaration. Ne pas utiliser pour une paie réelle.")
     st.caption("Exemple fixe : retenue de test 5 %, contribution de test 10 %, retenue forfaitaire de test 1 000 DZD. Ces valeurs ne sont pas des taux légaux.")
     required = {"employe_id", "nom", "actif"}
@@ -230,9 +235,9 @@ def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
         return
     options = rows["employe_id"].tolist()
     chosen = st.selectbox("Employé fictif", options=options, key="rh_test_employe",
-                          on_change=_mark_rh_activity)
+                          on_change=_mark_rh_activity, help=field_help("Employé fictif", module="rh"))
     if st.button("Calculer l’exemple fictif", key="rh_test_calculer",
-                 on_click=_mark_rh_activity):
+                 on_click=_mark_rh_activity, help=field_help("Calculer l’exemple fictif", module="rh")):
         fresh = _rh_access()
         if fresh is None or fresh[0] != user_role or fresh[2] is not True:
             st.error("Droit Paie absent, révoqué ou non vérifiable.")
@@ -254,7 +259,7 @@ def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
     st.caption("Hypothèses de test : brut fictif totalement soumis à 9 % de cotisation salariale, aucune prime ni autre retenue ; assiette IRG = brut − cotisation. Les 8 valeurs proviennent de lignes précises de la table DGI 2022. Applicabilité à la période et assiettes réelles non vérifiées.")
     st.markdown("[Table DGI 2022](https://www.mfdgi.gov.dz/images/bareme_irg/TABLE_IRG_2022.pdf) · [Journal officiel n°49/2015, page 7](https://www.joradp.dz/FTP/jo-francais/2015/F2015049.pdf)")
     if st.button("Comparer avec la table DGI 2022", key="rh_test_dgi",
-                 on_click=_mark_rh_activity):
+                 on_click=_mark_rh_activity, help=field_help("Comparer avec la table DGI 2022", module="rh")):
         fresh = _rh_access()
         if fresh is None or fresh[0] != user_role or fresh[2] is not True:
             st.error("Droit Paie absent, révoqué ou non vérifiable.")
@@ -274,15 +279,16 @@ def _atelier_paie_fictive(df_emp: pd.DataFrame, user_role: str) -> None:
 
 def _preflight_paie_tab(user_role: str) -> None:
     """Diagnostic des règles IRG/CNAS ; n'émet aucune fiche de paie."""
-    st.subheader("Préparation des références IRG et CNAS")
+    st.subheader("Préparation des références IRG et CNAS", help=topic_help("rh.pae"))
+    show_context_help(st, "rh.pae")
     st.caption("Statut réglementaire uniquement, sans données nominatives de salarié.")
     from core.utils import get_local_now
     date_paie = st.date_input(
         "Date réglementaire à vérifier", value=get_local_now().date(),
         key="rh_paie_preflight_date",
-    )
+     help=field_help("Date réglementaire à vérifier", module="rh"))
     if not st.button("Vérifier les référentiels", key="rh_paie_preflight",
-                     on_click=_mark_rh_activity):
+                     on_click=_mark_rh_activity, help=field_help("Vérifier les référentiels", module="rh")):
         return
     fresh = _rh_access()
     if fresh is None or fresh[0] != user_role or fresh[2] is not True:

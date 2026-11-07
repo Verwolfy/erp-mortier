@@ -5,6 +5,7 @@ Intègre le filtrage en cascade dynamique Pays -> Wilaya.
 Gestion dynamique des listes de référence synchronisées avec import_data.py.
 """
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
 from core.security_service import is_security_manager, STANDARD_ROLES, STANDARD_MODULES
@@ -64,8 +65,7 @@ def _creation_confirmee(operation, data: dict, label: str) -> bool:
 
 def gerer_listes_reference():
     """Interface pour ajouter et modifier les catégories, pays, wilayas, etc."""
-    st.subheader("⚙️ Gestion des Listes de Choix (Menus déroulants)")
-
+    st.subheader("⚙️ Gestion des Listes de Choix (Menus déroulants)", help=topic_help("admin.listes"))
     df_listes = pd.DataFrame(fetch_data("listes_reference"))
 
     listes_existantes = []
@@ -73,16 +73,16 @@ def gerer_listes_reference():
         listes_existantes = sorted(df_listes["liste_code"].dropna().unique().tolist())
 
     col1, col2 = st.columns(2)
-    action = col1.radio("Que voulez-vous faire ?", ["Éditer une liste existante", "Créer un nouveau type de liste"])
+    action = col1.radio("Que voulez-vous faire ?", ["Éditer une liste existante", "Créer un nouveau type de liste"], help=field_help("Que voulez-vous faire ?", module="admin"))
 
     liste_cible = ""
     if action == "Éditer une liste existante":
         if listes_existantes:
-            liste_cible = col2.selectbox("Sélectionnez la liste", listes_existantes)
+            liste_cible = col2.selectbox("Sélectionnez la liste", listes_existantes, help=field_help("Sélectionnez la liste", module="admin"))
         else:
             st.info("Aucune liste configurée.")
     else:
-        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CAT_CLIENT, CAT_MP)").strip().upper()
+        liste_cible = col2.text_input("Nom du code (ex: PAYS, WILAYA, CAT_CLIENT, CAT_MP)", help=field_help("Nom du code (ex: PAYS, WILAYA, CAT_CLIENT, CAT_MP)", module="admin")).strip().upper()
 
     if liste_cible:
         st.divider()
@@ -90,11 +90,11 @@ def gerer_listes_reference():
 
         with st.form(f"form_add_{liste_cible}"):
             c1, c2, c3 = st.columns([1, 2, 1])
-            val_code = c1.text_input("Code court (ex: DZA, 31, MORT_COLLE)")
-            val_libelle = c2.text_input("Libellé affiché (ex: Algérie, Oran, Mortiers Colles)")
-            ordre = c3.number_input("Ordre d'affichage", min_value=1, value=1, step=1)
+            val_code = c1.text_input("Code court (ex: DZA, 31, MORT_COLLE)", help=field_help("Code court (ex: DZA, 31, MORT_COLLE)", module="admin"))
+            val_libelle = c2.text_input("Libellé affiché (ex: Algérie, Oran, Mortiers Colles)", help=field_help("Libellé affiché (ex: Algérie, Oran, Mortiers Colles)", module="admin"))
+            ordre = c3.number_input("Ordre d'affichage", min_value=1, value=1, step=1, help=field_help("Ordre d'affichage", module="admin"))
 
-            if st.form_submit_button("➕ Ajouter l'élément", type="primary", on_click=_mark_admin_activity):
+            if st.form_submit_button("➕ Ajouter l'élément", type="primary", on_click=_mark_admin_activity, help=field_help("➕ Ajouter l'élément", module="admin")):
                 if val_code and val_libelle:
                     data_nouvel_element = {
                         "liste_code": liste_cible,
@@ -131,7 +131,7 @@ def gerer_listes_reference():
                         ["OUI", "NON"],
                         index=0 if statut_actuel == "OUI" else 1,
                         key=f"statut_{row.get('id', row.get('valeur_code'))}"
-                    )
+                    , help=field_help("Statut", module="admin"))
 
                     if nouveau_statut != statut_actuel:
                         result = update_hybrid("listes_reference", "id", str(row.get('id')), {"actif": nouveau_statut})
@@ -209,7 +209,7 @@ def render_editable_dataframe(sheet_name: str, id_col: str, can_write: bool, sel
 def _creer_brouillon_exoneration() -> None:
     """Formulaire de demande en attente, sans qualification fiscale automatique."""
     st.divider()
-    st.subheader("Préparer une attestation client — À VALIDER")
+    st.subheader("Préparer une attestation client — À VALIDER", help=topic_help("admin.exonerations"))
     st.caption(
         "La création d'un brouillon n'accorde aucune exonération. "
         "Référence de pièce réelle et portée SKU obligatoires. "
@@ -226,7 +226,7 @@ def _creer_brouillon_exoneration() -> None:
             "Création non confirmée : conserver l'identifiant d'opération. "
             "Reprendre sans changer le contenu pour éviter un doublon."
         )
-        if st.button("Reprendre la création", key="exo_resume_creation"):
+        if st.button("Reprendre la création", key="exo_resume_creation", help=field_help("Reprendre la création", module="admin")):
             try:
                 identifiant = creer_brouillon_attestation(
                     pending["payload"], operation_id=pending["operation_id"]
@@ -271,19 +271,19 @@ def _creer_brouillon_exoneration() -> None:
         client = st.selectbox(
             "Client concerné", list(client_options),
             format_func=lambda x: client_options[x],
-        )
+         help=field_help("Client concerné", module="admin"))
         portee = st.multiselect(
             "SKU explicitement couverts", list(sku_options),
             format_func=lambda x: sku_options[x],
-        )
-        reference = st.text_input("Référence de l'attestation reçue")
-        autorite = st.text_input("Autorité émettrice (à vérifier)")
-        piece = st.text_input("Référence interne de la pièce vérifiable")
-        justification = st.text_area("Objet / justification à examiner")
+         help=field_help("SKU explicitement couverts", module="admin"))
+        reference = st.text_input("Référence de l'attestation reçue", help=field_help("Référence de l'attestation reçue", module="admin"))
+        autorite = st.text_input("Autorité émettrice (à vérifier)", help=field_help("Autorité émettrice (à vérifier)", module="admin"))
+        piece = st.text_input("Référence interne de la pièce vérifiable", help=field_help("Référence interne de la pièce vérifiable", module="admin"))
+        justification = st.text_area("Objet / justification à examiner", help=field_help("Objet / justification à examiner", module="admin"))
         c1, c2 = st.columns(2)
-        debut = c1.date_input("Début de validité de la pièce")
-        fin = c2.date_input("Fin de validité de la pièce")
-        envoyer = st.form_submit_button("Créer le brouillon (sans exonération)")
+        debut = c1.date_input("Début de validité de la pièce", help=field_help("Début de validité de la pièce", module="admin"))
+        fin = c2.date_input("Fin de validité de la pièce", help=field_help("Fin de validité de la pièce", module="admin"))
+        envoyer = st.form_submit_button("Créer le brouillon (sans exonération)", help=field_help("Créer le brouillon (sans exonération)", module="admin"))
     if envoyer:
         payload = {
             "client_id": client, "sku_ids": list(portee),
@@ -343,7 +343,7 @@ def _controle_exonerations_tva(dossiers: list[dict]) -> None:
             "Résultat de transition incertain : conserver l'opération et "
             "reprendre avec le même contenu, sans nouvelle demande."
         )
-        if st.button("Reprendre la décision", key="exo_reprise_transition"):
+        if st.button("Reprendre la décision", key="exo_reprise_transition", help=field_help("Reprendre la décision", module="admin")):
             try:
                 identifiant = transition_attestation(
                     pending["action"],
@@ -362,7 +362,7 @@ def _controle_exonerations_tva(dossiers: list[dict]) -> None:
     choix = st.radio(
         "Décision fiscale", ["VALIDER", "REVOQUER"],
         horizontal=True, key="exo_action_fiscale",
-    )
+     help=field_help("Décision fiscale", module="admin"))
     attendu = "A_VALIDER" if choix == "VALIDER" else "VALIDEE"
     user = st.session_state.get("user")
     acteur = user.get("user_id") if isinstance(user, dict) else None
@@ -385,7 +385,7 @@ def _controle_exonerations_tva(dossiers: list[dict]) -> None:
         dossier = st.selectbox(
             "Attestation à contrôler", list(cibles),
             format_func=lambda x: cibles[x],
-        )
+         help=field_help("Attestation à contrôler", module="admin"))
         if choix == "VALIDER":
             st.caption(
                 "Contrôler la pièce authentique, sa portée, les plafonds "
@@ -393,22 +393,22 @@ def _controle_exonerations_tva(dossiers: list[dict]) -> None:
             )
             verification = st.date_input(
                 "Date effective de vérification", value=get_local_now().date()
-            )
-            avis = st.text_input("Référence de l'avis fiscal / documentaire")
+            , help=field_help("Date effective de vérification", module="admin"))
+            avis = st.text_input("Référence de l'avis fiscal / documentaire", help=field_help("Référence de l'avis fiscal / documentaire", module="admin"))
             confirme = st.checkbox(
                 "Je confirme la vérification documentaire indépendante"
-            )
+            , help=field_help("Je confirme la vérification documentaire indépendante", module="admin"))
             justification = {
                 "date_verification": verification.isoformat(),
                 "reference_avis_validation": avis,
                 "verification_documentaire": confirme,
             }
         else:
-            motif = st.text_area("Motif obligatoire de révocation")
+            motif = st.text_area("Motif obligatoire de révocation", help=field_help("Motif obligatoire de révocation", module="admin"))
             justification = {"motif_revocation": motif}
         executer = st.form_submit_button(
             "Confirmer la décision (écriture auditée)"
-        )
+        , help=field_help("Confirmer la décision (écriture auditée)", module="admin"))
 
     if not executer:
         return
@@ -447,7 +447,8 @@ def _controle_exonerations_tva(dossiers: list[dict]) -> None:
 
 def _revue_exonerations_tva_clients() -> None:
     """Consultation privée sans création, validation ni révocation depuis l'ERP."""
-    st.subheader("Attestations d'exonération TVA clients — revue sécurisée")
+    st.subheader("Attestations d'exonération TVA clients — revue sécurisée", help=topic_help("admin.exonerations"))
+    show_context_help(st, "admin.exonerations")
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
@@ -480,7 +481,8 @@ def _revue_exonerations_tva_clients() -> None:
 
 def _revue_qualification_fiscale_sku() -> None:
     """Revue documentaire des SKU depuis Supabase, sans écriture fiscale."""
-    st.subheader("Qualification TVA des SKU actifs — revue documentaire")
+    st.subheader("Qualification TVA des SKU actifs — revue documentaire", help=topic_help("admin.tva"))
+    show_context_help(st, "admin.tva")
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
@@ -524,7 +526,7 @@ def _revue_qualification_fiscale_sku() -> None:
 def _revue_nextgen_preparation() -> None:
     """Diagnostic uniquement; aucune habilitation fiscale conférée."""
     st.divider()
-    st.subheader("NextGen — préparation des SKU et matières")
+    st.subheader("NextGen — préparation des SKU et matières", help=topic_help("admin.qualite"))
     if not is_security_manager():
         st.info("Consultation réservée au SECURITY_MANAGER.")
         return
@@ -600,9 +602,10 @@ def show_admin_page():
         show_documents_page()
 
     with tab_qualite:
-        st.subheader("Contrôle transversal des référentiels")
+        st.subheader("Contrôle transversal des référentiels", help=topic_help("admin.qualite"))
+        show_context_help(st, "admin.qualite")
         st.caption("Audit en lecture seule : Clients, Fournisseurs, Produits, SKU et Matières premières. Aucune correction automatique.")
-        if st.button("Analyser les référentiels autorisés", key="ng_admin_audit_quality"):
+        if st.button("Analyser les référentiels autorisés", key="ng_admin_audit_quality", help=field_help("Analyser les référentiels autorisés", module="admin")):
             from modules.admin.data_quality import audit_autorise
             try:
                 bilan = audit_autorise()
@@ -622,7 +625,7 @@ def show_admin_page():
                 st.caption("Les statuts inactifs sont affichés séparément, sans être considérés comme des erreurs.")
         st.divider()
         st.caption("Ventes, Achats et Production : relations avec leurs référentiels.")
-        if st.button("Analyser les liens métier autorisés", key="ng_admin_audit_links"):
+        if st.button("Analyser les liens métier autorisés", key="ng_admin_audit_links", help=field_help("Analyser les liens métier autorisés", module="admin")):
             from modules.admin.data_quality import audit_operations_autorise
             try:
                 bilan_m = audit_operations_autorise()
@@ -640,7 +643,7 @@ def show_admin_page():
                     st.success("Aucun lien métier absent dans les périmètres contrôlés.")
         st.divider()
         st.caption("Stocks MP/PF et lots : anomalies de quantités et de références.")
-        if st.button("Analyser les stocks autorisés", key="ng_admin_audit_stocks"):
+        if st.button("Analyser les stocks autorisés", key="ng_admin_audit_stocks", help=field_help("Analyser les stocks autorisés", module="admin")):
             from modules.admin.stock_quality import audit_stocks_autorise
             try:
                 bilan_s = audit_stocks_autorise()
@@ -659,7 +662,7 @@ def show_admin_page():
                 else:
                     st.success("Aucune anomalie de structure Stocks détectée.")
                 st.caption("Audit indicatif : aucun rapprochement automatique des soldes avec les lots historiques.")
-        if st.button("Analyser les mouvements de stock autorisés", key="ng_admin_audit_moves"):
+        if st.button("Analyser les mouvements de stock autorisés", key="ng_admin_audit_moves", help=field_help("Analyser les mouvements de stock autorisés", module="admin")):
             from modules.admin.stock_quality import audit_stock_movements_autorise
             try:
                 moves = audit_stock_movements_autorise()
@@ -679,7 +682,7 @@ def show_admin_page():
                 st.caption("Ne reconstitue pas les soldes historiques : les mouvements antérieurs peuvent être incomplets.")
         st.divider()
         st.caption("Achats et Ventes : liens entre commandes, lignes, réceptions, livraisons et factures.")
-        if st.button("Analyser les flux Achats et Ventes autorisés", key="ng_admin_audit_flows"):
+        if st.button("Analyser les flux Achats et Ventes autorisés", key="ng_admin_audit_flows", help=field_help("Analyser les flux Achats et Ventes autorisés", module="admin")):
             from modules.admin.sales_purchases_quality import audit_sales_purchases_autorise
             try:
                 quality_flows = audit_sales_purchases_autorise()
@@ -705,38 +708,39 @@ def show_admin_page():
 
     # --- CLIENTS ---
     with tab1:
-        st.subheader("Gestion des Clients")
+        st.subheader("Gestion des Clients", help=topic_help("admin.clients"))
+        show_context_help(st, "admin.clients")
         if can_write and st.checkbox("Préparer : ➕ Ajouter un client",
-                                     value=False, key="ng_admin_create_client"):
+                                     value=False, key="ng_admin_create_client", help=field_help("Préparer : ➕ Ajouter un client", module="admin")):
             with st.expander("➕ Ajouter un client"):
                 st.markdown("**Informations de base**")
                 c1, c2, c3 = st.columns(3)
-                nom = c1.text_input("Nom de l'entreprise *", key="cli_nom")
-                cat = c2.selectbox("Catégorie", options=cat_client_opts, key="cli_cat")
-                type_c = c3.selectbox("Type", ["Entreprise", "Particulier"], key="cli_type")
+                nom = c1.text_input("Nom de l'entreprise *", key="cli_nom", help=field_help("Nom de l'entreprise *", module="admin"))
+                cat = c2.selectbox("Catégorie", options=cat_client_opts, key="cli_cat", help=field_help("Catégorie", module="admin"))
+                type_c = c3.selectbox("Type", ["Entreprise", "Particulier"], key="cli_type", help=field_help("Type", module="admin"))
 
                 st.markdown("**Coordonnées**")
                 c4, c5, c6 = st.columns(3)
-                pays = c4.selectbox("Pays", options=pays_opts, key="cli_pays")
+                pays = c4.selectbox("Pays", options=pays_opts, key="cli_pays", help=field_help("Pays", module="admin"))
 
                 parent_code = f"PAYS:{pays}" if pays else None
                 dict_wilaya = liste_to_dict(get_liste("WILAYA", parent_code=parent_code))
-                wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="cli_wilaya")
-                adresse = c6.text_input("Adresse", key="cli_adresse")
+                wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="cli_wilaya", help=field_help("Wilaya / Région", module="admin"))
+                adresse = c6.text_input("Adresse", key="cli_adresse", help=field_help("Adresse", module="admin"))
 
                 st.markdown("**Informations Légales & Contact**")
                 c7, c8, c9 = st.columns(3)
-                rc = c7.text_input("Registre de Commerce (RC)", key="cli_rc")
-                nif = c8.text_input("NIF", key="cli_nif")
-                nis = c9.text_input("NIS", key="cli_nis")
+                rc = c7.text_input("Registre de Commerce (RC)", key="cli_rc", help=field_help("Registre de Commerce (RC)", module="admin"))
+                nif = c8.text_input("NIF", key="cli_nif", help=field_help("NIF", module="admin"))
+                nis = c9.text_input("NIS", key="cli_nis", help=field_help("NIS", module="admin"))
 
                 c10, c11, c12 = st.columns(3)
-                nom_contact = c10.text_input("Nom du contact", key="cli_nom_c")
-                poste_contact = c11.text_input("Poste", key="cli_poste_c")
-                mobile_contact = c12.text_input("Mobile / Téléphone", key="cli_mob_c")
-                email_contact = st.text_input("Email du contact", key="cli_email_c")
+                nom_contact = c10.text_input("Nom du contact", key="cli_nom_c", help=field_help("Nom du contact", module="admin"))
+                poste_contact = c11.text_input("Poste", key="cli_poste_c", help=field_help("Poste", module="admin"))
+                mobile_contact = c12.text_input("Mobile / Téléphone", key="cli_mob_c", help=field_help("Mobile / Téléphone", module="admin"))
+                email_contact = st.text_input("Email du contact", key="cli_email_c", help=field_help("Email du contact", module="admin"))
 
-                if st.button("Enregistrer le client", type="primary", key="btn_save_client", on_click=_mark_admin_activity):
+                if st.button("Enregistrer le client", type="primary", key="btn_save_client", on_click=_mark_admin_activity, help=field_help("Enregistrer le client", module="admin")):
                     if nom:
                         _creation_confirmee(add_client, {
                             "nom": nom, "categorie_client": cat, "type_client": type_c,
@@ -758,43 +762,44 @@ def show_admin_page():
         render_catalog_search("clients")
         # L'éditeur complet reste disponible sur demande, jamais au rendu initial.
         if st.checkbox("Afficher / modifier le référentiel Clients",
-                       value=False, key="ng_admin_full_clients"):
+                       value=False, key="ng_admin_full_clients", help=field_help("Afficher / modifier le référentiel Clients", module="admin")):
             render_editable_dataframe("Clients", "client_id", can_write, config_cli)
 
     # --- FOURNISSEURS ---
     with tab2:
-        st.subheader("Gestion des Fournisseurs")
+        st.subheader("Gestion des Fournisseurs", help=topic_help("admin.fournisseurs"))
+        show_context_help(st, "admin.fournisseurs")
         if can_write and st.checkbox("Préparer : ➕ Ajouter un fournisseur",
-                                     value=False, key="ng_admin_create_fournisseur"):
+                                     value=False, key="ng_admin_create_fournisseur", help=field_help("Préparer : ➕ Ajouter un fournisseur", module="admin")):
             with st.expander("➕ Ajouter un fournisseur"):
                 st.markdown("**Informations de base**")
                 c1, c2, c3 = st.columns(3)
-                nom = c1.text_input("Nom du fournisseur *", key="fou_nom")
-                categorie = c2.text_input("Catégorie d'achats", key="fou_cat")
-                type_ent = c3.selectbox("Type d'entreprise", ["Fabricant", "Distributeur", "Grossiste", "Autre"], key="fou_type")
+                nom = c1.text_input("Nom du fournisseur *", key="fou_nom", help=field_help("Nom du fournisseur *", module="admin"))
+                categorie = c2.text_input("Catégorie d'achats", key="fou_cat", help=field_help("Catégorie d'achats", module="admin"))
+                type_ent = c3.selectbox("Type d'entreprise", ["Fabricant", "Distributeur", "Grossiste", "Autre"], key="fou_type", help=field_help("Type d'entreprise", module="admin"))
 
                 st.markdown("**Coordonnées & Logistique**")
                 c4, c5, c6 = st.columns(3)
-                pays = c4.selectbox("Pays d'origine", options=pays_opts, key="fou_pays")
+                pays = c4.selectbox("Pays d'origine", options=pays_opts, key="fou_pays", help=field_help("Pays d'origine", module="admin"))
 
                 parent_code = f"PAYS:{pays}" if pays else None
                 dict_wilaya = liste_to_dict(get_liste("WILAYA", parent_code=parent_code))
-                wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="fou_wilaya")
-                delai = c6.number_input("Délai approvisionnement (jours)", min_value=0, step=1, key="fou_delai")
+                wilaya_aj = c5.selectbox("Wilaya / Région", options=list(dict_wilaya.keys()) if dict_wilaya else wilaya_opts, key="fou_wilaya", help=field_help("Wilaya / Région", module="admin"))
+                delai = c6.number_input("Délai approvisionnement (jours)", min_value=0, step=1, key="fou_delai", help=field_help("Délai approvisionnement (jours)", module="admin"))
 
                 st.markdown("**Informations Légales & Contact**")
                 c7, c8, c9 = st.columns(3)
-                rc = c7.text_input("Registre de Commerce (RC)", key="fou_rc")
-                nif = c8.text_input("NIF", key="fou_nif")
-                nis = c9.text_input("NIS", key="fou_nis")
+                rc = c7.text_input("Registre de Commerce (RC)", key="fou_rc", help=field_help("Registre de Commerce (RC)", module="admin"))
+                nif = c8.text_input("NIF", key="fou_nif", help=field_help("NIF", module="admin"))
+                nis = c9.text_input("NIS", key="fou_nis", help=field_help("NIS", module="admin"))
 
                 c10, c11, c12 = st.columns(3)
-                nom_contact = c10.text_input("Nom du contact", key="fou_nom_c")
-                poste_contact = c11.text_input("Poste", key="fou_poste_c")
-                mobile_contact = c12.text_input("Mobile / Téléphone", key="fou_mob_c")
-                email_contact = st.text_input("Email du contact", key="fou_email_c")
+                nom_contact = c10.text_input("Nom du contact", key="fou_nom_c", help=field_help("Nom du contact", module="admin"))
+                poste_contact = c11.text_input("Poste", key="fou_poste_c", help=field_help("Poste", module="admin"))
+                mobile_contact = c12.text_input("Mobile / Téléphone", key="fou_mob_c", help=field_help("Mobile / Téléphone", module="admin"))
+                email_contact = st.text_input("Email du contact", key="fou_email_c", help=field_help("Email du contact", module="admin"))
 
-                if st.button("Enregistrer le fournisseur", type="primary", key="btn_save_fou", on_click=_mark_admin_activity):
+                if st.button("Enregistrer le fournisseur", type="primary", key="btn_save_fou", on_click=_mark_admin_activity, help=field_help("Enregistrer le fournisseur", module="admin")):
                     if nom:
                         _creation_confirmee(add_fournisseur, {
                             "nom": nom, "categorie": categorie, "type_entreprise": type_ent,
@@ -815,41 +820,42 @@ def show_admin_page():
         render_catalog_search("fournisseurs")
         # L'éditeur complet reste disponible sur demande, jamais au rendu initial.
         if st.checkbox("Afficher / modifier le référentiel Fournisseurs",
-                       value=False, key="ng_admin_full_fournisseurs"):
+                       value=False, key="ng_admin_full_fournisseurs", help=field_help("Afficher / modifier le référentiel Fournisseurs", module="admin")):
             render_editable_dataframe("Fournisseurs", "fournisseur_id", can_write, config_fou)
 
     # --- MATIERES PREMIERES ---
     with tab3:
-        st.subheader("Matières Premières")
+        st.subheader("Matières Premières", help=topic_help("admin.matieres"))
+        show_context_help(st, "admin.matieres")
         if can_write and st.checkbox("Préparer : ➕ Nouvelle Matière Première",
-                                     value=False, key="ng_admin_create_mp"):
+                                     value=False, key="ng_admin_create_mp", help=field_help("Préparer : ➕ Nouvelle Matière Première", module="admin")):
             with st.expander("➕ Nouvelle Matière Première"):
                 with st.form("form_mp"):
                     st.markdown("**Informations de base**")
                     c1, c2 = st.columns(2)
-                    nom = c1.text_input("Désignation *")
-                    cat_mp = c2.selectbox("Catégorie", options=cat_mp_opts)
+                    nom = c1.text_input("Désignation *", help=field_help("Désignation *", module="admin"))
+                    cat_mp = c2.selectbox("Catégorie", options=cat_mp_opts, help=field_help("Catégorie", module="admin"))
 
-                    unite = c1.selectbox("Unité de stock", options=unite_opts)
-                    origine_pays = c2.selectbox("Pays d'origine", options=pays_opts)
+                    unite = c1.selectbox("Unité de stock", options=unite_opts, help=field_help("Unité de stock", module="admin"))
+                    origine_pays = c2.selectbox("Pays d'origine", options=pays_opts, help=field_help("Pays d'origine", module="admin"))
 
                     st.markdown("**Gestion des Stocks & Logistique**")
                     c3, c4, c5 = st.columns(3)
-                    poids_net = c3.number_input("Poids net unitaire", min_value=0.0, step=1.0)
-                    stock_mini = c4.number_input("Stock minimum", min_value=0.0, step=1.0)
-                    stock_maxi = c5.number_input("Stock maximum", min_value=0.0, step=1.0)
+                    poids_net = c3.number_input("Poids net unitaire", min_value=0.0, step=1.0, help=field_help("Poids net unitaire", module="admin"))
+                    stock_mini = c4.number_input("Stock minimum", min_value=0.0, step=1.0, help=field_help("Stock minimum", module="admin"))
+                    stock_maxi = c5.number_input("Stock maximum", min_value=0.0, step=1.0, help=field_help("Stock maximum", module="admin"))
 
                     c6, c7 = st.columns(2)
-                    duree_peremption = c6.number_input("Durée de péremption (jours)", min_value=0, step=1)
-                    hs = c7.selectbox("Code SH (Douane)", options=hs_code_opts)
+                    duree_peremption = c6.number_input("Durée de péremption (jours)", min_value=0, step=1, help=field_help("Durée de péremption (jours)", module="admin"))
+                    hs = c7.selectbox("Code SH (Douane)", options=hs_code_opts, help=field_help("Code SH (Douane)", module="admin"))
 
-                    taux_dedouanement = st.number_input("Taux de dédouanement (%)", min_value=0.0, max_value=100.0, step=1.0)
+                    taux_dedouanement = st.number_input("Taux de dédouanement (%)", min_value=0.0, max_value=100.0, step=1.0, help=field_help("Taux de dédouanement (%)", module="admin"))
 
                     st.markdown("**Documents Techniques**")
-                    lien_ft = st.text_input("Lien Fiche Technique (URL)")
-                    lien_fds = st.text_input("Lien Fiche de Données de Sécurité - FDS (URL)")
+                    lien_ft = st.text_input("Lien Fiche Technique (URL)", help=field_help("Lien Fiche Technique (URL)", module="admin"))
+                    lien_fds = st.text_input("Lien Fiche de Données de Sécurité - FDS (URL)", help=field_help("Lien Fiche de Données de Sécurité - FDS (URL)", module="admin"))
 
-                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity):
+                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity, help=field_help("Enregistrer", module="admin")):
                         if nom:
                             _creation_confirmee(add_matiere_premiere, {
                                 "nom": nom, "categorie_mp": cat_mp, "unite_stock": unite,
@@ -870,22 +876,23 @@ def show_admin_page():
         from modules.admin.catalog_search_view import render_catalog_search
         render_catalog_search("matieres_premieres")
         if st.checkbox("Afficher / modifier le référentiel Matières premières",
-                       value=False, key="ng_admin_full_matieres_premieres"):
+                       value=False, key="ng_admin_full_matieres_premieres", help=field_help("Afficher / modifier le référentiel Matières premières", module="admin")):
             render_editable_dataframe("MatieresPremieres", "mp_id", can_write, config_mp)
 
     # --- PRODUITS ---
     with tab4:
-        st.subheader("Produits Finis")
+        st.subheader("Produits Finis", help=topic_help("admin.produits"))
+        show_context_help(st, "admin.produits")
         if can_write and st.checkbox("Préparer : ➕ Nouveau Produit",
-                                     value=False, key="ng_admin_create_product"):
+                                     value=False, key="ng_admin_create_product", help=field_help("Préparer : ➕ Nouveau Produit", module="admin")):
             with st.expander("➕ Nouveau Produit"):
                 with st.form("form_pf"):
                     c1, c2 = st.columns(2)
-                    nom = c1.text_input("Nom du Produit *")
-                    cat_pf = c2.selectbox("Catégorie", options=cat_pf_opts)
-                    unite = c1.selectbox("Unité de production", options=unite_opts)
+                    nom = c1.text_input("Nom du Produit *", help=field_help("Nom du Produit *", module="admin"))
+                    cat_pf = c2.selectbox("Catégorie", options=cat_pf_opts, help=field_help("Catégorie", module="admin"))
+                    unite = c1.selectbox("Unité de production", options=unite_opts, help=field_help("Unité de production", module="admin"))
 
-                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity):
+                    if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity, help=field_help("Enregistrer", module="admin")):
                         if nom:
                             _creation_confirmee(add_produit, {"nom": nom, "categorie_pf": cat_pf, "unite_production": unite}, "Produit")
                         else:
@@ -899,14 +906,15 @@ def show_admin_page():
         render_catalog_search("produits")
         # L'éditeur complet reste disponible sur demande, jamais au rendu initial.
         if st.checkbox("Afficher / modifier le référentiel Produits",
-                       value=False, key="ng_admin_full_produits"):
+                       value=False, key="ng_admin_full_produits", help=field_help("Afficher / modifier le référentiel Produits", module="admin")):
             render_editable_dataframe("Produits", "pf_id", can_write, config_pf)
 
     # --- SKUs ---
     with tab5:
-        st.subheader("Conditionnements (SKU)")
+        st.subheader("Conditionnements (SKU)", help=topic_help("admin.sku"))
+        show_context_help(st, "admin.sku")
         if can_write and st.checkbox("Préparer la création d’un SKU",
-                                     value=False, key="ng_admin_create_sku"):
+                                     value=False, key="ng_admin_create_sku", help=field_help("Préparer la création d’un SKU", module="admin")):
             df_pf = get_dataframe("Produits", only_active=True)
             df_mp = get_dataframe("MatieresPremieres", only_active=True)
 
@@ -922,23 +930,23 @@ def show_admin_page():
 
                 with st.expander("➕ Nouveau SKU"):
                     with st.form("form_sku"):
-                        pf_id = st.selectbox("Produit lié", options=list(liste_pf.keys()), format_func=lambda x: liste_pf[x])
+                        pf_id = st.selectbox("Produit lié", options=list(liste_pf.keys()), format_func=lambda x: liste_pf[x], help=field_help("Produit lié", module="admin"))
 
                         st.markdown("**Informations commerciales**")
                         c1, c2 = st.columns(2)
-                        format_val = c1.text_input("Format (ex: Sac 25kg)")
-                        prix = c2.number_input("Prix de vente défaut (DZD)", min_value=0.0, step=10.0)
+                        format_val = c1.text_input("Format (ex: Sac 25kg)", help=field_help("Format (ex: Sac 25kg)", module="admin"))
+                        prix = c2.number_input("Prix de vente défaut (DZD)", min_value=0.0, step=10.0, help=field_help("Prix de vente défaut (DZD)", module="admin"))
 
                         st.markdown("**Informations techniques (Production & Stocks)**")
                         c3, c4 = st.columns(2)
-                        emballage_mp_id = c3.selectbox("Emballage principal", options=[""] + list(liste_emballage.keys()), format_func=lambda x: liste_emballage.get(x, "Aucun" if x == "" else x))
-                        poids_net = c4.number_input("Poids net (Kg/L)", min_value=0.01, step=1.0)
+                        emballage_mp_id = c3.selectbox("Emballage principal", options=[""] + list(liste_emballage.keys()), format_func=lambda x: liste_emballage.get(x, "Aucun" if x == "" else x), help=field_help("Emballage principal", module="admin"))
+                        poids_net = c4.number_input("Poids net (Kg/L)", min_value=0.01, step=1.0, help=field_help("Poids net (Kg/L)", module="admin"))
 
                         c5, c6 = st.columns(2)
-                        unite = c5.selectbox("Unité de vente", options=unite_opts)
-                        facteur = c6.number_input("Facteur de conversion (vs unité prod)", min_value=0.001, value=1.0, step=0.1)
+                        unite = c5.selectbox("Unité de vente", options=unite_opts, help=field_help("Unité de vente", module="admin"))
+                        facteur = c6.number_input("Facteur de conversion (vs unité prod)", min_value=0.001, value=1.0, step=0.1, help=field_help("Facteur de conversion (vs unité prod)", module="admin"))
 
-                        if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity):
+                        if st.form_submit_button("Enregistrer", type="primary", on_click=_mark_admin_activity, help=field_help("Enregistrer", module="admin")):
                             _creation_confirmee(add_sku, {
                                 "pf_id": pf_id, "format": format_val, "prix_vente_defaut": prix,
                                 "emballage_mp_id": emballage_mp_id, "poids_net": poids_net, "unite_vente": unite,
@@ -950,7 +958,7 @@ def show_admin_page():
         from modules.admin.catalog_search_view import render_catalog_search
         render_catalog_search("sku_conditionnement")
         if st.checkbox("Afficher / modifier le référentiel SKU",
-                       value=False, key="ng_admin_full_sku_conditionnement"):
+                       value=False, key="ng_admin_full_sku_conditionnement", help=field_help("Afficher / modifier le référentiel SKU", module="admin")):
             df_produits = get_dataframe("Produits")
             pf_opts = []
             if not df_produits.empty and "pf_id" in df_produits.columns:
@@ -970,9 +978,10 @@ def show_admin_page():
 
     # --- LISTES DE CHOIX ---
     with tab_listes:
+        show_context_help(st, "admin.listes")
         if can_write:
             if st.checkbox("Ouvrir la gestion des listes de choix",
-                           value=False, key="ng_admin_open_reference_lists"):
+                           value=False, key="ng_admin_open_reference_lists", help=field_help("Ouvrir la gestion des listes de choix", module="admin")):
                 gerer_listes_reference()
             else:
                 st.caption("Ouvrez la gestion pour consulter ou modifier les listes autorisées.")
@@ -1006,17 +1015,18 @@ def show_user_management():
 
     # ONGLET 1 : Création de compte
     with tab1:
-        st.subheader("Ajouter un nouvel accès")
+        st.subheader("Ajouter un nouvel accès", help=topic_help("admin.utilisateur"))
+        show_context_help(st, "admin.utilisateur")
         with st.form("form_add_user", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                nom = st.text_input("Nom complet de l'employé *")
-                login = st.text_input("Identifiant de connexion (ex: jdupont) *")
+                nom = st.text_input("Nom complet de l'employé *", help=field_help("Nom complet de l'employé *", module="admin"))
+                login = st.text_input("Identifiant de connexion (ex: jdupont) *", help=field_help("Identifiant de connexion (ex: jdupont) *", module="admin"))
             with col2:
-                role = st.selectbox("Rôle non privilégié *", STANDARD_ROLES)
-                mdp = st.text_input("Mot de passe temporaire *", type="password")
+                role = st.selectbox("Rôle non privilégié *", STANDARD_ROLES, help=field_help("Rôle non privilégié *", module="admin"))
+                mdp = st.text_input("Mot de passe temporaire *", type="password", help=field_help("Mot de passe temporaire *", module="admin"))
 
-            submit_user = st.form_submit_button("Enregistrer l'utilisateur", use_container_width=True)
+            submit_user = st.form_submit_button("Enregistrer l'utilisateur", use_container_width=True, help=field_help("Enregistrer l'utilisateur", module="admin"))
 
             if submit_user:
                 if nom and login and role and mdp:
@@ -1031,21 +1041,22 @@ def show_user_management():
 
     # ONGLET 2 : Gestion des permissions
     with tab2:
-        st.subheader("Attribuer des droits d'accès à un rôle")
+        st.subheader("Attribuer des droits d'accès à un rôle", help=topic_help("admin.permissions"))
+        show_context_help(st, "admin.permissions")
         st.info("Rappel : Les statuts doivent s'écrire 'OUI' ou 'NON'.")
 
         with st.form("form_add_perm", clear_on_submit=True):
-            role_cible = st.selectbox("Rôle concerné *", STANDARD_ROLES)
+            role_cible = st.selectbox("Rôle concerné *", STANDARD_ROLES, help=field_help("Rôle concerné *", module="admin"))
             modules_disponibles = STANDARD_MODULES
-            module_cible = st.selectbox("Module de l'ERP", modules_disponibles)
+            module_cible = st.selectbox("Module de l'ERP", modules_disponibles, help=field_help("Module de l'ERP", module="admin"))
 
             col_l, col_e = st.columns(2)
             with col_l:
-                droit_lecture = st.selectbox("Peut lire les données ?", ["OUI", "NON"], index=0)
+                droit_lecture = st.selectbox("Peut lire les données ?", ["OUI", "NON"], index=0, help=field_help("Peut lire les données ?", module="admin"))
             with col_e:
-                droit_ecriture = st.selectbox("Peut modifier/créer des données ?", ["OUI", "NON"], index=1)
+                droit_ecriture = st.selectbox("Peut modifier/créer des données ?", ["OUI", "NON"], index=1, help=field_help("Peut modifier/créer des données ?", module="admin"))
 
-            submit_perm = st.form_submit_button("Ajouter la permission", use_container_width=True)
+            submit_perm = st.form_submit_button("Ajouter la permission", use_container_width=True, help=field_help("Ajouter la permission", module="admin"))
 
             if submit_perm:
                 if role_cible:
@@ -1060,7 +1071,8 @@ def show_user_management():
 
     # ONGLET 3 : Consultation rapide
     with tab3:
-        st.subheader("Annuaire des Utilisateurs")
+        st.subheader("Annuaire des Utilisateurs", help=topic_help("admin.annuaire"))
+        show_context_help(st, "admin.annuaire")
         df_users = get_users()
         if not df_users.empty:
             cols_a_afficher = [col for col in df_users.columns if col != "hash_mdp"]
@@ -1068,7 +1080,7 @@ def show_user_management():
         else:
             st.write("Aucun utilisateur trouvé.")
 
-        st.subheader("Matrice des Permissions")
+        st.subheader("Matrice des Permissions", help=topic_help("admin.annuaire"))
         df_perms = get_permissions()
         if not df_perms.empty:
             st.dataframe(df_perms, use_container_width=True, hide_index=True)
@@ -1077,10 +1089,11 @@ def show_user_management():
 
     # ONGLET 4 : Piste d'audit (Logs)
     with tab4:
-        st.subheader("Historique des Actions (Audit Trail)")
+        st.subheader("Historique des Actions (Audit Trail)", help=topic_help("admin.audit"))
+        show_context_help(st, "admin.audit")
         st.info("Les créations sensibles réalisées via RPC sont auditées atomiquement ; les anciennes actions peuvent être en mode best-effort.")
 
-        if st.button("🔄 Rafraîchir les logs", on_click=_mark_admin_activity):
+        if st.button("🔄 Rafraîchir les logs", on_click=_mark_admin_activity, help=field_help("🔄 Rafraîchir les logs", module="admin")):
             pass
 
         df_logs = get_audit_logs()

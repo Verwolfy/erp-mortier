@@ -6,6 +6,7 @@ import json
 from uuid import uuid4
 
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 COMPANY = "SARL NEXT GENRATION BUILDING SOLUTIONS"
 ADDRESS = "ERRICH Bt N°3, BLOC N°3, Et N°2, SECTION N° 7, ILOT N°48, BOUIRA"
@@ -177,14 +178,15 @@ def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
 
 def show_documents_page():
     st.title("Documents administratifs NEXTGEN")
+    show_context_help(st, "documents.edition")
     st.caption("20 modèles administratifs + fiches techniques et FDS - exports PDF/DOCX sans écriture Supabase")
     st.warning("Aucune pièce officielle n'est émise ici. Le QR fournit un identifiant unique, pas encore un suivi en ligne.")
-    group = st.selectbox("Module", list(DOCUMENTS) + ["Fiches produits"], key="doc_group")
+    group = st.selectbox("Module", list(DOCUMENTS) + ["Fiches produits"], key="doc_group", help=field_help("Module", module="documents"))
     if group == "Fiches produits":
         from modules.documents.product_sheets import show_product_sheets_page
         show_product_sheets_page()
         return
-    kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind")
+    kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind", help=field_help("Type de document", module="documents"))
     doc_key = "nextgen_doc_draft"
     if st.session_state.get("nextgen_doc_type") != kind:
         for widget_key in list(st.session_state):
@@ -197,14 +199,15 @@ def show_documents_page():
         st.session_state[doc_key] = new_draft(kind)
         st.session_state["nextgen_doc_type"] = kind
     doc = st.session_state[doc_key]
-    st.subheader("Reprendre un brouillon")
+    st.subheader("Reprendre un brouillon", help=topic_help("documents.import"))
+    show_context_help(st, "documents.import")
     import_file = st.file_uploader(
         "Importer un brouillon JSON exporté précédemment (300 Ko maximum)",
         type=["json"], key="ng_draft_import",
         help="Lecture locale : aucune création de pièce dans Supabase.",
     )
     if st.button("Charger le brouillon JSON", key="ng_draft_import_button",
-                 disabled=import_file is None):
+                 disabled=import_file is None, help=field_help("Charger le brouillon JSON", module="documents")):
         from modules.documents.draft_io import read_draft_json
         try:
             imported = read_draft_json(import_file.getvalue(), kind)
@@ -229,7 +232,7 @@ def show_documents_page():
     )
     with st.expander("Préremplir depuis les référentiels (lecture seule)", expanded=False):
         st.caption("Les données restent modifiables. Aucun document, tarif ou taxe n'est validé automatiquement.")
-        if st.button("Charger les référentiels autorisés", key="ng_load_refs"):
+        if st.button("Charger les référentiels autorisés", key="ng_load_refs", help=field_help("Charger les référentiels autorisés", module="documents")):
             try:
                 parties = list_parties(kind)
                 skus = list_skus(kind)
@@ -254,9 +257,9 @@ def show_documents_page():
                         format_func=lambda k: "Sélectionner..." if not k else
                                     by_id[k]["nom"] + " (" + k + ")",
                         key="ng_party_choice",
-                    )
+                     help=field_help("Client / fournisseur", module="documents"))
                     if st.button("Reprendre les coordonnées du tiers",
-                                 key="ng_apply_party", disabled=not choice):
+                                 key="ng_apply_party", disabled=not choice, help=field_help("Reprendre les coordonnées du tiers", module="documents")):
                         st.session_state[doc_key] = apply_party(doc, by_id[choice])
                         for k in ("doc_tiers", "doc_address"):
                             st.session_state.pop(k, None)
@@ -273,7 +276,7 @@ def show_documents_page():
                         format_func=lambda k: "Sélectionner..." if not k else
                                     by_sku[k]["designation"] + " — " + k,
                         key="ng_sku_choice",
-                    )
+                     help=field_help("Produit / conditionnement", module="documents"))
                     if selected:
                         st.caption(
                             "Prix catalogue indicatif : " +
@@ -281,7 +284,7 @@ def show_documents_page():
                             " DZD. Prix à saisir et confirmer manuellement."
                         )
                     if st.button("Ajouter ce SKU au brouillon", key="ng_apply_sku",
-                                 disabled=not selected):
+                                 disabled=not selected, help=field_help("Ajouter ce SKU au brouillon", module="documents")):
                         try:
                             st.session_state[doc_key] = append_sku(doc, by_sku[selected])
                         except ValueError as exc:
@@ -303,9 +306,9 @@ def show_documents_page():
                         format_func=lambda key: "Sélectionner..." if not key else
                                     by_material[key]["designation"] + " — " + key,
                         key="ng_material_choice",
-                    )
+                     help=field_help("Matière première", module="documents"))
                     if st.button("Ajouter cette matière au brouillon",
-                                 key="ng_apply_material", disabled=not selected_mp):
+                                 key="ng_apply_material", disabled=not selected_mp, help=field_help("Ajouter cette matière au brouillon", module="documents")):
                         try:
                             st.session_state[doc_key] = append_material(
                                 doc, by_material[selected_mp])
@@ -319,16 +322,17 @@ def show_documents_page():
                             st.rerun()
                 else:
                     st.info("Aucune matière première active accessible.")
-    doc["numero"] = st.text_input("Numéro / référence", value=doc["numero"], key="doc_number")
-    doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date"))
-    doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers")
-    doc["tiers_adresse"] = st.text_input("Adresse", value=doc["tiers_adresse"], key="doc_address")
-    doc["objet"] = st.text_input("Objet", value=doc["objet"], key="doc_subject")
+    doc["numero"] = st.text_input("Numéro / référence", value=doc["numero"], key="doc_number", help=field_help("Numéro / référence", module="documents"))
+    doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date", help=field_help("Date", module="documents")))
+    doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers", help=field_help("Client / fournisseur / service", module="documents"))
+    doc["tiers_adresse"] = st.text_input("Adresse", value=doc["tiers_adresse"], key="doc_address", help=field_help("Adresse", module="documents"))
+    doc["objet"] = st.text_input("Objet", value=doc["objet"], key="doc_subject", help=field_help("Objet", module="documents"))
     from modules.documents.layout_nextgen import columns_for, FINANCIAL_KINDS
     columns = columns_for(kind)
     if not doc["items"]:
         doc["items"] = [{key: "" for key, _ in columns}]
-    st.subheader("Lignes")
+    st.subheader("Lignes", help=topic_help("documents.lignes"))
+    show_context_help(st, "documents.lignes")
     st.caption("Saisie simplifiée, sans composant DataFrame.")
     actions = st.columns(2)
     if actions[0].button("➕ Ajouter une ligne", key="ng_line_add"):
@@ -367,7 +371,7 @@ def show_documents_page():
         doc["total_taxes"] = st.text_input(
             "Montant des taxes validé, en DZD (laisser vide si inconnu)",
             value=str(doc.get("total_taxes") or ""), key="ng_doc_taxes",
-        )
+         help=field_help("Montant des taxes validé, en DZD (laisser vide si inconnu)", module="documents"))
         result = calculate_financial_draft(doc["items"], doc["total_taxes"])
         doc["items"] = result["items"]
         doc["total_ht"] = result["total_ht"]
@@ -384,7 +388,7 @@ def show_documents_page():
         else:
             st.caption("Total TTC non calculé sans montant de taxes validé.")
         st.caption("Aucun taux fiscal calculé automatiquement ; brouillon non émis.")
-    doc["observations"] = st.text_area("Observations", value=doc["observations"])
+    doc["observations"] = st.text_area("Observations", value=doc["observations"], help=field_help("Observations", module="documents"))
     st.code(doc["trace_id"], language=None)
     from modules.documents.trace_integrity import draft_sha256
     try:
@@ -394,7 +398,8 @@ def show_documents_page():
     else:
         st.caption("Empreinte SHA-256 locale (sans preuve d'émission ou de certification) :")
         st.code(fingerprint, language=None)
-    st.subheader("Identité visuelle")
+    st.subheader("Identité visuelle", help=topic_help("documents.logo"))
+    show_context_help(st, "documents.logo")
     st.caption("Logo officiel HD NEXTGEN installé par défaut (2048 × 868 pixels).")
     uploaded_logo = st.file_uploader(
         "Logo officiel haute définition (JPG ou PNG, 4 Mo maximum)",

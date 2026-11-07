@@ -3,6 +3,7 @@ import time
 import logging
 
 import streamlit as st
+from modules.help.contextual import field_help
 
 from modules.auth.service import AuthenticationBackendError, authenticate_user
 _LOG = logging.getLogger(__name__)
@@ -35,8 +36,10 @@ def show_login_page():
         st.session_state["lockout_time"] = 0
 
     with st.form("login_form"):
-        login = st.text_input("Identifiant (Login)", autocomplete="username")
-        password = st.text_input("Mot de passe", type="password", autocomplete="current-password")
+        login = st.text_input("Identifiant (Login)", autocomplete="username",
+                              help="Saisir votre identifiant ERP personnel, sans le partager.")
+        password = st.text_input("Mot de passe", type="password", autocomplete="current-password",
+                                 help=field_help("Mot de passe", module="authentification"))
         submitted = st.form_submit_button("Se connecter", type="primary", use_container_width=True)
 
     if not submitted:

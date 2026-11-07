@@ -1,8 +1,25 @@
 """Guide utilisateur aligné sur les écrans disponibles, sans écriture métier."""
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help
 
 
 HELP_SECTIONS = {
+    "ⓘ Aide contextuelle (survol et clic)": """
+**Dans chaque rubrique ERP :** survolez l'icône d'aide d'un titre, champ ou
+bouton pour consulter une explication courte. Cliquez sur le bouton
+**ⓘ Aide : [nom de la rubrique]** pour ouvrir trois points : notion,
+comment procéder et contrôles avant validation.
+
+Dans **Production > Consommations et contrôles**, choisissez la page
+des historiques, puis cliquez sur **Afficher l'historique Production**.
+Le chargement est volontairement manuel et paginé. Une liste vide ne signifie
+pas nécessairement une erreur ni l'absence d'autres pages.
+
+Sur téléphone ou tablette, utilisez l'aide cliquable plutôt que le survol.
+Les aides ne changent jamais les permissions, montants, stocks ou pièces SCF.
+Aucune transaction ne doit être rejouée après une réponse incertaine sans
+vérifier d'abord la base.
+""",
     "🏠 Introduction": """
 Cet ERP centralise les référentiels, achats, stocks, production, ventes et suivis.
 Les menus visibles dépendent de vos habilitations. Une session inactive expire
@@ -416,6 +433,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
+    show_context_help(st, "help.guide")
     st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-11")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")

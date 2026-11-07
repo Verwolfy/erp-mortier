@@ -529,7 +529,11 @@ def test_scf_balance_vue_refusee_sans_droit_specifique(ui):
 
 def test_scf_balance_aucune_lecture_avant_action(ui):
     ui.mod._scf_balance_tab("USR-1")
-    ui.st.button.assert_called_once_with("Charger la balance SCF", key="finance_scf_load")
+    ui.st.button.assert_called_once()
+    call = ui.st.button.call_args
+    assert call.args == ("Charger la balance SCF",)
+    assert call.kwargs["key"] == "finance_scf_load"
+    assert isinstance(call.kwargs["help"], str)
     ui.st.metric.assert_not_called()
 
 

@@ -252,7 +252,7 @@ def test_preflight_runs_again_before_validation_rpc(ui):
 
 
 def test_documenting_pool_sends_scf_piece_line_and_reason(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Documenter la charge"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Documenter la charge"
     ui.st.text_input.side_effect = lambda label, **kw: {
         "Identifiant du pool analytique": "POOL-TEST",
         "UUID de la pièce SCF validée": "11111111-1111-4111-8111-111111111111",
@@ -265,7 +265,7 @@ def test_documenting_pool_sends_scf_piece_line_and_reason(ui):
 
 
 def test_documenting_error_does_not_claim_success(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Documenter la charge"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Documenter la charge"
     ui.svc.document_pool.side_effect = ValueError("invalid SCF")
     ui.view.show_cost_reference(True)
     ui.st.success.assert_not_called()
@@ -273,14 +273,14 @@ def test_documenting_error_does_not_claim_success(ui):
 
 
 def test_creation_of_period_keeps_dates(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Créer la période"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Créer la période"
     ui.svc.create_period.return_value = "NEW-PERIOD"
     ui.view.show_cost_reference(True)
     ui.svc.create_period.assert_called_once_with("TEST", "2026-11-06", "2026-11-06")
 
 
 def test_pool_creation_starts_in_simulation(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer la charge"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Enregistrer la charge"
     ui.st.text_input.side_effect = lambda label, **kw: "5" if label == "Montant analytique (DZD)" else "TEST"
     ui.view.show_cost_reference(True)
     ui.svc.add_pool.assert_called_once_with(
@@ -288,7 +288,7 @@ def test_pool_creation_starts_in_simulation(ui):
 
 
 def test_driver_uses_selected_basis_and_of(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer l'assiette"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Enregistrer l'assiette"
     ui.st.text_input.side_effect = lambda label, **kw: "5" if label == "Valeur de la clé" else "TEST"
     ui.view.show_cost_reference(True)
     ui.svc.set_driver.assert_called_once_with(
@@ -296,7 +296,7 @@ def test_driver_uses_selected_basis_and_of(ui):
 
 
 def test_create_nature_does_not_create_charge(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Créer la nature"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Créer la nature"
     ui.view.show_cost_reference(True)
     ui.svc.create_nature.assert_called_once_with(
         "TEST", "TEST", "Motif de test suffisamment detaille")
@@ -304,7 +304,7 @@ def test_create_nature_does_not_create_charge(ui):
 
 
 def test_six_decimal_amount_kept_exact(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer la charge"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Enregistrer la charge"
     ui.st.text_input.side_effect = lambda label, **kw: (
         "0.123456" if label == "Montant analytique (DZD)" else "TEST")
     ui.view.show_cost_reference(True)
@@ -313,7 +313,7 @@ def test_six_decimal_amount_kept_exact(ui):
 
 
 def test_six_decimal_driver_kept_exact(ui):
-    ui.st.form_submit_button.side_effect = lambda label: label == "Enregistrer l'assiette"
+    ui.st.form_submit_button.side_effect = lambda label, **_kw: label == "Enregistrer l'assiette"
     ui.st.text_input.side_effect = lambda label, **kw: (
         "0.123456" if label == "Valeur de la clé" else "TEST")
     ui.view.show_cost_reference(True)
