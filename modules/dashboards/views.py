@@ -3,6 +3,7 @@ Interface utilisateur du module Dashboards.
 Affiche les indicateurs de performance (KPI) de l'entreprise.
 """
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 import datetime
 from config.roles import has_permission
@@ -52,7 +53,8 @@ def _show_dashboards_page_impl():
 
     # --- 1. VUE DIRECTION ---
     with onglets[0], read_section("Direction"):
-        st.subheader("Santé de l'entreprise (Temps Réel)")
+        st.subheader("Santé de l'entreprise (Temps Réel)", help=topic_help("dashboard.direction"))
+        show_context_help(st, "dashboard.direction")
         st.caption("Facturation brute : factures clients validées, hors avoirs, brouillons et annulations.")
         st.caption("Trésorerie : Banque/Caisse, soldes initiaux + règlements validés jusqu’à aujourd’hui ; hors autres écritures et rapprochement bancaire.")
         kpis = get_kpis_direction()
@@ -69,7 +71,8 @@ def _show_dashboards_page_impl():
 
     # --- 2. RENTABILITÉ (P&L) ---
     with onglets[1], read_section("Rentabilité"):
-        st.subheader("Estimation de gestion (P&L)")
+        st.subheader("Estimation de gestion (P&L)", help=topic_help("dashboard.pnl"))
+        show_context_help(st, "dashboard.pnl")
         st.caption("Facturation brute validée hors avoirs et coûts produits actuels, non historiques. OPEX = décaissements validés classés OPEX. Paie = nets enregistrés des mois sélectionnés, tous statuts de paiement, sans cotisations employeur ni preuve de validation. Choisir des mois complets si des fiches existent ; aucun prorata journalier. Ce solde mélange facturation et décaissements : il ne constitue pas un résultat comptable.")
         c_deb_pnl, c_fin_pnl = st.columns(2)
         date_deb_pnl = c_deb_pnl.date_input("Date de début", datetime.date.today().replace(day=1), key="d_pnl", on_change=_mark_dashboards_activity)
@@ -96,7 +99,8 @@ def _show_dashboards_page_impl():
 
     # --- 3. VENTES & FACTURATION ---
     with onglets[2], read_section("Ventes"):
-        st.subheader("Analyse des Ventes & Recouvrement")
+        st.subheader("Analyse des Ventes & Recouvrement", help=topic_help("dashboard.ventes"))
+        show_context_help(st, "dashboard.ventes")
         st.caption("Factures validées uniquement. Facturation brute hors avoirs ; ratio des avoirs validés suivi séparément. Créances globales, indépendantes de la période sélectionnée.")
         c_deb, c_fin = st.columns(2)
         date_deb = c_deb.date_input("Date de début", datetime.date.today().replace(day=1), key="d_v", on_change=_mark_dashboards_activity)
@@ -125,7 +129,8 @@ def _show_dashboards_page_impl():
 
     # --- 4. ACHATS ---
     with onglets[3], read_section("Achats"):
-        st.subheader("Analyse des Achats & Fournisseurs")
+        st.subheader("Analyse des Achats & Fournisseurs", help=topic_help("dashboard.achats"))
+        show_context_help(st, "dashboard.achats")
         st.caption("Retards globaux, indépendants de la période : commandes en attente ou partiellement réceptionnées, échéance antérieure à aujourd’hui.")
         c_deb_a, c_fin_a = st.columns(2)
         date_deb_a = c_deb_a.date_input("Date de début", datetime.date.today().replace(day=1), key="d_a", on_change=_mark_dashboards_activity)
@@ -155,7 +160,8 @@ def _show_dashboards_page_impl():
 
     # --- 5. STOCKS ---
     with onglets[4], read_section("Stocks"):
-        st.subheader("Analyse Financière des Stocks")
+        st.subheader("Analyse Financière des Stocks", help=topic_help("dashboard.stocks"))
+        show_context_help(st, "dashboard.stocks")
         jours = st.slider("Fenêtre d'alerte péremption (Jours)", 7, 120, 30, 7, on_change=_mark_dashboards_activity)
         kpis_s = get_kpis_stocks(jours_alerte_peremption=jours)
 
@@ -179,7 +185,8 @@ def _show_dashboards_page_impl():
 
     # --- 6. PRODUCTION ---
     with onglets[5], read_section("Production"):
-        st.subheader("Performance de Production")
+        st.subheader("Performance de Production", help=topic_help("dashboard.production"))
+        show_context_help(st, "dashboard.production")
         c_deb_p, c_fin_p = st.columns(2)
         date_deb_p = c_deb_p.date_input("Date de début", datetime.date.today().replace(day=1), key="d_p", on_change=_mark_dashboards_activity)
         date_fin_p = c_fin_p.date_input("Date de fin", datetime.date.today(), key="f_p", on_change=_mark_dashboards_activity)
@@ -199,7 +206,8 @@ def _show_dashboards_page_impl():
 
     # --- 7. CRM ---
     with onglets[6], read_section("CRM"):
-        st.subheader("Performance Commerciale & Pipeline")
+        st.subheader("Performance Commerciale & Pipeline", help=topic_help("dashboard.crm"))
+        show_context_help(st, "dashboard.crm")
         st.caption("Pipeline ouvert global. Conversion et valeurs gagnées : opportunités créées dans la période, selon leur statut actuel ; ce ne sont pas des ventes facturées ni des clôtures datées.")
         c_deb_c, c_fin_c = st.columns(2)
         date_deb_c = c_deb_c.date_input("Date de début", datetime.date.today().replace(day=1), key="d_c", on_change=_mark_dashboards_activity)
@@ -222,7 +230,8 @@ def _show_dashboards_page_impl():
 
     # --- 8. RH ---
     with onglets[7], read_section("RH"):
-        st.subheader("Ressources Humaines")
+        st.subheader("Ressources Humaines", help=topic_help("dashboard.rh"))
+        show_context_help(st, "dashboard.rh")
         st.caption("Effectif actuel : employés marqués actif = OUI. Services non renseignés affichés séparément.")
         kpis_r = get_kpis_rh(pd.Timestamp("2000-01-01"), pd.Timestamp("2100-01-01"))
 
@@ -239,7 +248,8 @@ def _show_dashboards_page_impl():
 
     # --- 9. FINANCE ---
     with onglets[8], read_section("Finance"):
-        st.subheader("Flux de Trésorerie & Rapprochement")
+        st.subheader("Flux de Trésorerie & Rapprochement", help=topic_help("dashboard.finance"))
+        show_context_help(st, "dashboard.finance")
         c_deb_f, c_fin_f = st.columns(2)
         date_deb_f = c_deb_f.date_input("Date de début", datetime.date.today().replace(day=1), key="d_f", on_change=_mark_dashboards_activity)
         date_fin_f = c_fin_f.date_input("Date de fin", datetime.date.today(), key="f_f", on_change=_mark_dashboards_activity)
