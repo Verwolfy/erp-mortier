@@ -6,6 +6,7 @@ import streamlit as st
 from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 import datetime
+import plotly.graph_objects as go
 from config.roles import has_permission
 from core.strict_reads import read_section
 from modules.dashboards.service import (
@@ -21,6 +22,32 @@ def _current_month_end(today: datetime.date) -> datetime.date:
     """
     next_month = (today.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
     return next_month - datetime.timedelta(days=1)
+
+
+def _rate_or_na(rate: float, denominator: int | float) -> str:
+    """Zéro avec dénominateur absent n'est pas un KPI à 0 %."""
+    return f"{rate:.1f} %" if denominator > 0 else "N/D"
+
+
+def _show_management_waterfall(st, pnl: dict) -> None:
+    """Cascade de gestion indicatrice : jamais un EBITDA comptable."""
+    labels = ["Facturation HT", "COGS au coût actuel", "OPEX payées",
+              "Nets de paie enregistrés", "Solde estimatif"]
+    fig = go.Figure(go.Waterfall(
+        x=labels,
+        y=[pnl["ca_ht"], -pnl["cogs"], -pnl["opex_fournisseurs"],
+           -pnl["opex_salaires"], 0],
+        measure=["absolute", "relative", "relative", "relative", "total"],
+        connector={"line": {"width": 1}},
+        hovertemplate="%{x} : %{y:,.2f} DZD<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Reconstitution du solde de gestion (DZD)",
+        yaxis_title="DZD", margin=dict(t=54, l=18, r=18, b=18),
+        showlegend=False, height=370,
+    )
+    st.plotly_chart(fig, use_container_width=True,
+                    config={"displayModeBar": False})
 
 
 def _mark_dashboards_activity() -> None:
@@ -84,8 +111,12 @@ def _show_dashboards_page_impl():
 
             col_pnl1, col_pnl2, col_pnl3 = st.columns(3)
             col_pnl1.metric("Facturation brute HT", f"{pnl['ca_ht']:,.2f} DZD")
-            col_pnl2.metric("Marge Brute", f"{pnl['marge_brute']:,.2f} DZD", f"{pnl['taux_marge_brute']:.1f} %")
-            col_pnl3.metric("Solde de gestion estimatif", f"{pnl['ebitda']:,.2f} DZD", f"{pnl['taux_ebitda']:.1f} %")
+            col_pnl2.metric(
+                "Marge brute indicative", f"{pnl['marge_brute']:,.2f} DZD",
+                _rate_or_na(pnl["taux_marge_brute"], pnl["ca_ht"]))
+            col_pnl3.metric(
+                "Solde de gestion estimatif", f"{pnl['ebitda']:,.2f} DZD",
+                _rate_or_na(pnl["taux_ebitda"], pnl["ca_ht"]))
 
             st.divider()
             st.markdown("### Détail de la cascade des coûts")
@@ -95,6 +126,10 @@ def _show_dashboards_page_impl():
                 "Montant (DZD)": [pnl['ca_ht'], -pnl['cogs'], -pnl['opex_fournisseurs'], -pnl['opex_salaires'], pnl['ebitda']]
             })
             st.dataframe(df_cascade, use_container_width=True, hide_index=True)
+            _show_management_waterfall(st, pnl)
+            st.caption("Cascade indicative : coût PF actuel (pas un coût historique), "
+                       "décaissements OPEX et nets de paie enregistrés. "
+                       "Ce solde n'est ni un EBITDA comptable ni un résultat SCF.")
             st.info("💡 Astuce : Pour que vos frais généraux (électricité, loyer) apparaissent ici, créez vos fournisseurs dans le module Administration avec une catégorie contenant le mot 'OPEX', puis enregistrez leurs paiements dans la Trésorerie.")
 
     # --- 3. VENTES & FACTURATION ---
@@ -114,9 +149,20 @@ def _show_dashboards_page_impl():
             cv1.metric("Facturation brute HT", f"{kpis_v['ca_ht']:,.2f} DZD")
             cv2.metric("Facturation brute TTC", f"{kpis_v['ca_ttc']:,.2f} DZD")
             cv3.metric("Panier Moyen (TTC)", f"{kpis_v['panier_moyen']:,.2f} DZD")
-            cv4.metric("Taux d'Avoirs", f"{kpis_v['taux_avoirs']:.1f} %", delta="Retours/Annulations", delta_color="inverse")
+            cv4.metric("Avoirs / facturation brute TTC",
+                       _rate_or_na(kpis_v["taux_avoirs"], kpis_v["ca_ttc"]))
+            st.caption("Ce ratio suit les montants des avoirs validés, sans les "
+                       "confondre avec les retours physiques. Les créances sont "
+                       "globales et ne suivent pas le filtre de dates.")
             st.divider()
-
+            st.markdown("**Évolution journalière de la facturation brute HT validée**")
+            if not kpis_v["evolution_facturation"].empty:
+                st.line_chart(
+                    kpis_v["evolution_facturation"].set_index("Date"),
+                    use_container_width=True)
+            else:
+                st.info("Aucune facture client validée sur cette période : "
+                        "aucune courbe n'est construite.")
             col_g1, col_g2 = st.columns(2)
             with col_g1:
                 st.markdown("**Balance Âgée (Créances)**")
@@ -125,7 +171,12 @@ def _show_dashboards_page_impl():
             with col_g2:
                 st.markdown("**Top Clients**")
                 if not kpis_v["top_clients"].empty:
-                    st.dataframe(kpis_v["top_clients"], use_container_width=True, hide_index=True)
+                    st.bar_chart(
+                        kpis_v["top_clients"].set_index("client_id")["montant_ttc"],
+                        horizontal=True)
+                    st.caption("Top 10 des clients facturés, brut TTC, sur la période.")
+                else:
+                    st.info("Aucun client facturé pendant la période.")
 
     # --- 4. ACHATS ---
     with onglets[3], read_section("Achats"):
@@ -141,7 +192,10 @@ def _show_dashboards_page_impl():
             kpis_a = get_kpis_achats(ts_deb_a, ts_fin_a)
 
             ca1, ca2 = st.columns(2)
-            ca1.metric("Montant Total Achats", f"{kpis_a['montant_total']:,.2f} DZD")
+            ca1.metric("Commandes d'achat saisies (DZD)",
+                       f"{kpis_a['montant_total']:,.2f} DZD",
+                       help="Montant des commandes datées de la période, "
+                            "pas des achats facturés ni des marchandises reçues.")
             ca2.metric("Commandes en retard", str(kpis_a['commandes_retard']), delta="À relancer" if kpis_a['commandes_retard'] > 0 else "OK", delta_color="inverse")
             st.divider()
 
@@ -152,11 +206,30 @@ def _show_dashboards_page_impl():
                 if not df_rep.empty:
                     st.bar_chart(df_rep.set_index("fournisseur_id")[df_rep.columns[1]], horizontal=True)
             with col_ga2:
-                st.markdown("**Évolution des Prix d'Achat**")
+                st.markdown("**Évolution du prix d'achat en DZD / unité de stock**")
                 df_evo = kpis_a["evolution_prix"]
                 if not df_evo.empty:
-                    mp_choisie = st.selectbox("Sélectionnez une Matière", options=df_evo["mp_id"].unique().tolist(), on_change=_mark_dashboards_activity, help=field_help("Sélectionnez une Matière", module="dashboards"))
-                    st.line_chart(df_evo[df_evo["mp_id"] == mp_choisie].sort_values(by="date_obj").set_index("date_obj")["prix_unitaire"])
+                    matiere = st.selectbox(
+                        "Matière achetée", options=sorted(df_evo["mp_id"].unique().tolist()),
+                        key="dashboard_achat_matiere",
+                        help="Comparer uniquement les prix du même article.")
+                    unite = st.selectbox(
+                        "Unité de stock", options=sorted(
+                            df_evo.loc[df_evo["mp_id"] == matiere, "unite_cond"].unique().tolist()),
+                        key="dashboard_achat_unite",
+                        help="Ne pas comparer des prix exprimés dans des unités différentes.")
+                    selection = df_evo.loc[
+                        (df_evo["mp_id"] == matiere) & (df_evo["unite_cond"] == unite)]
+                    if not selection.empty:
+                        st.line_chart(
+                            selection.sort_values("date_obj").set_index("date_obj")[
+                                "prix_unitaire_dzd"],
+                            use_container_width=True)
+                        st.caption("Prix unitaire d'achat converti en DZD au taux de "
+                                   "la commande ; non corrigé de l'inflation.")
+                else:
+                    st.info("Historique des prix non comparable : aucune ligne "
+                            "sur la période ou devise/unité de stock non vérifiable.")
 
     # --- 5. STOCKS ---
     with onglets[4], read_section("Stocks"):
@@ -169,10 +242,14 @@ def _show_dashboards_page_impl():
             st.warning(f"{kpis_s['lots_sans_date']} lot(s) avec stock sans date de péremption : risque non évalué.")
         if kpis_s.get("seuils_stock_absents", 0):
             st.warning(f"{kpis_s['seuils_stock_absents']} matière(s) en stock sans seuil minimum : alerte de rupture non évaluable pour ces références.")
-        cs1, cs2, cs3 = st.columns(3)
-        cs1.metric("Valeur Totale Immobilisée", f"{kpis_s['valeur_totale']:,.2f} DZD")
-        cs2.metric("Mat. Premières (Sous seuil)", str(kpis_s['sous_seuil']), delta="Rupture imminente" if kpis_s['sous_seuil']>0 else "OK", delta_color="inverse")
-        cs3.metric(f"Lots périmés ou échéance ≤ {jours}j", str(len(kpis_s['lots_expirants'])), delta="Urgent" if len(kpis_s['lots_expirants'])>0 else "OK", delta_color="inverse")
+        cs1, cs2, cs3, cs4 = st.columns(4)
+        cs1.metric("Valeur du stock (estimation)", f"{kpis_s['valeur_totale']:,.2f} DZD")
+        cs2.metric("Matières sous seuil connu", str(kpis_s["sous_seuil"]))
+        cs3.metric("Lots déjà périmés", str(kpis_s["lots_perimes"]))
+        cs4.metric(f"Lots à échéance (≤ {jours}j)", str(kpis_s["lots_a_echeance"]))
+        st.caption("Le total des lots à risque exclut les lots sans date de "
+                   "péremption, affichés dans l'alerte. Les seuils manquants "
+                   "ne sont jamais considérés comme des seuils à zéro.")
         st.divider()
 
         c_st1, c_st2 = st.columns(2)
@@ -195,14 +272,27 @@ def _show_dashboards_page_impl():
             ts_deb_p, ts_fin_p = pd.Timestamp(date_deb_p), pd.Timestamp(date_fin_p) + pd.Timedelta(days=1, seconds=-1)
             kpis_p = get_kpis_production(ts_deb_p, ts_fin_p)
 
-            cp1, cp2 = st.columns(2)
-            cp1.metric("Ordres de Fabrication (OF)", str(kpis_p['total_ofs']))
-            cp2.metric("Taux de Rejet (CQ)", f"{kpis_p['taux_rejet']:.1f} %", delta="Non-conformité" if kpis_p['taux_rejet']>5 else "Normal", delta_color="inverse")
+            st.caption("OF de la cohorte planifiée dans la période (statut actuel). "
+                       "CQ datés dans la période, sur un périmètre distinct ; "
+                       "ce n'est pas un taux de rebut en kilogrammes, un taux OTIF "
+                       "ni un TRS/OEE. Aucune cible de rejet n'est présumée.")
+            cp1, cp2, cp3, cp4 = st.columns(4)
+            cp1.metric("OF planifiés (cohorte)", str(kpis_p["total_ofs"]))
+            cp2.metric("OF terminés dans cette cohorte", str(kpis_p["of_termines"]))
+            cp3.metric("Taux d'achèvement de la cohorte",
+                       _rate_or_na(kpis_p["taux_cloture"], kpis_p["total_ofs"]))
+            cp4.metric(f"Rejets CQ / {kpis_p['nb_controles']} contrôles",
+                       _rate_or_na(kpis_p["taux_rejet"], kpis_p["nb_controles"]))
             st.divider()
-
-            st.markdown("**Répartition des OF par Statut**")
+            st.markdown("**OF par date de planification**")
+            if not kpis_p["evolution_of"].empty:
+                st.bar_chart(kpis_p["evolution_of"].set_index("Date"))
+            else:
+                st.info("Aucun OF planifié dans la période.")
+            st.markdown("**Répartition des OF selon leur statut actuel**")
             if not kpis_p["repartition_statut"].empty:
-                st.bar_chart(kpis_p["repartition_statut"].set_index("Statut"))
+                st.bar_chart(kpis_p["repartition_statut"].set_index("Statut"),
+                             horizontal=True)
 
     # --- 7. CRM ---
     with onglets[6], read_section("CRM"):
@@ -219,12 +309,18 @@ def _show_dashboards_page_impl():
 
             cc1, cc2 = st.columns(2)
             cc1.metric("Pipeline Pondéré (En cours)", f"{kpis_c['pipeline_pondere']:,.2f} DZD", help="Valeur estimée * Probabilité des opportunités non clôturées.")
-            cc2.metric("Taux de Conversion (Période)", f"{kpis_c['taux_conversion']:.1f} %", help="Gagnées / (gagnées + perdues), parmi les opportunités créées dans la période.")
+            cc2.metric(
+                "Conversion des opportunités clôturées",
+                _rate_or_na(kpis_c["taux_conversion"], kpis_c["nb_affaires_closes"]),
+                help="Gagnées / (gagnées + perdues), uniquement parmi les "
+                     "opportunités créées sur la période et clôturées à date. "
+                     "N/D en l'absence d'affaires closes.")
             st.divider()
 
             st.markdown("**Valeur estimée des opportunités gagnées par commercial**")
             if not kpis_c["performance_commerciaux"].empty:
-                st.bar_chart(kpis_c["performance_commerciaux"].set_index("Commercial"))
+                st.bar_chart(kpis_c["performance_commerciaux"].set_index("Commercial"),
+                             horizontal=True)
             else:
                 st.info("Aucune opportunité actuellement gagnée parmi celles créées dans la période.")
 
@@ -258,12 +354,23 @@ def _show_dashboards_page_impl():
             ts_deb_f, ts_fin_f = pd.Timestamp(date_deb_f), pd.Timestamp(date_fin_f) + pd.Timedelta(days=1, seconds=-1)
             kpis_f = get_kpis_finance(ts_deb_f, ts_fin_f)
 
-            cf1, cf2, cf3 = st.columns(3)
-            cf1.metric("Flux Entrants", f"{kpis_f['flux_entrants']:,.2f} DZD")
-            cf2.metric("Flux Sortants", f"{kpis_f['flux_sortants']:,.2f} DZD", delta_color="inverse")
-            cf3.metric("Taux de Lettrage", f"{kpis_f['taux_lettrage']:.1f} %", help="% des encaissements rattachés à des factures.")
+            cf1, cf2, cf3, cf4 = st.columns(4)
+            cf1.metric("Encaissements validés", f"{kpis_f['flux_entrants']:,.2f} DZD")
+            cf2.metric("Décaissements validés", f"{kpis_f['flux_sortants']:,.2f} DZD")
+            cf3.metric("Flux net de période", f"{kpis_f['flux_net']:,.2f} DZD")
+            cf4.metric("Taux d'affectation des encaissements",
+                       _rate_or_na(kpis_f["taux_lettrage"], kpis_f["flux_entrants"]),
+                       help="Montant affecté / total des encaissements validés "
+                            "sur la période. Ce taux n'est pas un rapprochement bancaire.")
+            st.caption(f"Encaissements non affectés aux factures sur la période : "
+                       f"{kpis_f['encaissements_non_alloues']:,.2f} DZD.")
+            st.markdown("**Évolution journalière des flux validés (DZD)**")
+            if not kpis_f["evolution_flux"].empty:
+                st.line_chart(kpis_f["evolution_flux"].set_index("Date"),
+                              use_container_width=True)
+            else:
+                st.info("Aucun règlement validé dans la période ; aucune courbe.")
             st.divider()
-
             st.markdown("**Soldes indicatifs Banque/Caisse à ce jour**")
             st.caption("Soldes initiaux + règlements VALIDE jusqu’à aujourd’hui, indépendants du filtre des flux. Comptes tiers exclus ; hors autres écritures et rapprochement bancaire. Les soldes initiaux ne sont pas datés dans le référentiel.")
             if not kpis_f["repartition_comptes"].empty:
