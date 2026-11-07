@@ -46,6 +46,44 @@ def charger_donnees(table_name: str) -> pd.DataFrame:
         current[table_name] = fetch_data(table_name)
     return pd.DataFrame(current[table_name]).copy(deep=True)
 
+
+# Un préfixe DEMO/SIM est un indice de données d'exercice, jamais une
+# qualification comptable automatique ni une autorisation de suppression.
+_PROVENANCE_SOURCES = (
+    ("factures", "facture_id", "Factures"),
+    ("reglements", "reglement_id", "Règlements"),
+    ("ordres_fabrication", "of_id", "OF"),
+    ("commandes_achats", "commande_achat_id", "Commandes achats"),
+    ("pipeline", "opportunite_id", "CRM"),
+    ("employes", "employe_id", "RH"),
+)
+
+
+def get_dashboard_data_provenance() -> dict:
+    """Diagnostic agrégé, lecture seule, sur les tables déjà nécessaires aux KPI.
+
+    Une donnée marquée par un préfixe n'est PAS exclue des KPI : la
+    qualification métier est indépendante de ce simple indice lexical.
+    Toute lecture incomplète doit échouer explicitement.
+    """
+    sections = []
+    total_marked = 0
+    for table, identifier, display in _PROVENANCE_SOURCES:
+        frame = charger_donnees(table)
+        if frame.empty:
+            sections.append({"Source": display, "Références DEMO/SIM": 0, "Total": 0})
+            continue
+        if identifier not in frame or not frame[identifier].map(
+                lambda val: isinstance(val, str) and bool(val.strip())).all():
+            raise DataReadError("Identifiants de provenance non qualifiés")
+        labels = frame[identifier].str.strip().str.upper()
+        marked = int(labels.str.startswith(("DEMO", "SIM")).sum())
+        total_marked += marked
+        sections.append({"Source": display, "Références DEMO/SIM": marked,
+                         "Total": len(frame)})
+    return {"marked": total_marked, "sources": sections}
+
+
 def get_kpis_direction() -> dict:
     now = get_local_now()
     documents = validated_documents(charger_donnees("factures"))
@@ -137,12 +175,23 @@ def get_kpis_ventes(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     balance = ageing_balance(open_receivables(documents, get_local_now()))
     top_clients = (invoices.groupby("client_id")["montant_ttc"].sum().reset_index()
                    .sort_values(by="montant_ttc", ascending=False).head(10))
+    # Évolution de la facturation BRUTE validée (sans avoirs), dans la
+    # période sélectionnée. Aucune donnée simulée ni lecture supplémentaire.
+    if invoices.empty:
+        evolution = pd.DataFrame(columns=["Date", "Facturation HT (DZD)"])
+    else:
+        evolution = (invoices.groupby("date_obj", as_index=False)["montant_ht"]
+                     .sum()
+                     .rename(columns={"date_obj": "Date",
+                                      "montant_ht": "Facturation HT (DZD)"})
+                     .sort_values("Date"))
     return {
         "ca_ht": invoices["montant_ht"].sum(), "ca_ttc": ca_ttc,
         "timbre_fiscal": invoices["montant_timbre"].sum(),
         "panier_moyen": ca_ttc / count if count else 0.0,
         "taux_avoirs": credits["montant_ttc"].abs().sum() / ca_ttc * 100 if ca_ttc > 0 else 0.0,
         "nb_factures": count, "balance_agee": balance, "top_clients": top_clients,
+        "evolution_facturation": evolution,
     }
 
 def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
@@ -173,13 +222,31 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
 
     repartition = df_periode.groupby("fournisseur_id")[col_montant].sum().reset_index().sort_values(by=col_montant, ascending=False) if not df_periode.empty and "fournisseur_id" in df_periode.columns else pd.DataFrame()
 
+    # Comparer uniquement des prix exprimés dans une MÊME unité de stock
+    # et une MÊME devise (DZD). Les prix en devises sont convertis au taux
+    # confirmé sur la commande ; ne pas tracer des montants non comparables.
     evolution_prix = pd.DataFrame()
-    if not df_periode.empty and not df_lignes.empty and "commande_achat_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
-        df_lignes["prix_unitaire"] = pd.to_numeric(df_lignes["prix_unitaire"], errors="coerce").fillna(0)
-        df_periode["date_obj"] = pd.to_datetime(df_periode["date_commande"], errors="coerce").dt.tz_localize(None)
-        df_merge = pd.merge(df_lignes, df_periode[["commande_achat_id", "date_obj"]], on="commande_achat_id", how="inner")
+    needed_header = {"commande_achat_id", "date_commande", "devise", "taux_change"}
+    needed_lines = {"commande_achat_id", "mp_id", "unite_cond", "prix_unitaire"}
+    if not df_periode.empty and not df_lignes.empty and needed_header.issubset(df_periode.columns) and needed_lines.issubset(df_lignes.columns):
+        df_periode["date_obj"] = dates(df_periode, "date_commande")
+        df_merge = pd.merge(
+            df_lignes,
+            df_periode[["commande_achat_id", "date_obj", "devise", "taux_change"]],
+            on="commande_achat_id", how="inner")
         if not df_merge.empty:
-            evolution_prix = df_merge[["date_obj", "mp_id", "prix_unitaire"]].dropna()
+            price = numeric_values(df_merge, "prix_unitaire")
+            fx = numeric_values(df_merge, "taux_change")
+            if (price < 0).any() or (fx <= 0).any():
+                raise DataReadError("Prix d'achat ou taux de change non exploitable")
+            if (df_merge["mp_id"].isna().any() or df_merge["unite_cond"].isna().any()
+                    or df_merge["unite_cond"].astype(str).str.strip().eq("").any()):
+                raise DataReadError("Unité d'achat non qualifiée")
+            if not df_merge["devise"].map(lambda v: isinstance(v, str) and bool(v.strip())).all():
+                raise DataReadError("Devise d'achat non qualifiée")
+            df_merge["prix_unitaire_dzd"] = price * fx
+            evolution_prix = df_merge[["date_obj", "mp_id", "unite_cond",
+                                      "prix_unitaire_dzd"]].copy()
 
     return {"montant_total": montant_total, "commandes_retard": commandes_retard, "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
 
@@ -193,11 +260,20 @@ def get_kpis_stocks(jours_alerte_peremption: int = 30) -> dict:
     valeur_mp = stock_value(df_stock_mp, "cmp_actuel")
     valeur_pf = stock_value(df_stock_pf, "cout_revient")
     sous_seuil, seuils_absents = threshold_status(df_stock_mp, df_ref_mp)
-    lots_expirants, lots_sans_date = expiry_alerts(df_lots, get_local_now(), jours_alerte_peremption)
+    today = get_local_now()
+    lots_expirants, lots_sans_date = expiry_alerts(df_lots, today, jours_alerte_peremption)
+    # "Périmé" = date strictement passée ; échéance aujourd'hui dans
+    # "à échéance", sans fausse valorisation des lots ni approximation.
+    lots_perimes = 0
+    if not lots_expirants.empty:
+        expiry_dates = dates(lots_expirants, "date_peremption")
+        lots_perimes = int((expiry_dates < pd.Timestamp(today).tz_localize(None).normalize()).sum())
     return {"valeur_mp": valeur_mp, "valeur_pf": valeur_pf,
             "valeur_totale": valeur_mp + valeur_pf, "sous_seuil": sous_seuil,
             "seuils_stock_absents": seuils_absents,
-            "lots_expirants": lots_expirants, "lots_sans_date": lots_sans_date}
+            "lots_expirants": lots_expirants, "lots_sans_date": lots_sans_date,
+            "lots_perimes": lots_perimes,
+            "lots_a_echeance": len(lots_expirants) - lots_perimes}
 
 def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     start_str = date_debut.strftime("%Y-%m-%d")
@@ -206,25 +282,47 @@ def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dic
     df_periode = pd.DataFrame(fetch_data_by_date_range("ordres_fabrication", "date_planification", start_str, end_str))
     df_cq = pd.DataFrame(fetch_data_by_date_range("controle_qualite", "date", start_str, end_str))
 
-    if df_periode.empty:
-        return {"total_ofs": 0, "repartition_statut": pd.DataFrame(), "taux_rejet": 0.0}
-
+    # Cohorte d'OF datée par PLANIFICATION, pas par clôture : leur état
+    # actuel ne constitue pas un taux de ponctualité ni un OEE.
     total_ofs = len(df_periode)
-    repartition = pd.DataFrame()
-    if total_ofs > 0 and "statut" in df_periode.columns:
+    repartition = pd.DataFrame(columns=["Statut", "Volume"])
+    evolution_of = pd.DataFrame(columns=["Date", "OF planifiés"])
+    of_termines = 0
+    if not df_periode.empty:
+        if "statut" not in df_periode or not df_periode["statut"].isin(
+                ["PLANIFIE", "EN_COURS", "CONTROLE_QUALITE", "TERMINE", "REJETE"]).all():
+            raise DataReadError("Statut d'OF manquant ou inconnu")
         repartition = df_periode["statut"].value_counts().reset_index()
         repartition.columns = ["Statut", "Volume"]
+        of_termines = int((df_periode["statut"] == "TERMINE").sum())
+        by_day = dates(df_periode, "date_planification")
+        evolution_of = (pd.DataFrame({"Date": by_day})
+                        .groupby("Date", as_index=False).size()
+                        .rename(columns={"size": "OF planifiés"}).sort_values("Date"))
 
-    taux_rejet = 0.0
-    if not df_cq.empty and "conforme" in df_cq.columns:
-        rejets = len(df_cq[df_cq["conforme"].astype(str).str.upper().isin(["NON", "FALSE", "REJETE"])])
-        taux_rejet = (rejets / len(df_cq)) * 100
+    # CQ filtré par DATE DU CONTRÔLE : son dénominateur n'est pas le nombre
+    # d'OF planifiés ci-dessus. Afficher N/D si aucun contrôle n'existe.
+    nb_controles, nb_rejets = len(df_cq), 0
+    if nb_controles:
+        if "conforme" not in df_cq or df_cq["conforme"].isna().any():
+            raise DataReadError("Conformité CQ indisponible")
+        statuses = df_cq["conforme"].astype(str).str.strip().str.upper()
+        if not statuses.isin(["OUI", "TRUE", "CONFORME",
+                              "NON", "FALSE", "REJETE"]).all():
+            raise DataReadError("Conformité CQ inconnue")
+        nb_rejets = int(statuses.isin(["NON", "FALSE", "REJETE"]).sum())
+    taux_rejet = nb_rejets / nb_controles * 100 if nb_controles else 0.0
 
-    return {"total_ofs": total_ofs, "repartition_statut": repartition, "taux_rejet": taux_rejet}
+    return {"total_ofs": total_ofs, "repartition_statut": repartition,
+            "taux_rejet": taux_rejet, "nb_controles": nb_controles,
+            "nb_rejets": nb_rejets, "of_termines": of_termines,
+            "taux_cloture": of_termines / total_ofs * 100 if total_ofs else 0.0,
+            "evolution_of": evolution_of}
 
 def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     frame = charger_donnees("pipeline")
-    empty = {"pipeline_pondere": 0.0, "taux_conversion": 0.0, "performance_commerciaux": pd.DataFrame()}
+    empty = {"pipeline_pondere": 0.0, "taux_conversion": 0.0,
+             "nb_affaires_closes": 0, "performance_commerciaux": pd.DataFrame()}
     if frame.empty:
         return empty
     # Les libellés du formulaire sont conservés en base ; anciens codes acceptés.
@@ -255,6 +353,7 @@ def get_kpis_crm(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
         perf = perf.sort_values('Valeur estimée gagnée', ascending=False)
     return {"pipeline_pondere": (opened['value'] * opened['probability'] / 100).sum(),
             "taux_conversion": len(won) / len(closed) * 100 if len(closed) else 0.0,
+            "nb_affaires_closes": len(closed),
             "performance_commerciaux": perf}
 
 def get_kpis_rh(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
@@ -293,8 +392,24 @@ def get_kpis_finance(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     incoming = period.loc[period['type_flux'] == 'ENCAISSEMENT']
     total_in = incoming['montant_total'].sum()
     total_out = period.loc[period['type_flux'] == 'DECAISSEMENT', 'montant_total'].sum()
+    allocated = incoming["montant_alloue"].sum()
+    # Série réelle jour par jour, sans interpolation artificielle ni
+    # comparaison de flux périodiques avec les soldes cumulés à aujourd'hui.
+    flow = pd.DataFrame(columns=["Date", "Encaissements (DZD)", "Décaissements (DZD)"])
+    if not period.empty:
+        flow = (period.pivot_table(index="date_obj", columns="type_flux",
+                                   values="montant_total", aggfunc="sum", fill_value=0)
+                .rename(columns={"ENCAISSEMENT": "Encaissements (DZD)",
+                                 "DECAISSEMENT": "Décaissements (DZD)"}))
+        for column in ("Encaissements (DZD)", "Décaissements (DZD)"):
+            if column not in flow:
+                flow[column] = 0.0
+        flow = (flow[["Encaissements (DZD)", "Décaissements (DZD)"]]
+                .reset_index().rename(columns={"date_obj": "Date"}).sort_values("Date"))
     return {
         "repartition_comptes": balances, "flux_entrants": total_in,
-        "flux_sortants": total_out,
-        "taux_lettrage": incoming['montant_alloue'].sum() / total_in * 100 if total_in else 0.0,
+        "flux_sortants": total_out, "flux_net": total_in - total_out,
+        "encaissements_non_alloues": total_in - allocated,
+        "taux_lettrage": allocated / total_in * 100 if total_in else 0.0,
+        "evolution_flux": flow,
     }
