@@ -206,3 +206,38 @@ def test_ratio_nd_and_waterfall_are_pure_local_visuals():
     assert list(waterfall.measure) == ["absolute", "relative", "relative",
                                      "relative", "total"]
     assert list(waterfall.y) == [1200, -600, -250, -150, 0]
+
+
+def test_provenance_detects_demo_and_sim_without_removing_rows(monkeypatch):
+    dataset = {
+        "factures": [{"facture_id": "DEMO26_F1"},
+                     {"facture_id": "FACTURE-REAL"}],
+        "reglements": [{"reglement_id": "SIM26_PAY"}],
+        "ordres_fabrication": [{"of_id": "OF-REAL"}],
+        "commandes_achats": [{"commande_achat_id": "DEMO26_C1"}],
+        "pipeline": [{"opportunite_id": "OP-REAL"}],
+        "employes": [{"employe_id": "SIM-RH-01"}],
+    }
+    _read_fixture(monkeypatch, dataset)
+    result = service.get_dashboard_data_provenance()
+    assert result["marked"] == 4
+    assert len(result["sources"]) == 6
+    assert result["sources"][0] == {
+        "Source": "Factures", "Références DEMO/SIM": 1, "Total": 2,
+    }
+    # Aucun document n'est modifié ou supprimé par le diagnostic.
+    assert len(dataset["factures"]) == 2
+
+
+def test_provenance_unknown_id_fails_instead_of_false_clean(monkeypatch):
+    _read_fixture(monkeypatch, {"factures": [{"statut": "VALIDE"}]})
+    with pytest.raises(DataReadError, match="provenance"):
+        service.get_dashboard_data_provenance()
+
+
+def test_provenance_has_no_false_demo_if_real_ids(monkeypatch):
+    _read_fixture(monkeypatch, {
+        "factures": [{"facture_id": "FAC-100"}],
+        "reglements": [{"reglement_id": "REG-100"}],
+    })
+    assert service.get_dashboard_data_provenance()["marked"] == 0
