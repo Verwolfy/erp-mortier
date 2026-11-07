@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/streamlit-shell-observe.yml"
+      - "app.py"
+      - "modules/production/cost_views.py"
+      - "modules/production/cost_service.py"
 
 permissions:
   contents: read
@@ -27,6 +30,7 @@ jobs:
           url = 'https://nextgent-erp.streamlit.app/'
           result = 'Indéterminé'
           reason = 'Vérification réseau non concluante'
+          deployed_sha = 'NON VERIFIABLE SANS SESSION AUTHENTIFIEE'
           try:
               req = urllib.request.Request(url, headers={'User-Agent':'NextGen-ERP-health-observer/1.0'})
               with urllib.request.urlopen(req, timeout=18) as response:
@@ -53,7 +57,9 @@ jobs:
               with open(summary, 'a', encoding='utf-8') as f:
                   f.write('# Vérification publique Streamlit\n\n')
                   f.write(f'- URL : {url}\n- Résultat : {result}\n- Détail : {reason}\n')
-                  f.write('- **Limite** : ne démontre ni le commit déployé, ni la connexion, ni le bon fonctionnement des modules authentifiés.\n')
+                  f.write(f'- SHA GitHub testé : {os.environ.get("GITHUB_SHA", "inconnu")} (pas une preuve de déploiement)\\n')
+                  f.write(f'- Version ERP authentifiée : {deployed_sha}\\n')
+                  f.write('- **Limite** : ne démontre ni le commit déployé, ni la connexion, ni le bon fonctionnement des modules authentifiés.\\n')
           if result != 'Coquille HTML Streamlit accessible':
               print('::warning::Accès HTTP Streamlit non confirmé ; vérifier dans Streamlit Cloud.')
           PY
