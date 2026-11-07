@@ -66,3 +66,42 @@ def ensure_new_tier(*, kind: str, data: Mapping, existing: Sequence[Mapping]) ->
             raise DuplicateTierError(
                 f"{kind.capitalize()} potentiellement déjà répertorié : désignation "
                 f"identique à la fiche {identifier}. Vérifier la fiche existante.")
+
+
+
+def ensure_updated_tier(*, kind: str, target_id: str,
+                        updates: Mapping, existing: Sequence[Mapping]) -> None:
+    """Bloque une modification qui duplique l'identité d'un AUTRE tiers.
+
+    La fiche courante provient de la lecture exhaustive la plus récente, pas
+    des valeurs possiblement périmées du tableau d'édition. Refuse les ID
+    absents, dupliqués ou mal formés avant toute écriture.
+    """
+    if kind not in {"client", "fournisseur"}:
+        raise ValueError("Type de tiers invalide")
+    primary = "client_id" if kind == "client" else "fournisseur_id"
+    if not isinstance(target_id, str) or not target_id.strip():
+        raise ValueError("Identifiant de tiers manquant")
+    if not isinstance(updates, Mapping):
+        raise ValueError("Modifications de tiers invalides")
+    if not isinstance(existing, Sequence) or isinstance(existing, (str, bytes)):
+        raise RuntimeError("Liste complète des tiers indisponible")
+
+    current = []
+    others = []
+    for row in existing:
+        if not isinstance(row, Mapping):
+            raise RuntimeError("Référentiel tiers incomplet : modification refusée")
+        identifier = row.get(primary)
+        if not isinstance(identifier, str) or not identifier.strip():
+            raise RuntimeError("Identifiant de tiers absent : modification refusée")
+        if identifier.strip() == target_id.strip():
+            current.append(row)
+        else:
+            others.append(row)
+    if len(current) != 1:
+        raise RuntimeError("Fiche de tiers introuvable ou dupliquée : modification refusée")
+
+    # Ne pas appliquer de valeurs du formulaire sur une autre fiche.
+    candidate = {**current[0], **updates}
+    ensure_new_tier(kind=kind, data=candidate, existing=others)
