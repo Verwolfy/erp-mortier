@@ -80,8 +80,8 @@ TOPICS: dict[str, tuple[str, str, str, str]] = {
 
 def topic_help(topic: str) -> str:
     """Résumé accessible au survol du titre ou du bouton d'aide."""
-    title, notion, procedure, vigilance = TOPICS[topic]
-    return f"{title}. {notion} Comment procéder : {procedure} Vigilance : {vigilance}"
+    title, notion, _, _ = TOPICS[topic]
+    return f"{notion} Ouvrir « Aide : {title} » pour les étapes et contrôles."
 
 
 def show_context_help(st, topic: str) -> None:
@@ -108,6 +108,9 @@ FIELD_GUIDANCE = (
     (("sku",), "SKU : article commercial avec un format et une unité de vente ; vérifier le facteur de conversion et l'emballage."),
     (("recette",), "Recette : formulation de matières par unité produite ; vérifier la version et les unités."),
     (("of",), "OF : ordre de fabrication. Vérifier statut, quantités, recette et date avant toute opération."),
+    (("lot",), "Vérifier l'identifiant du lot réel et les informations de traçabilité avant toute entrée ou consommation."),
+    (("débit",), "Montant porté au débit d'une ligne comptable. Vérifier la pièce SCF et sa validation."),
+    (("crédit",), "Montant porté au crédit d'une ligne comptable. Vérifier la contrepartie de l'écriture."),
     (("quantité",), "Saisir la quantité dans l'unité indiquée. Vérifier si la saisie concerne un batch, des SKU entiers ou une unité de stock."),
     (("prix",), "Vérifier le prix dans la devise et l'unité applicables, ainsi que le document fournisseur ou le tarif de référence."),
     (("montant",), "Saisir un montant documenté ; contrôler signe, décimales, devise et justification avant validation."),
@@ -134,6 +137,20 @@ def field_help(label: str, *, module: str = "") -> str:
     if not isinstance(label, str) or not label.strip():
         raise ValueError("Libellé de champ manquant")
     normalized = label.casefold()
+    # Une action doit être décrite comme telle, pas comme un champ de saisie.
+    if any(word in normalized for word in ("valider", "confirmer", "clôturer", "cloturer", "supprimer", "annuler")):
+        return ("Action susceptible d'avoir un effet durable : vérifier le dossier, "
+                "les montants, les pièces et les droits avant confirmation. "
+                "Si la réponse réseau est incertaine, contrôler la base avant de recommencer.")
+    if any(word in normalized for word in ("enregistrer", "créer", "creer", "générer", "generer", "sauvegarder", "ajouter")):
+        return ("Vérifier toutes les valeurs et la référence de l'opération avant "
+                "de créer ou d'enregistrer. Une réponse incertaine ne doit pas entraîner un doublon.")
+    if any(word in normalized for word in ("afficher", "charger", "rafraîchir", "actualiser", "analyser", "contrôler", "verifier", "vérifier", "comparer")):
+        return ("Charger ou contrôler les informations autorisées à la demande. "
+                "Cette consultation ne crée pas de transaction métier.")
+    if "page" in normalized and ("historique" in normalized or "mouvement" in normalized or "facture" in normalized):
+        return ("Pagination : choisir le numéro de page (à partir de 1), puis demander "
+                "l'affichage de l'historique. Cette action ne crée aucune opération.")
     # La pagination prend priorité sur la simple notion de page.
     if "page" in normalized and ("historique" in normalized or "mouvement" in normalized or "facture" in normalized):
         return ("Pagination : choisir le numéro de page (à partir de 1), puis demander "
