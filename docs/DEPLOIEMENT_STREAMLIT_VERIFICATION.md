@@ -7,6 +7,12 @@
 - Base unique active : Supabase `erp-mortier` (`wenydirqtmkywbxbxfal`), PRODUCTION.
 - Ancien projet TEST : inactif, non nécessaire au fonctionnement en PRODUCTION.
 - Point d'entrée Streamlit : `app.py`
+- Repère de déploiement du module **Production → Coûts industriels** après PR de
+  vérification : `SOF-ERP-COUTS-20261107-PRECHECK-02`. Ce texte
+  est visible sans révéler les clés serveur et ne constitue pas à lui seul
+  une preuve d'exécution des contrôles SQL.
+- L'URL de l'application Streamlit hébergée n'est pas démontrée dans ce dépôt.
+  Ne jamais l'inventer à partir du nom du dépôt.
 - Identifiant visuel à rechercher **après authentification et accès au module Ventes** :
   `Version interface Ventes : SOF-ERP-20261030-EXO-HIST-02`
 
@@ -23,9 +29,9 @@ Il ne s'agit **pas** d'un SHA Git, ni d'une preuve de conformité de la facturat
    `Verwolfy/erp-mortier`, la branche `main` et `app.py`.
 3. Vérifier que le déploiement a terminé sans erreur dans les journaux
    d'application, **sans publier de secrets**.
-4. Après authentification, ouvrir Ventes et constater la présence du repère
+4. Après authentification, ouvrir Production → Coûts industriels et vérifier la présence exacte du repère `SOF-ERP-COUTS-20261107-PRECHECK-02`. Vérifier également Ventes et constater la présence du repère
    ci-dessus. Le noter avec l'URL, la branche et la date de vérification.
-5. Si le repère manque, **ne pas annoncer un déploiement réussi**. Contrôler
+5. Si l'un des repères manque, **ne pas annoncer un déploiement réussi**. Contrôler
    le rattachement du dépôt/branche, le démarrage et les journaux de l'hôte.
    Les tests GitHub Actions seuls ne garantissent pas le déploiement.
 
