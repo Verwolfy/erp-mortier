@@ -13,6 +13,7 @@ import logging
 
 import pandas as pd
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 from config.roles import has_permission
 from core.db_service import fetch_data, get_supabase_client
@@ -247,7 +248,8 @@ def _start_closure(user_id: str, payload: dict, can_stock: bool) -> None:
 
 
 def _recipe_tab(user_id: str, can_write: bool, products: pd.DataFrame, materials: pd.DataFrame) -> None:
-    st.subheader("Nouvelle recette")
+    st.subheader("Nouvelle recette", help=topic_help("production.recettes"))
+    show_context_help(st, "production.recettes")
     st.info("Les quantités sont saisies PAR BATCH, puis sauvegardées PAR UNITÉ produite, comme l'exige le service.")
     if not can_write:
         st.info("Mode lecture seule")
@@ -394,7 +396,8 @@ def _sku_base_quantity(sku_count: object, spec: dict) -> Decimal:
 
 def _of_tab(user_id: str, can_write: bool, products: pd.DataFrame,
             skus: pd.DataFrame, materials: pd.DataFrame | None = None) -> None:
-    st.subheader("Créer un ordre de fabrication")
+    st.subheader("Créer un ordre de fabrication", help=topic_help("production.of"))
+    show_context_help(st, "production.of")
     if not can_write:
         st.info("Mode lecture seule")
         return
@@ -559,7 +562,8 @@ def _control_form(user_id: str, of: pd.Series, skus: pd.DataFrame, materials: pd
 
 def _followup_tab(user_id: str, can_write: bool, can_stock: bool,
                   skus: pd.DataFrame, materials: pd.DataFrame, products: pd.DataFrame) -> None:
-    st.subheader("Suivi et contrôle qualité des OF")
+    st.subheader("Suivi et contrôle qualité des OF", help=topic_help("production.cq"))
+    show_context_help(st, "production.cq")
     orders = get_ordres_fabrication()
     if orders.empty:
         st.info("Aucun OF enregistré.")
@@ -623,7 +627,8 @@ def show_production_page() -> None:
     with tab_follow:
         _followup_tab(user_id, can_write, can_stock, skus, materials, products)
     with tab_history:
-        st.subheader("Historique des consommations et contrôles qualité")
+        st.subheader("Historique des consommations et contrôles qualité", help=topic_help("production.historique"))
+        show_context_help(st, "production.historique")
         st.caption("Chargement manuel pour éviter les requêtes historiques inutiles.")
         page_production = st.number_input(
             "Page des historiques Production", min_value=1, max_value=1000,
