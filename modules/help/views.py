@@ -4,6 +4,22 @@ from modules.help.contextual import show_context_help, topic_help
 
 
 HELP_SECTIONS = {
+    "ⓘ Aide contextuelle (survol et clic)": """
+**Dans chaque rubrique ERP :** survolez l'icône d'aide d'un titre, champ ou
+bouton pour consulter une explication courte. Cliquez sur le bouton
+**ⓘ Aide : [nom de la rubrique]** pour ouvrir trois points : notion,
+comment procéder et contrôles avant validation.
+
+Dans **Production > Consommations et contrôles**, choisissez la page
+des historiques, puis cliquez sur **Afficher l'historique Production**.
+Le chargement est volontairement manuel et paginé. Une liste vide ne signifie
+pas nécessairement une erreur ni l'absence d'autres pages.
+
+Sur téléphone ou tablette, utilisez l'aide cliquable plutôt que le survol.
+Les aides ne changent jamais les permissions, montants, stocks ou pièces SCF.
+Aucune transaction ne doit être rejouée après une réponse incertaine sans
+vérifier d'abord la base.
+""",
     "🏠 Introduction": """
 Cet ERP centralise les référentiels, achats, stocks, production, ventes et suivis.
 Les menus visibles dépendent de vos habilitations. Une session inactive expire
