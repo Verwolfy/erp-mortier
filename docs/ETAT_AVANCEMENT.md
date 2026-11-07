@@ -1,3 +1,15 @@
+## 7 novembre 2026 — refonte KPI et graphiques industriels (PR #46)
+
+- **Action accomplie** : [PR #46](https://github.com/Verwolfy/erp-mortier/pull/46) fusionnée dans `main`, commit `d628e30a58b1e65cd7628b94b6c2302586f4dd44`. 9 onglets ERP conservés avec contrôles RBAC, lecture stricte et cache par rendu inchangés.
+- **KPI et graphiques** : facturation brute HT par date, top clients horizontal, flux de trésorerie validés par jour/net/non affectés, OF par date de planification/achèvement de cohorte, rejet CQ par contrôle avec dénominateur réel, stocks périmés/à échéance/sans date, prix d'achat en DZD/unité de stock (taux de commande vérifié), cascade waterfall du P&L de gestion, ratios N/D en l'absence de dénominateur, et aucun seuil de CQ de 5 % inventé.
+- **Provenance critique mesurée sur Supabase PRODUCTION (SQL en lecture seule)** : identifiants commençant par `DEMO` ou `SIM` : factures **3/4**, règlements **3/3**, OF **3/4**, commandes d'achat **3/4**, CRM **4/4**, RH **12/12**. Ces préfixes sont des indices, non une preuve individuelle de fiction. L'écran signale dynamiquement les références suspects via un diagnostic agrégé non destructif. Aucune ligne exclue, corrigée ni supprimée automatiquement.
+- **Limites** : P&L non SCF officiel (coûts actuels et nets enregistrés), OEE/TRS et OTIF non calculables sans données de machine/livraison, pas de seuils cibles fabriqués. Cf. `docs/AUDIT_DASHBOARDS_KPI_INDUSTRIE_20261107.md`.
+- **Vérifications PR** : [tests ERP 42410357719](https://github.com/Verwolfy/erp-mortier/actions/runs/42410357719) `success` : **2730 passed, 0 failed, 1 warning tiers**, [audit 42410357793](https://github.com/Verwolfy/erp-mortier/actions/runs/42410357793) `success`. Contrôles du commit final documentaire `main` encore à vérifier séparément.
+- **Sécurité** : aucune modification des données SQL, schémas, autorisations RLS/GRANT, clés, écritures, lots ni factures. Nouveaux scénarios de tests locaux non connectés. L'interface Streamlit hébergée authentifiée reste à contrôler ; la CI ne prouve pas son déploiement.
+- **Suites conditionnelles** : qualification métier des données `DEMO/SIM` et convention de suivi réel/formation avant de s'appuyer sur le reporting ; puis objectifs KPI validés, comparaison à périodes cohérentes, chargement paresseux des onglets et nouvelles collectes de temps machines/pertes/livraisons seulement après validation du schéma.
+
+---
+
 ## 7 novembre 2026 — aides contextuelles clic et survol dans les modules ERP
 
 - **Demande** : ajouter des infobulles expliquant notion, exécution et précautions dans les rubriques ERP. Capture de référence : Production → Consommations et contrôles → Historique Production.
