@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.admin.tier_dedup import DuplicateTierError, ensure_new_tier
+from modules.admin.tier_dedup import DuplicateTierError, ensure_new_tier, ensure_updated_tier
 from modules.admin import service
 
 
@@ -118,3 +118,45 @@ def test_comparison_never_puts_legal_identifier_in_error():
                                    "nif": "NIF PRIVATE 123"}])
     assert "NIFPRIVATE123" not in str(err.value)
     assert "CLI-002" in str(err.value)
+
+
+
+def test_edit_only_compares_against_other_records_and_merges_current_db_state():
+    records = [
+        {"client_id": "CLI-A", "nom": "Alpha", "nif": "NIF-A", "rc": "RC-A"},
+        {"client_id": "CLI-B", "nom": "Beta", "nif": "NIF-B", "rc": "RC-B"},
+    ]
+    # Auto-édition du nom sans nouveau tiers : admissible.
+    ensure_updated_tier(kind="client", target_id="CLI-A",
+                        updates={"nom": " alpha "}, existing=records)
+    # NIF nouvellement saisi, nom inchangé dans le formulaire : refus,
+    # car l'identité courante est recomposée depuis la base complète.
+    with pytest.raises(DuplicateTierError, match="CLI-B"):
+        ensure_updated_tier(kind="client", target_id="CLI-A",
+                            updates={"nif": "NIF B"}, existing=records)
+
+
+@pytest.mark.parametrize("records", [
+    [],
+    [{"client_id": "CLI-B", "nom": "Beta"}],
+    [{"client_id": "CLI-A", "nom": "Alpha"},
+     {"client_id": "CLI-A", "nom": "Alpha bis"}],
+    [{"client_id": "CLI-A", "nom": "Alpha"},
+     {"client_id": None, "nom": "Invalide"}],
+])
+def test_edit_fails_if_its_target_or_catalogue_cannot_be_verified(records):
+    with pytest.raises(RuntimeError):
+        ensure_updated_tier(kind="client", target_id="CLI-A",
+                            updates={"nom": "Nouvelle Alpha"}, existing=records)
+
+
+def test_updated_tier_will_not_reveal_legal_number():
+    with pytest.raises(DuplicateTierError) as err:
+        ensure_updated_tier(kind="fournisseur", target_id="FRN-A",
+                            updates={"nif": "998-776-55"},
+                            existing=[
+                                {"fournisseur_id": "FRN-A", "nom": "Alpha", "nif": "123"},
+                                {"fournisseur_id": "FRN-B", "nom": "Beta", "nif": "99877655"},
+                            ])
+    assert "99877655" not in str(err.value)
+    assert "FRN-B" in str(err.value)
