@@ -30,5 +30,7 @@ def test_month_end_for_regular_leap_and_year_boundary():
 def test_pnl_date_widget_uses_full_month_end():
     source = VIEWS.read_text(encoding="utf-8")
     assert 'date_fin_pnl = c_fin_pnl.date_input(' in source
-    assert '_current_month_end(datetime.date.today()), key="f_pnl"' in source
+    assert '_current_month_end(_dashboard_today()), key="f_pnl"' in source
+    assert 'return get_local_now().date()' in source
+    assert 'datetime.date.today()' not in source
     assert 'date_deb_pnl = c_deb_pnl.date_input(' in source
