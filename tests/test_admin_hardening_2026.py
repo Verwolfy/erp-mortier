@@ -20,6 +20,7 @@ def service(monkeypatch):
 
     db = types.ModuleType("core.db_service")
     db.fetch_data = MagicMock(return_value=[])
+    db.fetch_data_paginated = MagicMock(return_value=[])
     db.insert_hybrid = MagicMock(return_value=[{"id": "ok"}])
     db.update_hybrid = MagicMock(return_value=[{"client_id": "CLI-001"}])
     db.get_supabase_client = MagicMock()
