@@ -77,4 +77,4 @@ jobs:
           tests/test_facturation_gate_activation_013.py
           tests/test_ventes_atomic.py
       - name: Tous les tests ERP (sans secrets et sans acces production)
-        run: python -m pytest -q
+        run: python -m pytest -q -rs
