@@ -6,6 +6,10 @@ restent couverts par test_dashboard_demo_mode.py / test_dashboard_kpi_visuals.py
 """
 from __future__ import annotations
 
+import ast
+import inspect
+from datetime import datetime
+
 from streamlit.testing.v1 import AppTest
 
 from modules.dashboards import service, views
@@ -41,3 +45,24 @@ show_dashboards_page()
     assert any("MODE DÉMONSTRATION" in str(item.value)
                for item in at.warning), "Bannière démo absente"
     assert not any("Erreur" in str(item.value) for item in at.error)
+
+
+def test_mode_selector_precedes_tabs_in_streamlit_layout():
+    """Évite un sélecteur démo placé sous les neuf panneaux."""
+    source = inspect.getsource(views._show_dashboards_page_impl)
+    tree = ast.parse(source)
+    position = {}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "st"
+                and node.func.attr in {"toggle", "tabs"}):
+            position[node.func.attr] = node.lineno
+    assert position["toggle"] < position["tabs"]
+
+
+def test_default_calendar_uses_erp_clock(monkeypatch):
+    monkeypatch.setattr(views, "get_local_now",
+                        lambda: datetime(2026, 12, 1, 0, 5))
+    assert str(views._dashboard_today()) == "2026-12-01"
+    assert str(views._current_month_end(views._dashboard_today())) == "2026-12-31"
