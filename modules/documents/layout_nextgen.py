@@ -110,6 +110,7 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
                tracking_payload, draw_qr):
     """Factures et autres pièces restent des brouillons non émis."""
     from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
     from modules.documents.branding_images import branded_images
     header_png, footer_png = branded_images(logo_path)
     kind = doc["type"]
@@ -136,10 +137,12 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
     pdf.set_fill_color(*NAVY)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 17)
-    pdf.cell(190, 12, latin(kind).upper(), align="C", fill=True, ln=True)
+    pdf.cell(190, 12, latin(kind).upper(), align="C", fill=True,
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(175, 32, 40)
     pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(190, 8, "BROUILLON - NON VALABLE / NON EMIS", align="C", ln=True)
+    pdf.cell(190, 8, "BROUILLON - NON VALABLE / NON EMIS", align="C",
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(*NAVY)
     pdf.set_font("Helvetica", "", 9)
     # Champs en deux colonnes, pas de faux identifiant juridique.
@@ -160,7 +163,8 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
     pdf.set_fill_color(*NAVY)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(190, 7, latin("  " + partner_label), ln=True, fill=True)
+    pdf.cell(190, 7, latin("  " + partner_label), fill=True,
+             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_text_color(*NAVY)
     pdf.set_font("Helvetica", "", 9)
     for label, value in (("Raison sociale / service", doc.get("tiers_nom")),
@@ -219,7 +223,8 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
             pdf.set_text_color(*( (255,255,255) if key == "total_ttc" else NAVY ))
             pdf.set_font("Helvetica", "B", 9)
             pdf.cell(58, 8, latin(label), fill=True)
-            pdf.cell(38, 8, latin(f"{value} DZD", 35), align="R", fill=True, ln=True)
+            pdf.cell(38, 8, latin(f"{value} DZD", 35), align="R", fill=True,
+                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_text_color(*NAVY)
     if doc.get("observations"):
         if pdf.get_y() > 220:
@@ -246,5 +251,5 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
         pdf.cell(92, 6, latin(label))
         pdf.set_draw_color(*NAVY)
         pdf.rect(x, sig_y + 7, 91, 18)
-    result = pdf.output(dest="S")
+    result = pdf.output()
     return bytes(result) if not isinstance(result, str) else result.encode("latin-1")
