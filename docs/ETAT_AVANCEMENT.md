@@ -1,3 +1,15 @@
+## 7 novembre 2026 — anti-doublons tiers étendu aux éditions (PR #51)
+
+- **Livraison** : [PR #51](https://github.com/Verwolfy/erp-mortier/pull/51) fusionnée dans `main`, commit `7dd23f760516006d3202de3b854f11fdce1f9393`. Extension de la prévention des doublons Client/Fournisseur des créations aux **modifications** depuis l'éditeur Administration.
+- **Mécanisme** : avant changement de `nom`, `nif` ou `rc`, `sauvegarder_modifications` lit tout le référentiel via `fetch_data_paginated`, reconstitue la fiche à partir de la ligne courante de Supabase et refuse toute collision normalisée avec une **autre** fiche ; le tiers lui-même est exclu. Échec de lecture, cible introuvable ou ID incohérent => **aucune écriture**. Les éditions sans modification d'identité ne déclenchent pas cette relecture. Erreur de doublon affichée avec l'ID de fiche existante, sans exposition NIF/RC.
+- **Diagnostic SQL strictement lecture seule** : `docs/SQL_AUDIT_UNICITE_TIERS_20261107.sql` exécuté sur production, **0 groupe de collision détecté** sur NIF, RC ou noms simplifiés. Données inchangées.
+- **Tests PR** : [tests ERP 42417648070](https://github.com/Verwolfy/erp-mortier/actions/runs/42417648070) `success`, **2779 passed, 0 failed, 1 warning de dépendance** ; [audit 42417648088](https://github.com/Verwolfy/erp-mortier/actions/runs/42417648088) `success`.
+- **Limite de garantie** : la détection reste au niveau applicatif et **non transactionnel**. Les éditions/API directes hors du service et les créations simultanées ne sont pas garanties sans contrainte SQL/Pg. Une politique d'identité NIF/RC/pays et de multi-établissements doit être approuvée avant toute migration de production. Ne pas créer de contrainte unique sur le nom seul ; homonymes légitimes possibles.
+- **Aucun effet production** : aucune migration SQL, écriture, suppression `DEMO/SIM`, modification RLS/GRANT, secrets ni mouvement financier/stock. Les références `DEMO/SIM` sont conservées jusqu'à finalisation de l'ERP.
+- **Suite** : vérifier CI du dernier commit documentaire `main`, puis recette utilisateur Streamlit du blocage lors de modification ; concevoir la migration SQL conditionnée par validation des cas légaux et du plan de rollback.
+
+---
+
 ## 7 novembre 2026 — prévention des doublons Clients et Fournisseurs (PR #50)
 
 - **Vérification production en lecture seule** : Supabase `erp-mortier` contient 10 clients et 9 fournisseurs ; aucun nom exact normalisé en casse/espaces ni NIF/RC renseigné exactement dupliqué. Les tables `clients` et `fournisseurs` possèdent uniquement une unicité de clé primaire sur `client_id` et `fournisseur_id` ; aucune unicité métier en base à cette date.
