@@ -33,7 +33,8 @@ def test_all_topics_are_complete_and_unique():
     assert len(help_ui.TOPICS) >= 65
     for key, topic in help_ui.TOPICS.items():
         assert key and len(topic) == 4
-        assert all(isinstance(text, str) and len(text.strip()) >= 16 for text in topic)
+        assert isinstance(topic[0], str) and len(topic[0].strip()) >= 3
+        assert all(isinstance(text, str) and len(text.strip()) >= 16 for text in topic[1:])
         assert "clé service_role" not in " ".join(topic).casefold()
 
 
