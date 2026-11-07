@@ -9,6 +9,9 @@ on:
       - "app.py"
       - "modules/production/cost_views.py"
       - "modules/production/cost_service.py"
+      - "modules/dashboards/views.py"
+      - "modules/dashboards/service.py"
+      - "modules/dashboards/demo.py"
 
 permissions:
   contents: read
@@ -25,7 +28,7 @@ jobs:
           import os
           import urllib.request
           import urllib.error
-          from urllib.parse import urlsplit
+          from urllib.parse import urlsplit, urljoin
 
           url = 'https://nextgent-erp.streamlit.app/'
           result = 'Indéterminé'
@@ -45,7 +48,11 @@ jobs:
                       reason = f'HTTP {status} ; hôte final conforme : {host == "nextgent-erp.streamlit.app"}'
           except urllib.error.HTTPError as exc:
               result = 'Non confirmé'
-              reason = f'HTTP {exc.code} (sans authentification)'
+              # Afficher uniquement l'hôte de destination, jamais le
+              # chemin, les paramètres, cookies ou valeurs de redirection.
+              location = exc.headers.get('Location', '')
+              target = urlsplit(urljoin(url, location)).hostname if location else None
+              reason = f'HTTP {exc.code} (sans authentification) ; hôte de redirection : {target or "non communiqué"}'
           except Exception as exc:
               result = 'Non confirmé'
               reason = f'Échec réseau : {type(exc).__name__}'
