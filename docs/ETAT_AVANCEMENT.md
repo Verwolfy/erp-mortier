@@ -1,3 +1,14 @@
+## 7 novembre 2026 — prévention des doublons Clients et Fournisseurs (PR #50)
+
+- **Vérification production en lecture seule** : Supabase `erp-mortier` contient 10 clients et 9 fournisseurs ; aucun nom exact normalisé en casse/espaces ni NIF/RC renseigné exactement dupliqué. Les tables `clients` et `fournisseurs` possèdent uniquement une unicité de clé primaire sur `client_id` et `fournisseur_id` ; aucune unicité métier en base à cette date.
+- **Correction fusionnée** : [PR #50](https://github.com/Verwolfy/erp-mortier/pull/50), commit de fusion `0cce9c3a77c5dfdbe7559c94f7110b113e8a0870`. La création Clients/Fournisseurs effectue désormais une lecture Supabase paginée et stricte (échec si indisponible ou tronquée), normalise nom / NIF / RC, bloque un doublon ou une suspicion exacte et oriente vers l'ID de la fiche existante sans divulguer les numéros légaux.
+- **Tests PR** : [ERP 42416552546](https://github.com/Verwolfy/erp-mortier/actions/runs/42416552546) `success` : **2 763 passed, 0 failed, 1 warning dépendance** ; [audit 42416552539](https://github.com/Verwolfy/erp-mortier/actions/runs/42416552539) `success`.
+- **Documentation technique** : `docs/ANTI_DOUBLONS_TIERS_20261107.md` et `tests/test_admin_tier_duplicates.py`. Aucune écriture dans la base de production et aucune suppression des données `DEMO/SIM`.
+- **Limite connue** : la vérification applicative n'est **pas atomique** contre les soumissions concurrentes ; les modifications des identités dans le tableau d'édition ne sont pas encore couvertes. Une migration pour contraintes NIF/RC, avec exceptions de périmètre et validation métier, reste à préparer/autoriser pour une garantie en base. Ne pas créer d'index unique sur le nom seul sans traitement des homonymes.
+- **Suite** : vérifier la CI du dernier commit `main`, puis qualifier la règle d'identité par pays et cas de multi-établissements avant de modifier les contraintes de production.
+
+---
+
 ## 7 novembre 2026 — correction ergonomie Dashboard DEMO et infobulle waterfall (PR #49)
 
 - **Fusion GitHub :** [PR #49](https://github.com/Verwolfy/erp-mortier/pull/49), commit `f37a8b70c2360d6d546d4fc9e4221ca3c641d05d`.
