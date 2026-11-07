@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pandas as pd
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help, field_help
 
 from config.roles import has_permission
 from core.db_service import fetch_data_paginated, get_supabase_client
@@ -275,7 +276,8 @@ def _load_table(table: str) -> pd.DataFrame:
 
 
 def _accounts_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
-    st.subheader("Comptes bancaires, caisses et contreparties")
+    st.subheader("Comptes bancaires, caisses et contreparties", help=topic_help("finance.comptes"))
+    show_context_help(st, "finance.comptes")
     if not accounts.empty:
         st.dataframe(accounts, use_container_width=True, hide_index=True)
     else:
@@ -302,7 +304,8 @@ def _accounts_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None
 
 
 def _payment_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
-    st.subheader("Règlements et écritures de contrepartie")
+    st.subheader("Règlements et écritures de contrepartie", help=topic_help("finance.reglements"))
+    show_context_help(st, "finance.reglements")
     if not can_write:
         st.info("Mode lecture seule.")
         return
@@ -369,7 +372,8 @@ def _payment_tab(user_id: str, can_write: bool, accounts: pd.DataFrame) -> None:
 
 
 def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> None:
-    st.subheader("Affectation des règlements aux factures")
+    st.subheader("Affectation des règlements aux factures", help=topic_help("finance.lettrage"))
+    show_context_help(st, "finance.lettrage")
     if not can_write:
         st.info("Mode lecture seule.")
         return
@@ -425,7 +429,8 @@ def _allocation_tab(user_id: str, can_write: bool, reglements: pd.DataFrame) -> 
 
 
 def _dashboard(reglements: pd.DataFrame) -> None:
-    st.subheader("Synthèse des flux enregistrés")
+    st.subheader("Synthèse des flux enregistrés", help=topic_help("finance.dashboard"))
+    show_context_help(st, "finance.dashboard")
     if reglements.empty:
         st.info("Aucun règlement enregistré.")
         return
@@ -454,7 +459,8 @@ def _dashboard(reglements: pd.DataFrame) -> None:
 
 
 def _journal(entries: pd.DataFrame) -> None:
-    st.subheader("Journal des écritures enregistrées (pas un grand livre complet)")
+    st.subheader("Journal des écritures enregistrées (pas un grand livre complet)", help=topic_help("finance.journal"))
+    show_context_help(st, "finance.journal")
     if entries.empty:
         st.info("Aucune écriture enregistrée.")
         return
@@ -552,7 +558,8 @@ def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
 
 def _quittances_rapprochement_tab(user_id: str) -> None:
     """Contrôle en lecture seule ; aucun reçu fiscal n'est créé ni exporté."""
-    st.subheader("Rapprochement des règlements et factures clients")
+    st.subheader("Rapprochement des règlements et factures clients", help=topic_help("finance.quittances"))
+    show_context_help(st, "finance.quittances")
     st.caption(
         "État interne uniquement : les paiements partiels et les affectations "
         "multiples sont vérifiés sans émission d'une quittance fiscale."
@@ -615,7 +622,8 @@ def _quittances_rapprochement_tab(user_id: str) -> None:
 
 def _scf_balance_tab(user_id: str) -> None:
     """Vue non destructive : autorisation spécifique revérifiée côté serveur."""
-    st.subheader("Balance comptable SCF — consultation")
+    st.subheader("Balance comptable SCF — consultation", help=topic_help("finance.scf"))
+    show_context_help(st, "finance.scf")
     st.caption(
         "Uniquement les pièces validées des nouvelles tables SCF. "
         "Cette balance ne remplace pas les états comptables réglementaires."
@@ -667,7 +675,8 @@ def _scf_balance_tab(user_id: str) -> None:
 def _accuses_internes_tab(user_id: str, can_write: bool,
                           paiements: pd.DataFrame) -> None:
     """Accusé de caisse interne, jamais une quittance fiscale officielle."""
-    st.subheader("Accusés internes d'encaissement")
+    st.subheader("Accusés internes d'encaissement", help=topic_help("finance.accuses"))
+    show_context_help(st, "finance.accuses")
     st.warning(
         "Document interne NON fiscal. Aucun timbre, numéro de quittance légale "
         "ou paiement nouveau n'est créé."
@@ -723,7 +732,8 @@ def _audit_finance_vers_scf_tab(
     user_id: str, comptes: pd.DataFrame, reglements: pd.DataFrame,
 ) -> None:
     """Diagnostic RPC Finance, pas une écriture comptable SCF."""
-    st.subheader("Pré-audit des règlements pour la comptabilité SCF")
+    st.subheader("Pré-audit des règlements pour la comptabilité SCF", help=topic_help("finance.preaudit"))
+    show_context_help(st, "finance.preaudit")
     st.caption(
         "Vérifie les écritures en partie double générées par les opérations "
         "Finance REGF-. Les numéros de comptes affichés ne sont pas validés "
@@ -785,7 +795,8 @@ def _audit_finance_vers_scf_tab(
 
 def _preflight_reglementaire_tab(user_id: str) -> None:
     """Diagnostic non fiscal uniquement, aucune règle appliquée ni écriture."""
-    st.subheader("Préparation des référentiels fiscaux et SCF")
+    st.subheader("Préparation des référentiels fiscaux et SCF", help=topic_help("finance.reglementaire"))
+    show_context_help(st, "finance.reglementaire")
     st.caption("Contrôle de disponibilité, sans calcul de facture ni écriture comptable.")
     if not st.button("Contrôler les référentiels", key="finance_preflight_reglementaire"):
         return
@@ -819,7 +830,8 @@ def _preflight_reglementaire_tab(user_id: str) -> None:
 
 def _correspondances_finance_scf_tab(user_id: str, comptes: pd.DataFrame) -> None:
     """Vérifie les seuls numéros SCF exacts : aucun rapprochement officiel."""
-    st.subheader("Correspondances comptes Finance → SCF")
+    st.subheader("Correspondances comptes Finance → SCF", help=topic_help("finance.correspondances"))
+    show_context_help(st, "finance.correspondances")
     st.caption(
         "Comparaison exacte, sans inférence ni écriture automatique. "
         "Un numéro identique n'homologue pas une imputation comptable."
