@@ -26,3 +26,16 @@
 2. Valider la politique d'identité métier (NIF, RC, étendue géographique et cas particuliers).
 3. Envisager une migration SQL non destructive avec index partiels pour les champs légaux normalisés, après audit de collisions, plan de déploiement et approbation de la modification de schéma.
 4. Ne pas afficher « garanti par la base » tant que la contrainte n'existe pas.
+
+## Extension — contrôle des modifications en tableau (7 novembre 2026)
+
+- Si une édition change **nom**, **NIF** ou **RC**, la sauvegarde relit intégralement la table Clients ou Fournisseurs avec `fetch_data_paginated` et refuse toute lecture tronquée ou indisponible.
+- La fiche concernée est identifiée par sa clé primaire ; l'identité candidate est recalculée à partir de **l'enregistrement actuellement lu en base**, puis des champs modifiés. La fiche elle-même est exclue de la comparaison afin d'éviter les faux positifs.
+- Une correspondance avec **une autre** fiche déclenche `DuplicateTierError` ; aucune écriture hybride n'est appelée et l'interface affiche un avertissement guidant vers l'identifiant existant.
+- Les autres modifications (adresse, contact, statut) n'ajoutent pas de lecture globale. Les anciens contrôles d'autorisation, d'unicité du lot de modifications et de confirmation SQL restent actifs.
+- Les tests couvrent Clients et Fournisseurs, homonymes, RC/NIF, édition de soi, refus de lecture, liste corrompue, et conservation de l'identité courante.
+
+**Attention :** une modification directe par API, deux éditions concurrentes ou deux créations simultanées peuvent encore contourner la vérification applicative, faute de contrainte d'unicité SQL. Ne pas déclarer le référentiel « intégralement garanti » avant décision sur NIF, RC, pays et multi-établissements. Aucune migration de production n'est appliquée par cette extension.
+
+---
+
