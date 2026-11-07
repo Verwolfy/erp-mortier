@@ -184,18 +184,31 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
 
     repartition = df_periode.groupby("fournisseur_id")[col_montant].sum().reset_index().sort_values(by=col_montant, ascending=False) if not df_periode.empty and "fournisseur_id" in df_periode.columns else pd.DataFrame()
 
+    # Comparer uniquement des prix exprimés dans une MÊME unité de stock
+    # et une MÊME devise (DZD). Les prix en devises sont convertis au taux
+    # confirmé sur la commande ; ne pas tracer des montants non comparables.
     evolution_prix = pd.DataFrame()
-    if not df_periode.empty and not df_lignes.empty and "commande_achat_id" in df_lignes.columns and "prix_unitaire" in df_lignes.columns:
+    needed_header = {"commande_achat_id", "date_commande", "devise", "taux_change"}
+    needed_lines = {"commande_achat_id", "mp_id", "unite_cond", "prix_unitaire"}
+    if not df_periode.empty and not df_lignes.empty and needed_header.issubset(df_periode.columns) and needed_lines.issubset(df_lignes.columns):
         df_periode["date_obj"] = dates(df_periode, "date_commande")
-        df_merge = pd.merge(df_lignes, df_periode[["commande_achat_id", "date_obj"]],
-                            on="commande_achat_id", how="inner")
+        df_merge = pd.merge(
+            df_lignes,
+            df_periode[["commande_achat_id", "date_obj", "devise", "taux_change"]],
+            on="commande_achat_id", how="inner")
         if not df_merge.empty:
-            if "mp_id" not in df_merge:
-                raise DataReadError("Matière de ligne d'achat absente")
-            df_merge["prix_unitaire"] = numeric_values(df_merge, "prix_unitaire")
-            if (df_merge["prix_unitaire"] <= 0).any():
-                raise DataReadError("Prix d'achat nul ou négatif")
-            evolution_prix = df_merge[["date_obj", "mp_id", "prix_unitaire"]].copy()
+            price = numeric_values(df_merge, "prix_unitaire")
+            fx = numeric_values(df_merge, "taux_change")
+            if (price < 0).any() or (fx <= 0).any():
+                raise DataReadError("Prix d'achat ou taux de change non exploitable")
+            if (df_merge["mp_id"].isna().any() or df_merge["unite_cond"].isna().any()
+                    or df_merge["unite_cond"].astype(str).str.strip().eq("").any()):
+                raise DataReadError("Unité d'achat non qualifiée")
+            if not df_merge["devise"].map(lambda v: isinstance(v, str) and bool(v.strip())).all():
+                raise DataReadError("Devise d'achat non qualifiée")
+            df_merge["prix_unitaire_dzd"] = price * fx
+            evolution_prix = df_merge[["date_obj", "mp_id", "unite_cond",
+                                      "prix_unitaire_dzd"]].copy()
 
     return {"montant_total": montant_total, "commandes_retard": commandes_retard, "repartition_fournisseurs": repartition, "evolution_prix": evolution_prix}
 
