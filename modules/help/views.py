@@ -1,5 +1,6 @@
 """Guide utilisateur aligné sur les écrans disponibles, sans écriture métier."""
 import streamlit as st
+from modules.help.contextual import show_context_help, topic_help
 
 
 HELP_SECTIONS = {
@@ -416,6 +417,7 @@ def _mark_help_activity() -> None:
 
 def show_help_page():
     st.title("📚 Guide d'Utilisation de l'ERP")
+    show_context_help(st, "help.guide")
     st.caption("Guide révisé le 2 novembre 2026 — SOF-ERP-20261102-GUIDE-11")
     st.markdown("Sélectionnez une rubrique dans le menu de gauche.")
     st.sidebar.markdown("---")
