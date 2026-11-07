@@ -8,11 +8,11 @@ import pandas as pd
 import datetime
 import plotly.graph_objects as go
 from config.roles import has_permission
-from core.strict_reads import read_section
+from core.strict_reads import DataReadError, read_section
 from modules.dashboards.service import (
     get_kpis_direction, get_kpis_pnl, get_kpis_ventes, get_kpis_achats,
     get_kpis_stocks, get_kpis_production, get_kpis_crm,
-    get_kpis_rh, get_kpis_finance
+    get_kpis_rh, get_kpis_finance, get_dashboard_data_provenance
 )
 
 def _current_month_end(today: datetime.date) -> datetime.date:
@@ -77,6 +77,26 @@ def _show_dashboards_page_impl():
         "👑 Vue Direction", "📈 Rentabilité (P&L)", "🛒 Ventes & Facturation", "📦 Achats",
         "🏭 Stocks", "⚙️ Production", "🤝 CRM", "👥 RH", "🏦 Finance"
     ])
+
+    # Qualité des sources : indices agrégés, sans exposer de références ni
+    # présumer qu'un code DEMO/SIM est nécessairement fictif.
+    try:
+        provenance = get_dashboard_data_provenance()
+    except (PermissionError, DataReadError):
+        st.info("Provenance des données non vérifiable pour ce profil : "
+                "les KPI ne sont pas certifiés comme données réelles.")
+    else:
+        if provenance["marked"]:
+            st.warning(
+                f"Provenance à qualifier : {provenance['marked']} référence(s) "
+                "avec préfixe DEMO/SIM détectée(s) parmi les sources métier. "
+                "Ces lignes restent incluses dans les KPI ; ne pas prendre "
+                "ces indicateurs pour des résultats d'exploitation homologués.")
+            with st.expander("Voir le nombre de références DEMO/SIM par source"):
+                st.dataframe(pd.DataFrame(provenance["sources"]),
+                             use_container_width=True, hide_index=True)
+                st.caption("Les préfixes sont des indices seulement : "
+                           "ne rien supprimer ou exclure sans revue métier.")
 
     # --- 1. VUE DIRECTION ---
     with onglets[0], read_section("Direction"):
