@@ -7,20 +7,33 @@ import pandas as pd
 from datetime import timedelta
 from contextlib import contextmanager
 from contextvars import ContextVar
+from copy import deepcopy
 
 # Cache éphémère par rendu, jamais partagé entre sessions utilisateurs.
 # Il stocke des lignes brutes, puis retourne des DataFrame indépendants.
 _DASHBOARD_READS: ContextVar[dict | None] = ContextVar(
     "nextgen_dashboard_reads", default=None
 )
+_DASHBOARD_DEMO: ContextVar[dict | None] = ContextVar(
+    "nextgen_dashboard_demo", default=None
+)
 
 
 @contextmanager
-def dashboard_read_scope():
+def dashboard_read_scope(*, demo_rows: dict | None = None):
+    """Isole chaque rendu et interdit tout repli vers Supabase en mode démo."""
+    if demo_rows is not None:
+        if not isinstance(demo_rows, dict) or not all(
+                isinstance(name, str) and isinstance(rows, list)
+                and all(isinstance(row, dict) for row in rows)
+                for name, rows in demo_rows.items()):
+            raise ValueError("Jeu de démonstration invalide")
     token = _DASHBOARD_READS.set({})
+    demo_token = _DASHBOARD_DEMO.set(deepcopy(demo_rows))
     try:
         yield
     finally:
+        _DASHBOARD_DEMO.reset(demo_token)
         _DASHBOARD_READS.reset(token)
 
 from core.strict_reads import (fetch_data_strict as fetch_data,
@@ -40,11 +53,37 @@ def charger_donnees(table_name: str) -> pd.DataFrame:
     et chaque KPI reçoit sa propre copie des données.
     """
     current = _DASHBOARD_READS.get()
+    demo = _DASHBOARD_DEMO.get()
+    if demo is not None:
+        if table_name not in demo:
+            raise DataReadError("Table du scénario démo absente ; aucune lecture réelle autorisée")
+        return pd.DataFrame(deepcopy(demo[table_name]))
     if current is None:
         return pd.DataFrame(fetch_data(table_name))
     if table_name not in current:
         current[table_name] = fetch_data(table_name)
     return pd.DataFrame(current[table_name]).copy(deep=True)
+
+
+def _lire_periode(table_name: str, date_column: str,
+                  start_date: str, end_date: str) -> pd.DataFrame:
+    """Même source par rendu : DEMO 100% local OU requête bornée réelle."""
+    demo = _DASHBOARD_DEMO.get()
+    if demo is None:
+        return pd.DataFrame(fetch_data_by_date_range(
+            table_name, date_column, start_date, end_date))
+    if table_name not in demo:
+        raise DataReadError("Source de démonstration absente")
+    frame = pd.DataFrame(deepcopy(demo[table_name]))
+    if frame.empty:
+        return frame
+    if date_column not in frame:
+        raise DataReadError("Date de scénario manquante")
+    # La même validation stricte qu'en réel est appliquée, y compris
+    # aux dates impossibles et aux lignes hors période.
+    chronology = dates(frame, date_column)
+    return frame.loc[chronology.between(
+        pd.Timestamp(start_date), pd.Timestamp(end_date))].copy()
 
 
 # Un préfixe DEMO/SIM est un indice de données d'exercice, jamais une
@@ -112,8 +151,8 @@ def get_kpis_pnl(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     end_str = date_fin.strftime("%Y-%m-%d")
 
     # Fetch uniquement sur la période
-    df_fac_periode = pd.DataFrame(fetch_data_by_date_range("factures", "date", start_str, end_str))
-    df_reg_periode = pd.DataFrame(fetch_data_by_date_range("reglements", "date_reglement", start_str, end_str))
+    df_fac_periode = _lire_periode("factures", "date", start_str, end_str)
+    df_reg_periode = _lire_periode("reglements", "date_reglement", start_str, end_str)
 
     df_frn = charger_donnees("fournisseurs")
     df_paie = charger_donnees("fiches_de_paie") # Filtrage mensuel contrôlé ci-dessous
@@ -199,7 +238,7 @@ def get_kpis_achats(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dict:
     end_str = date_fin.strftime("%Y-%m-%d")
 
     df_cmd = charger_donnees("commandes_achats") # Besoin global pour commandes en retard
-    df_periode = pd.DataFrame(fetch_data_by_date_range("commandes_achats", "date_commande", start_str, end_str))
+    df_periode = _lire_periode("commandes_achats", "date_commande", start_str, end_str)
     # Les lignes ne servent qu'à l'évolution des prix sur une période non vide.
     df_lignes = charger_donnees("lignes_achats") if not df_periode.empty else pd.DataFrame()
 
@@ -279,8 +318,8 @@ def get_kpis_production(date_debut: pd.Timestamp, date_fin: pd.Timestamp) -> dic
     start_str = date_debut.strftime("%Y-%m-%d")
     end_str = date_fin.strftime("%Y-%m-%d")
 
-    df_periode = pd.DataFrame(fetch_data_by_date_range("ordres_fabrication", "date_planification", start_str, end_str))
-    df_cq = pd.DataFrame(fetch_data_by_date_range("controle_qualite", "date", start_str, end_str))
+    df_periode = _lire_periode("ordres_fabrication", "date_planification", start_str, end_str)
+    df_cq = _lire_periode("controle_qualite", "date", start_str, end_str)
 
     # Cohorte d'OF datée par PLANIFICATION, pas par clôture : leur état
     # actuel ne constitue pas un taux de ponctualité ni un OEE.
