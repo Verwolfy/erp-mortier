@@ -22,16 +22,14 @@ def test_dashboard_selectbox_callback():
         and node.func.attr == "selectbox"
     ]
 
-    assert len(widgets) == 1
-
-    callbacks = [
-        kw.value for kw in widgets[0].keywords
-        if kw.arg == "on_change"
-    ]
-
-    assert len(callbacks) == 1
-    assert isinstance(callbacks[0], ast.Name)
-    assert callbacks[0].id == "_mark_dashboards_activity"
+    # Matière + unité de stock : deux filtres nécessaires pour comparer
+    # les prix convertis, sans mélanger des unités incompatibles.
+    assert len(widgets) == 2
+    for widget in widgets:
+        callbacks = [kw.value for kw in widget.keywords if kw.arg == "on_change"]
+        assert len(callbacks) == 1
+        assert isinstance(callbacks[0], ast.Name)
+        assert callbacks[0].id == "_mark_dashboards_activity"
 
 
 def test_dashboard_callback_no_direct_refresh():
