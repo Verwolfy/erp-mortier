@@ -1,3 +1,14 @@
+## 7 novembre 2026 — observation publique Streamlit (résultat réel)
+
+- **PR #44 fusionnée** : [observer Streamlit](https://github.com/Verwolfy/erp-mortier/pull/44), commit `32d312767b8e799d8ac78fd51d6e4881af5c4a84`. Le workflow GitHub surveille les changements du module Production/Coûts et permet un lancement manuel. Aucune donnée métier ni migration Supabase modifiée.
+- **Observation publique exécutée** : [run 42371278259](https://github.com/Verwolfy/erp-mortier/actions/runs/42371278259) `success` au sens exécution du script, mais son journal indique textuellement `Observation : Non confirmé. HTTP 303 (sans authentification)`. L'URL `https://nextgent-erp.streamlit.app/` est une cible configurée, pas une preuve de déploiement.
+- **CI sur le commit de fusion** : [tests ERP 42371278112](https://github.com/Verwolfy/erp-mortier/actions/runs/42371278112) `success` ; [audit 42371278032](https://github.com/Verwolfy/erp-mortier/actions/runs/42371278032) `success`. Ceci valide le code testé, pas l'interface hébergée authentifiée.
+- **Supabase production en lecture seule** : toujours 2 périodes `BROUILLON`, 0 charges, 0 assiettes, 0 pièce SCF validée, 0 OF terminé en novembre. Aucune opération ou validation créée.
+- **Limite** : version Streamlit effectivement servie et rattachement `main`/`app.py` non vérifiables sans consultation authentifiée de l'hébergeur et de l'écran `SOF-ERP-COUTS-20261107-PRECHECK-02`. Pas de demande de secrets dans les journaux publics ; aucune rotation de clé.
+- **Décision** : fermer le lot logiciel de précontrôle, laisser la clôture métier bloquée jusqu'aux justificatifs réels et à la vérification de l'application hébergée ; expert-comptable algérien nécessaire avant usage réglementaire.
+
+---
+
 ## 7 novembre 2026 — repère de déploiement et nettoyage des CI (publication)
 
 - **PR #42 fusionnée sur `main`** : [repère Streamlit et diagnostic des tests ignorés](https://github.com/Verwolfy/erp-mortier/pull/42), commit de fusion `3f40bec84db3ff95075f355bd8c9e70cc085b90d`. La page Production → Coûts industriels affiche désormais `SOF-ERP-COUTS-20261107-PRECHECK-02`, même en cas d'erreur du backend, sans exposer d'URL privée ni de secret. Deux tests UI ajoutés.
