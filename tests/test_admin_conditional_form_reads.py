@@ -39,8 +39,8 @@ def test_sku_read_only_and_creation_disabled_have_no_catalog_reads():
     page = _page()
     sku_tabs = [
         n for n in ast.walk(page)
-        if isinstance(n, ast.With)
-        and any(ast.unparse(item.context_expr) == "tab5" for item in n.items)
+        if isinstance(n, ast.If)
+        and ast.unparse(n.test) == "active_panel == admin_panels[4]"
     ]
     assert len(sku_tabs) == 1
     sku = sku_tabs[0]
@@ -65,8 +65,8 @@ def test_les_listes_de_reference_ne_chargent_pas_par_defaut():
     page = _page()
     sections = [
         n for n in ast.walk(page)
-        if isinstance(n, ast.With)
-        and any(ast.unparse(item.context_expr) == "tab_listes" for item in n.items)
+        if isinstance(n, ast.If)
+        and ast.unparse(n.test) == "active_panel == admin_panels[5]"
     ]
     assert len(sections) == 1
     code = ast.unparse(sections[0])
