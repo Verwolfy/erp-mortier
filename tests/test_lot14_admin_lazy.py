@@ -41,7 +41,7 @@ def ui(monkeypatch):
     ]
     monkeypatch.setattr(admin, "st", st)
     write = MagicMock(return_value=True)
-    monkeypatch.setattr(admin, "has_permission", write)
+    monkeypatch.setattr(admin, "_admin_access", write)
 
     get_opts = MagicMock(return_value=["TEST"])
     get_dataframe = MagicMock(return_value=pd.DataFrame())
@@ -84,7 +84,7 @@ def test_only_selected_admin_panel_runs(ui, index):
     _choose(ui, index)
     admin.show_admin_page()
     st, permission, get_opts, get_dataframe, edit, search, quality, tax, sku_tax, nextgen, documents = ui
-    permission.assert_called_once_with("ADMIN", "Administration", "ecriture")
+    permission.assert_called_once_with()
     assert search.call_count == (1 if index in range(5) else 0)
     assert tax.call_count == (1 if index == 6 else 0)
     assert sku_tax.call_count == (1 if index == 7 else 0)
