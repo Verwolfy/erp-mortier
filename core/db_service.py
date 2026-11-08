@@ -7,6 +7,8 @@ Intègre une piste d'audit automatique ET UN CONTRÔLE DE DROITS SERVEUR.
 import hashlib
 import logging
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Optional
 
 import streamlit as st
@@ -208,20 +210,65 @@ def _is_active(value: Any) -> bool:
     return str(value).strip().casefold() in _ACTIVE_VALUES
 
 
-def get_supabase_client() -> Client:
-    """Vérifie l'environnement à chaque demande, sans client Auth partagé en cache.
+# Uniquement pendant UNE page de lecture stricte (autorisation + SELECT).
+# Pas de st.cache_resource, pas de contexte client partagé entre utilisateurs.
+_PAGE_READ_CLIENT: ContextVar[dict | None] = ContextVar(
+    "sofiane_strict_page_client", default=None
+)
 
-    010-A-01 privilégie l'isolation des sessions sur la mise en cache. Les coûts
-    de création du client devront être mesurés avant tout déploiement.
+
+@contextmanager
+def strict_read_page_client_scope():
+    """Client réutilisable uniquement entre la garde RBAC et son SELECT.
+
+    Chaque page a sa propre portée. Les portées imbriquées restaurent le parent,
+    y compris après une erreur réseau ou un refus RBAC.
+    """
+    token = _PAGE_READ_CLIENT.set({})
+    try:
+        yield
+    finally:
+        _PAGE_READ_CLIENT.reset(token)
+
+
+def _page_session_binding() -> tuple:
+    """Contexte éphémère pour rejeter un changement d'utilisateur en cours de page."""
+    state = st.session_state
+    user = state.get("user")
+    if not isinstance(user, dict):
+        user = {}
+    return (
+        state.get("authenticated") is True,
+        user.get("user_id"),
+        user.get("role"),
+    )
+
+
+def get_supabase_client() -> Client:
+    """Vérifie la cible à chaque appel, même lors du réemploi intra-page.
+
+    Hors d'une page de lecture stricte, un client neuf est systématiquement
+    créé. Aucune session Auth n'est partagée entre pages, rendus ou utilisateurs.
     """
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
     require_supabase_target(policy_from_streamlit(st.secrets), url)
-    # Mesure locale uniquement dans une portée d'affichage explicite.
-    # Aucun cache de client Auth partagé entre sessions ou utilisateurs.
+
+    scope = _PAGE_READ_CLIENT.get()
+    binding = _page_session_binding() if scope is not None else None
+    if scope is not None and "client" in scope:
+        if (scope["url"], scope["key"], scope["binding"]) != (url, key, binding):
+            # Ne pas mélanger des droits établis sur une autre cible/identité.
+            raise PermissionError("Contexte de lecture modifié pendant la page")
+        return scope["client"]
+
+    # Mesure locale uniquement dans une portée de rendu explicite.
     from core.query_diagnostics import measured_query_stage
     with measured_query_stage("client"):
-        return create_client(url, key)
+        client = create_client(url, key)
+    if scope is not None:
+        scope.update(url=url, key=key, binding=binding, client=client)
+    return client
 
 
 def check_server_permission(table_name: str) -> bool:
