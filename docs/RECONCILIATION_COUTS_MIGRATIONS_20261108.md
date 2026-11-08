@@ -23,9 +23,9 @@ Aucune migration n'a été exécutée, aucun registre modifié, aucune donnée n
 
 - 10 migrations de coûts industriels (tableau ci-dessus) : **correspondance textuelle exacte nouvellement vérifiée**.
 - 21 migrations ERP antérieures (012 à 032) : états et preuves archivés dans `docs/RECONCILIATION_MIGRATIONS_PREUVES_20261105.md` ; 17 identités exactes et 4 équivalences documentées après normalisation d'en-têtes/espaces. Le présent lot **n'a pas réexécuté** ces 21 comparaisons.
-- 2 migrations du site NextGen (`20261031204336` et `20261031220121`) : appliquées dans le registre Supabase mais **SQL de source hors du dépôt ERP** ; comparaison à leur référentiel d'origine **non réalisée**.
+- 2 migrations du site NextGen (`20261031204336` et `20261031220121`) : comparées ultérieurement à `Verwolfy/nextgen-website` dans `docs/RECONCILIATION_MIGRATIONS_SITE_20261108.md` (une identité exacte ; une identité hors saut de ligne final).
 
-En tout, **31 migrations ERP** sont associées aux fichiers du dépôt selon les contrôles nouveaux et antérieurs. Il reste **2 migrations du site** dont la source doit être rapprochée, puis un audit de schéma **réel** (tables, index, contraintes, fonctions, triggers, vues, politiques RLS et GRANT).
+En tout, **31 migrations ERP** sont associées aux fichiers du dépôt selon les contrôles nouveaux et antérieurs. Les **2 migrations du site** ont désormais une source identifiée et comparée (voir document spécifique) ; il reste un audit du schéma **réel** (tables, index, contraintes, fonctions, triggers, vues, politiques RLS et GRANT).
 
 ## Limites explicites
 
@@ -35,7 +35,7 @@ Les candidats `sql/supabase_pending/erp_034_fk_indexes_CANDIDAT_NON_EXECUTE.sql`
 
 ## Suite
 
-1. Contrôler la provenance des deux migrations du site NextGen dans son dépôt source, sans importer des données client.
+1. Conserver la preuve de provenance des deux migrations du site NextGen et auditer leurs objets/droits au-delà des trois objets déjà contrôlés, sans importer de données client.
 2. Réaliser un diff d'objets réels et de permissions (lecture seule) entre schéma attendu et production ; toute différence destructive nécessite arbitrage.
 3. Activer un environnement de test approprié uniquement après vérification du coût et de l'autorisation ; y tester les parcours RPC refusés/acceptés.
 4. Ne pas déclarer l'ERP entièrement réconcilié ni homologué sur la seule base de ce tableau.
