@@ -6,6 +6,9 @@ SQL = Path(__file__).resolve().parents[1] / "sql/supabase_pending/erp_034_fk_ind
 EXPECTED = {
     ("controle_qualite", "of_id"),
     ("demandes_conges", "employe_id"),
+    ("erp_cost_drivers", "of_id"),
+    ("erp_cost_of_validation_snapshot", "of_id"),
+    ("erp_cost_pools", "nature_code"),
     ("erp_exonerations_tva_clients", "cree_par"),
     ("erp_exonerations_tva_evenements", "acteur_metier"),
     ("erp_exonerations_tva_operations", "acteur_id"),
@@ -27,7 +30,7 @@ PATTERN = re.compile(
 )
 
 
-def test_candidate_has_exactly_15_unique_fk_indexes():
+def test_candidate_has_exactly_18_unique_fk_indexes():
     lines = [
         line.strip()
         for line in SQL.read_text(encoding="utf-8").splitlines()
