@@ -5,7 +5,7 @@ Aucune facture, écriture ou paramètre n'est créé par ce module.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from math import isfinite
 from typing import Any, Mapping
 
@@ -37,7 +37,19 @@ def examiner_referentiels(
         if not isinstance(rows, list) or len(rows) > _MAX or not all(isinstance(r, dict) for r in rows):
             raise PreflightIndisponible(f"Inventaire {key} invalide")
     rates = snapshots["parametres_reglementaires"]
-    instant = date_reference if date_reference is not None else date.today()
+    if date_reference is None:
+        instant = date.today()
+    elif isinstance(date_reference, date) and not isinstance(date_reference, datetime):
+        instant = date_reference
+    elif isinstance(date_reference, str):
+        try:
+            instant = date.fromisoformat(date_reference)
+        except ValueError as exc:
+            raise PreflightIndisponible("Date de référence invalide") from exc
+        if instant.isoformat() != date_reference:
+            raise PreflightIndisponible("Date de référence ISO requise")
+    else:
+        raise PreflightIndisponible("Date de référence invalide")
     observed = {}
     for code in ("TVA_TAUX_NORMAL", "TVA_TAUX_REDUIT"):
         lignes_code = []
@@ -52,6 +64,22 @@ def examiner_referentiels(
                 if not isfinite(valeur):
                     raise PreflightIndisponible(f"{code}: valeur numérique invalide")
                 row = {**row, "valeur": str(valeur)}
+            # Un projet/non-confirmé applicable en parallèle d'une valeur
+            # confirmée est une contradiction, pas un choix silencieux.
+            try:
+                debut = date.fromisoformat(row["date_effet"])
+                fin = (
+                    date.fromisoformat(row["date_fin"])
+                    if row.get("date_fin") is not None else None
+                )
+            except (TypeError, KeyError, ValueError) as exc:
+                raise PreflightIndisponible(f"{code}: dates de version invalides") from exc
+            if fin is not None and fin < debut:
+                raise PreflightIndisponible(f"{code}: période incohérente")
+            if debut <= instant and (fin is None or instant <= fin):
+                if (row.get("statut_juridique") != "en_vigueur"
+                        or row.get("niveau_confiance") != "CONFIRMEE"):
+                    raise PreflightIndisponible(f"{code}: version applicable non confirmée")
             lignes_code.append(row)
         if not lignes_code:
             continue
