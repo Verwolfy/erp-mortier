@@ -221,3 +221,43 @@ def test_invalid_equality_filter_never_queries(env, kwargs):
     with pytest.raises(ValueError):
         reads.fetch_data_strict('lignes_achats', **kwargs)
     assert env[0].calls == []
+
+
+def test_only_primary_key_reads_minimal_projection_with_all_guards(env):
+    client, guard = env
+    client.api_cap = 1
+    client.tables['users'] = [
+        dict(user_id='a', nom='A', login='a', role='ADMIN',
+             actif='OUI', hash_mdp='sensitive-test-value-1'),
+        dict(user_id='b', nom='B', login='b', role='ADMIN',
+             actif='OUI', hash_mdp='sensitive-test-value-2'),
+    ]
+    rows = reads.fetch_data_strict('users', only_primary_key=True)
+    assert rows == [{'user_id': 'a'}, {'user_id': 'b'}]
+    assert len(client.calls) == 2
+    assert guard.call_count == 2
+    assert all(q.projection == 'user_id' for q in client.calls)
+    assert 'hash_mdp' not in str(rows)
+
+
+def test_only_primary_key_denied_before_query(env):
+    client, guard = env
+    guard.side_effect = PermissionError('Accès interdit')
+    with pytest.raises(PermissionError):
+        reads.fetch_data_strict('users', only_primary_key=True)
+    assert client.calls == []
+
+
+def test_only_primary_key_fail_closed_on_partial_page(env):
+    client, _ = env
+    client.responses = [reply([{'user_id': 'a'}], 2), reply([], 2)]
+    with pytest.raises(reads.DataReadError):
+        reads.fetch_data_strict('users', only_primary_key=True)
+    assert len(client.calls) == 2
+
+
+@pytest.mark.parametrize('value', [None, 1, 'yes', [], {}])
+def test_only_primary_key_option_must_be_boolean(env, value):
+    with pytest.raises(ValueError):
+        reads.fetch_data_strict('users', only_primary_key=value)
+    assert env[0].calls == []
