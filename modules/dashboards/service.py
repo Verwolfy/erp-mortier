@@ -37,7 +37,8 @@ def dashboard_read_scope(*, demo_rows: dict | None = None):
         _DASHBOARD_READS.reset(token)
 
 from core.strict_reads import (fetch_data_strict as fetch_data,
-                               fetch_data_by_date_range_strict as fetch_data_by_date_range)
+                               fetch_data_by_date_range_strict as fetch_data_by_date_range,
+                               fetch_data_strict as fetch_provenance_identifiers)
 from core.utils import get_local_now
 from core.indicateurs_factures import (validated_documents, in_period, client_invoices,
                                       open_receivables, ageing_balance, numeric_values, dates)
@@ -122,7 +123,22 @@ def get_dashboard_data_provenance() -> dict:
     sections = []
     total_marked = 0
     for table, identifier, display in _PROVENANCE_SOURCES:
-        frame = charger_donnees(table)
+        scope = _DASHBOARD_READS.get()
+        if (_DASHBOARD_DEMO.get() is None and scope is not None
+                and table not in scope):
+            # Sur le rendu Streamlit normal, l'avertissement de provenance
+            # n'a besoin QUE de la clé. Les lectures SQL restent paginées,
+            # contrôlées par RBAC à chaque page et refusées si incomplètes.
+            # Le résultat n'est partagé ni entre rendus ni entre utilisateurs.
+            cache_key = ("provenance", table)
+            if cache_key not in scope:
+                scope[cache_key] = fetch_provenance_identifiers(
+                    table, only_primary_key=True)
+            frame = pd.DataFrame(deepcopy(scope[cache_key]))
+        else:
+            # La source DEMO et les tables déjà chargées par un KPI gardent
+            # leurs données locales / strictes : pas de nouvelle requête.
+            frame = charger_donnees(table)
         if frame.empty:
             sections.append({"Source": display, "Références DEMO/SIM": 0, "Total": 0})
             continue
