@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Mapping
 
-_SHA_RE = re.compile(r"[a-fA-F0-9]{40}\\Z")
+_SHA_RE = re.compile(r"[a-fA-F0-9]{40}$")
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
