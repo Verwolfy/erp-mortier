@@ -48,7 +48,7 @@ def show_crm_page():
     )
 
     if active_panel == panels[0]:
-            with read_section("Pipeline"):
+        with read_section("Pipeline"):
             st.subheader("Gestion du Pipeline", help=topic_help("crm.pipeline"))
             show_context_help(st, "crm.pipeline")
             if can_write:
@@ -79,7 +79,7 @@ def show_crm_page():
                 st.info("Aucune opportunité en cours.")
 
     if active_panel == panels[1]:
-            with read_section("Clients CRM"):
+        with read_section("Clients CRM"):
             st.subheader("Consigner une Interaction", help=topic_help("crm.interaction"))
             show_context_help(st, "crm.interaction")
             df_clients = get_clients_actifs() if can_write else pd.DataFrame()
@@ -111,7 +111,7 @@ def show_crm_page():
                         st.rerun()
 
     if active_panel == panels[2]:
-            with read_section("Historique CRM"):
+        with read_section("Historique CRM"):
             st.subheader("Historique des Interactions", help=topic_help("crm.historique"))
             show_context_help(st, "crm.historique")
             st.caption("Chargement à la demande pour éviter une lecture inutile à chaque navigation.")
