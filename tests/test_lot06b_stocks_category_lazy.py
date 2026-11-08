@@ -69,7 +69,7 @@ def test_pf_has_no_mp_read_even_when_mp_catalogue_would_fail(ui):
 
 def test_rbac_blocks_both_stock_categories_before_selection(ui):
     _navigate(ui, PF)
-    ui.roles.has_permission.return_value = False
+    ui.roles.has_permission.side_effect = lambda *_args: False
     ui.mod.show_stocks_page()
     ui.st.selectbox.assert_not_called()
     ui.mod.get_mp_actives.assert_not_called()
