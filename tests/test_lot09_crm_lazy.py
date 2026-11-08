@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -29,6 +30,13 @@ def ui(monkeypatch):
         MagicMock() for _ in range(count if isinstance(count, int) else len(count))
     ]
     monkeypatch.setattr(crm, "st", st)
+    client = MagicMock()
+    (client.table.return_value.select.return_value.eq.return_value
+           .limit.return_value.execute.return_value) = SimpleNamespace(
+               data=[{"user_id": "USR-CRM-T", "role": "ADMIN", "actif": "OUI"}]
+           )
+    monkeypatch.setattr(crm, "get_supabase_client",
+                        MagicMock(return_value=client))
     perm = MagicMock(return_value=True)
     monkeypatch.setattr(crm, "has_permission", perm)
     pipe = MagicMock(return_value=pd.DataFrame())
