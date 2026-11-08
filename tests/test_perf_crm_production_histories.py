@@ -26,8 +26,11 @@ def test_historiques_conservent_les_lecteurs_autorises():
 
 def test_production_referentiels_non_charges_en_lecture_seule():
     content = Path("modules/production/views.py").read_text(encoding="utf-8")
-    assert "products = get_produits_actifs() if can_write else pd.DataFrame()" in content
-    assert "materials = get_mp_actives() if can_write else pd.DataFrame()" in content
-    assert "skus = get_skus_actifs() if can_write else pd.DataFrame()" in content
+    # La sélection n'a pas le droit de charger les catalogues pour
+    # Historiques/Coûts, même chez un opérateur habilité à écrire.
+    assert "need_catalogues = can_write and active_panel in panels[:3]" in content
+    assert "products = get_produits_actifs() if need_catalogues else pd.DataFrame()" in content
+    assert "materials = get_mp_actives() if need_catalogues else pd.DataFrame()" in content
+    assert "get_skus_actifs() if can_write and active_panel in panels[1:3]" in content
     # En lecture seule, le suivi des OF est accessible, sans leur clôture.
     assert 'orders = get_ordres_fabrication()' in content
