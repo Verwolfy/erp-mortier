@@ -146,8 +146,12 @@ def test_stale_session_admin_does_not_bypass_db_role(ui):
     ui.db.fetch_data.assert_not_called()
 
 
-def test_read_only_user_sees_history_without_mutations(ui):
+def test_read_only_user_can_consult_costs_without_mutations(ui):
     ui.roles.has_permission.side_effect = lambda role, module, perm: perm == 'lecture'
+    ui.st.selectbox.side_effect = (
+        lambda label, options, **kw:
+        "💰 Coûts industriels" if label == "Vue Production" else list(options)[0]
+    )
     ui.mod.show_production_page()
     ui.prod.create_recette.assert_not_called()
     ui.prod.create_ordre_fabrication.assert_not_called()

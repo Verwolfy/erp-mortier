@@ -606,27 +606,32 @@ def show_production_page() -> None:
         st.error("Accès au module Production refusé ou compte inactif.")
         return
     user_id, can_write, can_stock = access
-    # En lecture seule, les écrans de création retournent immédiatement et
-    # le suivi des OF n'utilise pas les catalogues après son contrôle d'accès.
-    # Éviter trois requêtes non nécessaires pour les profils consultatifs.
-    products = get_produits_actifs() if can_write else pd.DataFrame()
-    materials = get_mp_actives() if can_write else pd.DataFrame()
-    skus = get_skus_actifs() if can_write else pd.DataFrame()
-    tab_recipe, tab_of, tab_follow, tab_history, tab_costs = st.tabs([
-        "📝 Recettes", "⚙️ OF", "📊 Production et CQ", "🔍 Consommations et contrôles",
-        "💰 Coûts industriels",
-    ])
-    with tab_costs:
+    # st.tabs calcule aussi les vues invisibles. Une seule vue est exécutée
+    # après validation du compte et des droits côté serveur.
+    panels = ("📝 Recettes", "⚙️ OF", "📊 Production et CQ",
+              "🔍 Consommations et contrôles", "💰 Coûts industriels")
+    active_panel = st.selectbox(
+        "Vue Production", panels, key="_erp_production_active_panel",
+        on_change=_mark_production_activity,
+        help="Un seul panneau est chargé à la fois.",
+    )
+    need_catalogues = can_write and active_panel in panels[:3]
+    products = get_produits_actifs() if need_catalogues else pd.DataFrame()
+    materials = get_mp_actives() if need_catalogues else pd.DataFrame()
+    skus = (get_skus_actifs() if can_write and active_panel in panels[1:3]
+            else pd.DataFrame())
+
+    if active_panel == panels[4]:
         from modules.production.cost_views import show_cost_reference
         # Le service revalide en plus les habilitations Production ET Finance.
         show_cost_reference(can_write)
-    with tab_recipe:
+    elif active_panel == panels[0]:
         _recipe_tab(user_id, can_write, products, materials)
-    with tab_of:
+    elif active_panel == panels[1]:
         _of_tab(user_id, can_write, products, skus, materials)
-    with tab_follow:
+    elif active_panel == panels[2]:
         _followup_tab(user_id, can_write, can_stock, skus, materials, products)
-    with tab_history:
+    elif active_panel == panels[3]:
         st.subheader("Historique des consommations et contrôles qualité", help=topic_help("production.historique"))
         show_context_help(st, "production.historique")
         st.caption("Chargement manuel pour éviter les requêtes historiques inutiles.")

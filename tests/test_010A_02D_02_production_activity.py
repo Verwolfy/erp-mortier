@@ -34,7 +34,7 @@ def test_production_history_callback_included():
 
     assert dict(counts) == {
         "button": 9,
-        "selectbox": 4,
+        "selectbox": 5,
         "form_submit_button": 2,
     }
 
