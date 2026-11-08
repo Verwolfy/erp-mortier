@@ -65,6 +65,9 @@ def env(monkeypatch):
     core.__path__ = []
     core.db_service = db
     core.security_service = security
+    provenance = types.ModuleType("core.release_provenance")
+    provenance.release_caption = Mock(return_value="Version ERP : inconnue · NON VÉRIFIABLE")
+    core.release_provenance = provenance
     modules = types.ModuleType("modules")
     modules.__path__ = []
     modules_auth = types.ModuleType("modules.auth")
@@ -74,6 +77,7 @@ def env(monkeypatch):
     for key, mod in {
         "streamlit": st, "config": config, "config.roles": roles,
         "core": core, "core.db_service": db, "core.security_service": security,
+        "core.release_provenance": provenance,
         "modules": modules, "modules.auth": modules_auth,
         "modules.auth.views": auth,
     }.items():
@@ -91,7 +95,8 @@ def env(monkeypatch):
         "last_activity": 999,
     })
     monkeypatch.setattr(app.time, "time", lambda: 1000)
-    return types.SimpleNamespace(st=st, app=app, client=client, db=db, auth=auth, roles=roles, security=security)
+    return types.SimpleNamespace(st=st, app=app, client=client, db=db, auth=auth,
+                                 roles=roles, security=security, provenance=provenance)
 
 
 def test_fresh_role_from_db(env):
@@ -1116,3 +1121,17 @@ def test_010a_help_activity_backend_error(env):
     assert env.st.session_state["last_activity"] == 999
     assert "_erp_help_interacted" not in env.st.session_state
     env.st.error.assert_called_once()
+
+
+
+def test_release_provenance_only_after_verified_authentication(env, monkeypatch):
+    env.st.session_state["authenticated"] = False
+    env.app.main()
+    env.provenance.release_caption.assert_not_called()
+    env.st.session_state["authenticated"] = True
+    env.st.session_state["user"] = {"user_id": "u1", "role": "Admin"}
+    env.app._render_menu_page = Mock()
+    env.app.main()
+    env.provenance.release_caption.assert_called_once_with()
+    assert any("Version ERP" in str(call.args[0])
+               for call in env.st.caption.call_args_list)

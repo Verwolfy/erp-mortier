@@ -1,0 +1,111 @@
+"""Version réellement observée : tests offline, sans accès à GitHub ni Supabase."""
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from core import release_provenance as release
+
+A = "a" * 40
+B = "b" * 40
+
+
+@pytest.mark.parametrize("invalid", [None, "", "a" * 12, "x" * 40, "a" * 41, 123, A + "\n"])
+def test_invalid_sha_is_never_recognized(invalid):
+    assert release._sha(invalid) is None
+
+
+def test_release_version_checkout_matches_expected():
+    result = release.resolve_release(environ={"ERP_RELEASE_EXPECTED_SHA": A},
+                                     checkout_sha=A.upper())
+    assert result.sha == A
+    assert result.status == "CHECKOUT CONFORME"
+    assert result.source == "checkout Git local"
+
+
+def test_checkout_differs_from_release_fails_visible_status():
+    result = release.resolve_release(environ={"ERP_RELEASE_EXPECTED_SHA": B},
+                                     checkout_sha=A)
+    assert result.sha == A
+    assert result.status == "ÉCART DE VERSION"
+
+
+def test_git_observation_overrides_potentially_inaccurate_declaration():
+    result = release.resolve_release(
+        environ={"ERP_DEPLOY_SHA": B, "ERP_RELEASE_EXPECTED_SHA": A},
+        checkout_sha=A,
+    )
+    assert result.sha == A
+    assert result.status == "CHECKOUT CONFORME"
+
+
+def test_env_only_declaration_never_counts_as_verified():
+    result = release.resolve_release(
+        environ={"ERP_DEPLOY_SHA": A, "ERP_RELEASE_EXPECTED_SHA": A},
+    )
+    assert result.sha == A
+    assert result.source == "déclaration non prouvée"
+    assert result.status == "NON VÉRIFIÉ"
+
+
+def test_env_only_divergence_is_distinguished_from_local_checkout():
+    result = release.resolve_release(
+        environ={"ERP_DEPLOY_SHA": A, "ERP_RELEASE_EXPECTED_SHA": B},
+    )
+    assert result.status == "ÉCART DÉCLARÉ"
+
+
+def test_unknown_version_cannot_look_verified():
+    result = release.resolve_release(environ={}, checkout_sha=None)
+    assert result.sha is None
+    assert result.status == "NON VÉRIFIABLE"
+    caption = release.release_caption(environ={}, checkout_sha="")
+    assert "inconnue" in caption
+    assert "NON VÉRIFIABLE" in caption
+
+
+def test_invalid_expected_sha_is_rejected_even_with_git():
+    result = release.resolve_release(
+        environ={"ERP_RELEASE_EXPECTED_SHA": "invalid", "ERP_DEPLOY_SHA": B},
+        checkout_sha=A,
+    )
+    assert result.status == "SHA attendu invalide"
+    assert result.sha == A
+
+
+def test_release_caption_contains_full_checkout_hash_not_secret():
+    caption = release.release_caption(
+        environ={"ERP_RELEASE_EXPECTED_SHA": A, "PRIVATE_SECRET": "dontshow"},
+        checkout_sha=A,
+    )
+    assert A in caption
+    assert "CHECKOUT CONFORME" in caption
+    assert "dontshow" not in caption
+
+
+def test_local_git_lookup_is_optional_and_never_runs_without_git(monkeypatch, tmp_path):
+    release._checkout_head.cache_clear()
+    monkeypatch.setattr(release, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(release.subprocess, "run",
+                        lambda *_args, **_kw: pytest.fail("Git shouldn't run"))
+    assert release._checkout_head() is None
+    release._checkout_head.cache_clear()
+
+
+def test_local_git_lookup_is_bounded_and_validated(monkeypatch, tmp_path):
+    (tmp_path / ".git").mkdir()
+    release._checkout_head.cache_clear()
+    monkeypatch.setattr(release, "_REPO_ROOT", tmp_path)
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0, stdout=A + "\n")
+
+    monkeypatch.setattr(release.subprocess, "run", fake_run)
+    assert release._checkout_head() == A
+    assert calls[0][0] == ["git", "rev-parse", "HEAD"]
+    assert calls[0][1]["timeout"] == 2
+    assert calls[0][1]["cwd"] == tmp_path
+    release._checkout_head.cache_clear()
