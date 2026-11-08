@@ -1,3 +1,14 @@
+## 8 novembre 2026 — contrats de workflows et provenance SHA (PR #52)
+
+- **PR livrée** : [#52](https://github.com/Verwolfy/erp-mortier/pull/52), fusion dans `main` au commit `a9c92c1a80c69d6bca96c65db030ece0b1d30c84`.
+- **GOV-01, premier lot (partiel)** : `docs/CONTRATS_WORKFLOWS_P0_20261108.md` recense les transitions réelles avec états/conditions/effets sur Achats, Réception, Stock, OF/CQ, Factures, BL et Finance. `tests/test_workflow_contracts_p0.py` contrôle la présence de gardes versionnées dans le code SQL, **sans exécuter de mutation SQL**. Ce test statique ne remplace pas les parcours RPC acceptés/refusés en base de TEST.
+- **REL-01, premier lot (partiel)** : `core/release_provenance.py` observe `git rev-parse HEAD` uniquement si `.git` local existe ; compare au SHA `ERP_RELEASE_EXPECTED_SHA` s'il est configuré ; affiche après authentification dans la barre latérale de `app.py` le SHA et son statut. Une simple variable `ERP_DEPLOY_SHA` donne l'état **non vérifié**, jamais une certification. Le SHA attendu doit être renseigné par le déploiement autorisé, et la preuve authentifiée sur Streamlit reste à collecter.
+- **Tests PR** : [ERP 42468103495](https://github.com/Verwolfy/erp-mortier/actions/runs/42468103495) `success`, **2812 passed, 0 failed, 1 warning dépendance** ; [audit 42468103494](https://github.com/Verwolfy/erp-mortier/actions/runs/42468103494) `success`.
+- **Prochaines actions** : `ENV-01` bac Supabase TEST séparé (non disponible/activé ici), tests d'intégration réels `TX-01/SEC-01/E2E-01`, recette authentifiée `REL-01`. Ne pas présumer de l'état déployé à partir de la CI.
+- **Restrictions maintenues** : pas d'écriture, migration ou suppression en production ; données `DEMO/SIM` conservées ; **unicité PostgreSQL des tiers reste gelée** sur demande.
+
+---
+
 ## 7 novembre 2026 — anti-doublons tiers étendu aux éditions (PR #51)
 
 - **Livraison** : [PR #51](https://github.com/Verwolfy/erp-mortier/pull/51) fusionnée dans `main`, commit `7dd23f760516006d3202de3b854f11fdce1f9393`. Extension de la prévention des doublons Client/Fournisseur des créations aux **modifications** depuis l'éditeur Administration.
