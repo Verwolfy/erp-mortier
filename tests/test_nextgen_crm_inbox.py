@@ -141,7 +141,7 @@ def test_ui_is_read_only_and_tab_present():
     assert "list_requests_readonly()" in source
     assert "if not inbox_enabled():" in source
     # New tab never collects contacts or invokes legacy write helpers.
-    segment = source.split("with tab4:", 1)[1]
+    segment = source.split("if active_panel == panels[3]:", 1)[1]
     assert "create_opportunite(" not in segment
     assert "create_interaction(" not in segment
     assert ".insert(" not in segment and ".update(" not in segment
@@ -169,7 +169,7 @@ def test_mapping_compatible_with_streamlit_secret_wrappers(env):
 
 def test_nextgen_inbox_has_version_fingerprint_for_operator_readonly_checks():
     source = VIEWS.read_text(encoding="utf-8")
-    segment = source.split("with tab4:", 1)[1]
+    segment = source.split("if active_panel == panels[3]:", 1)[1]
     assert "SOF-NEXTGEN-CRM-20261101-L9" in segment
     assert "st.caption(" in segment
     assert "if not inbox_enabled():" in segment

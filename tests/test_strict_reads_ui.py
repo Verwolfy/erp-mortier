@@ -57,8 +57,9 @@ from unittest.mock import patch
 import streamlit as st
 from core.strict_reads import DataReadError
 from modules.crm.views import show_crm_page
-st.session_state['user'] = {'role':'ADMIN'}
-with patch('modules.crm.views.has_permission', return_value=False), \\
+st.session_state['authenticated'] = True
+st.session_state['user'] = {'user_id':'USR-CRM-TEST', 'role':'ADMIN'}
+with patch('modules.crm.views.has_permission', side_effect=lambda role, module, permission: permission == 'lecture'), \\
      patch('modules.crm.views.get_pipeline', side_effect=DataReadError('private-data-sentinel')), \\
      patch('modules.crm.views.get_clients_actifs', side_effect=DataReadError('private-data-sentinel')), \\
      patch('modules.crm.views.get_interactions', side_effect=DataReadError('private-data-sentinel')), \\
@@ -72,6 +73,12 @@ assert len(app.error) == 1
 assert not app.success
 assert all('private-data-sentinel' not in e.value for e in app.error)
 assert not any('Aucune opportunité' in e.value or 'Aucun historique' in e.value for e in app.info)
+# Navigation explicite vers NextGen : ce panneau n'a pas été exécuté
+# sur Pipeline et doit rester verrouillé tant que la confidentialité
+# n'est pas approuvée.
+app = app.selectbox[0].set_value('🌐 Demandes NextGen').run()
+assert not app.exception, app.exception
+assert not app.error, [e.value for e in app.error]
 assert any('confidentialité' in e.value for e in app.info)
 ''')
 
