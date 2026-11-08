@@ -582,10 +582,34 @@ def show_admin_page():
     if not can_write:
         st.info("🔒 Mode lecture seule : vous n'avez pas les droits d'ajout ou de modification.")
 
-    # Chargements conditionnels : seules les listes de choix utilisées par
-    # un formulaire ou un éditeur explicitement ouvert sont lues.
+    # st.tabs exécutait les dix vues, même lorsqu'elles étaient masquées.
+    # Ne lire que les catalogues du référentiel sélectionné et ouvert.
+    admin_panels = (
+        "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
+        "🛍️ Produits", "📦 SKU", "📝 Listes de choix",
+        "📑 Exonérations TVA (lecture)", "📋 Qualification TVA SKU",
+        "📄 Documents NEXTGEN", "📊 Qualité référentiels",
+    )
+    active_panel = st.selectbox(
+        "Vue Administration", admin_panels, key="_erp_admin_active_panel",
+        on_change=_mark_admin_activity,
+        help="Seule la vue choisie charge ses données.",
+    )
+    _active_keys = {
+        admin_panels[0]: ("ng_admin_create_client", "ng_admin_full_clients"),
+        admin_panels[1]: ("ng_admin_create_fournisseur", "ng_admin_full_fournisseurs"),
+        admin_panels[2]: ("ng_admin_create_mp", "ng_admin_full_matieres_premieres"),
+        admin_panels[3]: ("ng_admin_create_product", "ng_admin_full_produits"),
+        admin_panels[4]: ("ng_admin_create_sku", "ng_admin_full_sku_conditionnement"),
+    }
+    allowed_keys = frozenset(_active_keys.get(active_panel, ()))
+
+    # Les cases d'un autre panneau peuvent rester True dans session_state :
+    # elles ne doivent plus déclencher une lecture lorsque la vue change.
     def _active(*keys):
-        return can_write and any(st.session_state.get(key) is True for key in keys)
+        return can_write and any(
+            st.session_state.get(key) is True for key in keys if key in allowed_keys
+        )
 
     geo = ("ng_admin_create_client", "ng_admin_create_fournisseur",
            "ng_admin_full_clients", "ng_admin_full_fournisseurs")
@@ -601,18 +625,11 @@ def show_admin_page():
     cat_pf_opts = get_opts("CAT_PF", CAT_PF_FALLBACK) if _active(*pf) else []
     hs_code_opts = get_opts("HS_CODE", HS_CODE_FALLBACK) if _active(*mp) else []
 
-    tab1, tab2, tab3, tab4, tab5, tab_listes, tab_exonerations, tab_fiscal_sku, tab_documents, tab_qualite = st.tabs([
-        "👥 Clients", "🏢 Fournisseurs", "🧪 Matières Premières",
-        "🛍️ Produits", "📦 SKU", "📝 Listes de choix",
-        "📑 Exonérations TVA (lecture)", "📋 Qualification TVA SKU",
-        "📄 Documents NEXTGEN", "📊 Qualité référentiels"
-    ])
-
-    with tab_documents:
+    if active_panel == admin_panels[8]:
         from modules.documents.views import show_documents_page
         show_documents_page()
 
-    with tab_qualite:
+    if active_panel == admin_panels[9]:
         st.subheader("Contrôle transversal des référentiels", help=topic_help("admin.qualite"))
         show_context_help(st, "admin.qualite")
         st.caption("Audit en lecture seule : Clients, Fournisseurs, Produits, SKU et Matières premières. Aucune correction automatique.")
@@ -713,12 +730,12 @@ def show_admin_page():
                     st.success("Aucune incohérence structurelle détectée sur les flux analysés.")
                 st.caption("Les liens commande facultatifs sont tolérés ; aucun montant fiscal ni solde n'est recalculé.")
 
-    with tab_qualite:
+    if active_panel == admin_panels[9]:
         from modules.admin.finance_rh_quality_view import render_finance_rh_quality
         render_finance_rh_quality()
 
     # --- CLIENTS ---
-    with tab1:
+    if active_panel == admin_panels[0]:
         st.subheader("Gestion des Clients", help=topic_help("admin.clients"))
         show_context_help(st, "admin.clients")
         st.caption("Avant l'enregistrement : contrôle des doublons par nom, NIF et RC "
@@ -780,7 +797,7 @@ def show_admin_page():
             render_editable_dataframe("Clients", "client_id", can_write, config_cli)
 
     # --- FOURNISSEURS ---
-    with tab2:
+    if active_panel == admin_panels[1]:
         st.subheader("Gestion des Fournisseurs", help=topic_help("admin.fournisseurs"))
         show_context_help(st, "admin.fournisseurs")
         st.caption("Avant l'enregistrement : contrôle des doublons par nom, NIF et RC "
@@ -841,7 +858,7 @@ def show_admin_page():
             render_editable_dataframe("Fournisseurs", "fournisseur_id", can_write, config_fou)
 
     # --- MATIERES PREMIERES ---
-    with tab3:
+    if active_panel == admin_panels[2]:
         st.subheader("Matières Premières", help=topic_help("admin.matieres"))
         show_context_help(st, "admin.matieres")
         if can_write and st.checkbox("Préparer : ➕ Nouvelle Matière Première",
@@ -897,7 +914,7 @@ def show_admin_page():
             render_editable_dataframe("MatieresPremieres", "mp_id", can_write, config_mp)
 
     # --- PRODUITS ---
-    with tab4:
+    if active_panel == admin_panels[3]:
         st.subheader("Produits Finis", help=topic_help("admin.produits"))
         show_context_help(st, "admin.produits")
         if can_write and st.checkbox("Préparer : ➕ Nouveau Produit",
@@ -927,7 +944,7 @@ def show_admin_page():
             render_editable_dataframe("Produits", "pf_id", can_write, config_pf)
 
     # --- SKUs ---
-    with tab5:
+    if active_panel == admin_panels[4]:
         st.subheader("Conditionnements (SKU)", help=topic_help("admin.sku"))
         show_context_help(st, "admin.sku")
         if can_write and st.checkbox("Préparer la création d’un SKU",
@@ -994,7 +1011,7 @@ def show_admin_page():
             render_editable_dataframe("SkuConditionnement", "sku_id", can_write, config_sku)
 
     # --- LISTES DE CHOIX ---
-    with tab_listes:
+    if active_panel == admin_panels[5]:
         show_context_help(st, "admin.listes")
         if can_write:
             if st.checkbox("Ouvrir la gestion des listes de choix",
@@ -1007,10 +1024,10 @@ def show_admin_page():
 
 
     # --- DOSSIERS EXONERATIONS ---
-    with tab_exonerations:
+    if active_panel == admin_panels[6]:
         _revue_exonerations_tva_clients()
 
-    with tab_fiscal_sku:
+    if active_panel == admin_panels[7]:
         _revue_qualification_fiscale_sku()
         _revue_nextgen_preparation()
 
