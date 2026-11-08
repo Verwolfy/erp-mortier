@@ -1,3 +1,14 @@
+## 8 novembre 2026 — ERP-034 : complément des candidats d'index FK (proposition non exécutée)
+
+- **Audit performance vérifié** : Supabase PRINCIPALE signale 18 clés étrangères sans index de couverture, contre 15 propositions dans le candidat ERP-034 existant.
+- **Correction GitHub (sans SQL exécuté)** : ajout de trois candidats `CREATE INDEX CONCURRENTLY IF NOT EXISTS` pour `erp_cost_drivers.of_id`, `erp_cost_of_validation_snapshot.of_id`, `erp_cost_pools.nature_code`. Test statique `tests/test_fk_index_candidates_034.py` pour 18 index et aucune autre instruction ; documentation `docs/ERP_034_COMPLEMENT_INDEX_FK_20261108.md`.
+- **Audit de branches** : 43 secondaires comparées à `main` ; 39 sans commit en avance ; quatre branches NextGen divergentes historiques à analyser avant décision, **aucune fusion aveugle**.
+- **CI main de départ** : SHA `5598462`, [tests](https://github.com/Verwolfy/erp-mortier/actions/runs/42516360509) et [audit](https://github.com/Verwolfy/erp-mortier/actions/runs/42516360347) réussis ; CI de la présente modification à vérifier sur sa PR.
+- **Sécurité et schéma** : 92 tables RLS sans policy explicite ; 18 fonctions `SECURITY DEFINER` sur `public`, aucune exécutable par `anon`/`authenticated` dans le contrôle réalisé ; aucune modification RLS/GRANT. Registre natif Supabase : 33 migrations ; `public.schema_migrations` reste vide.
+- **Décision** : ne pas lancer ERP-034 sur production avant test sur base isolée et mesure de charge. Environnement `erp-mortier-test` inactif. **Optimisation SQL en production et homologation réglementaire NON TERMINÉES**.
+
+---
+
 ## 8 novembre 2026 — contrats de workflows et provenance SHA (PR #52)
 
 - **PR livrée** : [#52](https://github.com/Verwolfy/erp-mortier/pull/52), fusion dans `main` au commit `a9c92c1a80c69d6bca96c65db030ece0b1d30c84`.
