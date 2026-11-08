@@ -19,7 +19,8 @@ def test_production_historique_a_la_demande():
 def test_historiques_conservent_les_lecteurs_autorises():
     crm = Path("modules/crm/views.py").read_text(encoding="utf-8")
     prod = Path("modules/production/views.py").read_text(encoding="utf-8")
-    assert 'with tab3, read_section("Historique CRM"):' in crm
+    assert 'if active_panel == panels[2]:' in crm
+    assert 'with read_section("Historique CRM"):' in crm
     assert "access = _production_access()" in prod
     assert 'if access is None:' in prod
 
