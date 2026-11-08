@@ -494,48 +494,60 @@ def show_finance_page() -> None:
         return
     user_id, can_write = access
     st.title("🏦 Comptabilité & Trésorerie")
-    tabs = st.tabs(["📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
-                    "🔗 Lettrage", "📖 Journal des écritures",
-                    "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
-                    "🧾 Accusés internes", "📒 Pré-audit Finance → SCF",
-                    "🔎 Préparation TVA / SCF", "🔗 Correspondances Finance / SCF"])
+
+    # st.tabs déclenche toutes les vues, même celles non consultées.
+    # L'autorisation fraîche reste vérifiée avant le sélecteur et les lectures.
+    panels = (
+        "📊 Tableau de bord", "🏦 Comptes", "💸 Règlements",
+        "🔗 Lettrage", "📖 Journal des écritures",
+        "📚 Balance SCF (lecture seule)", "🧾 Rapprochement quittances",
+        "🧾 Accusés internes", "📒 Pré-audit Finance → SCF",
+        "🔎 Préparation TVA / SCF", "🔗 Correspondances Finance / SCF",
+    )
+    active_panel = st.selectbox(
+        "Vue Finance", panels, key="_erp_finance_active_panel",
+        on_change=_mark_finance_activity,
+        help="Les seules données nécessaires au panneau sont chargées.",
+    )
+    # Chargements bornés aux panneaux qui en ont effectivement besoin.
+    need_accounts = active_panel in (panels[1], panels[2], panels[8], panels[10])
+    need_reglements = active_panel in (panels[0], panels[3], panels[7], panels[8])
     try:
-        accounts = _load_table("comptes")
-        reglements = _load_table("reglements")
+        accounts = _load_table("comptes") if need_accounts else pd.DataFrame()
+        reglements = _load_table("reglements") if need_reglements else pd.DataFrame()
         if not isinstance(accounts, pd.DataFrame) or not isinstance(reglements, pd.DataFrame):
             raise ValueError("Résultat Finance invalide")
     except Exception as exc:
         _LOG.warning("Lecture Finance impossible (%s)", type(exc).__name__)
         st.error("Données Finance indisponibles ; aucune modification possible.")
         return
-    with tabs[0]:
+
+    if active_panel == panels[0]:
         _dashboard(reglements)
-    with tabs[1]:
+    elif active_panel == panels[1]:
         _accounts_tab(user_id, can_write, accounts)
-    with tabs[2]:
+    elif active_panel == panels[2]:
         _payment_tab(user_id, can_write, accounts)
-    with tabs[3]:
+    elif active_panel == panels[3]:
         _allocation_tab(user_id, can_write, reglements)
-    with tabs[4]:
+    elif active_panel == panels[4]:
         try:
             _journal(_load_table("ecritures_comptables"))
         except Exception as exc:
             _LOG.warning("Journal Finance indisponible (%s)", type(exc).__name__)
             st.error("Journal non disponible.")
-
-    with tabs[5]:
+    elif active_panel == panels[5]:
         _scf_balance_tab(user_id)
-    with tabs[6]:
+    elif active_panel == panels[6]:
         _quittances_rapprochement_tab(user_id)
-    with tabs[7]:
+    elif active_panel == panels[7]:
         _accuses_internes_tab(user_id, can_write, reglements)
-    with tabs[8]:
+    elif active_panel == panels[8]:
         _audit_finance_vers_scf_tab(user_id, accounts, reglements)
-    with tabs[9]:
+    elif active_panel == panels[9]:
         _preflight_reglementaire_tab(user_id)
-    with tabs[10]:
+    elif active_panel == panels[10]:
         _correspondances_finance_scf_tab(user_id, accounts)
-
 
 def _lecture_complete_quittances(table: str, colonnes: str) -> list[dict]:
     """Lecture intégrale bornée, échec si pagination tronquée ou erreur API."""
