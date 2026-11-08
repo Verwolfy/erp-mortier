@@ -9,6 +9,19 @@ from core.db_service import insert_hybrid
 from core.strict_reads import fetch_data_strict as fetch_data
 from core.utils import generate_unique_id, generate_technical_id, get_local_now
 
+
+class CRMCreationUncertain(RuntimeError):
+    """La tentative d'insertion peut avoir été COMMITée malgré l'erreur réseau.
+
+    La référence est non sensible et sert uniquement à la réconciliation.
+    AUCUNE nouvelle insertion ni retry automatique ne doit suivre.
+    """
+
+    def __init__(self, document_id: str) -> None:
+        super().__init__("Création CRM non confirmée ; réconciliation nécessaire")
+        self.document_id = document_id
+
+
 def get_pipeline() -> pd.DataFrame:
     """Récupère toutes les opportunités du pipeline."""
     return pd.DataFrame(fetch_data("pipeline"))
@@ -47,7 +60,12 @@ def create_opportunite(prospect_nom: str, contact: str, statut: str, commercial_
         "date_derniere_action": date_jour
     }
 
-    insert_hybrid("pipeline", data_opp)
+    try:
+        insert_hybrid("pipeline", data_opp)
+    except Exception as exc:
+        # Sans RPC idempotente, une erreur après l'envoi n'implique pas ROLLBACK.
+        # Toujours transmettre la MÊME référence à l'UI, ne jamais régénérer.
+        raise CRMCreationUncertain(opp_id) from exc
     return opp_id
 
 def create_interaction(client_id: str, type_action: str, notes: str, date_rappel: str):
@@ -67,5 +85,10 @@ def create_interaction(client_id: str, type_action: str, notes: str, date_rappel
         "statut_rappel": "EN_ATTENTE"
     }
 
-    insert_hybrid("interactions", data_int)
+    try:
+        insert_hybrid("interactions", data_int)
+    except Exception as exc:
+        # Sans RPC idempotente, une erreur après l'envoi n'implique pas ROLLBACK.
+        # Toujours transmettre la MÊME référence à l'UI, ne jamais régénérer.
+        raise CRMCreationUncertain(int_id) from exc
     return int_id
