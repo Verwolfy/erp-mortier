@@ -33,7 +33,7 @@ def test_finance_ten_callbacks():
 
     assert counts == Counter({
         "button": 3,
-        "selectbox": 2,
+        "selectbox": 3,
         "radio": 2,
         "form_submit_button": 3,
     })
