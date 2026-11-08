@@ -1,44 +1,55 @@
-"""Vérifie le véritable point d'entrée Streamlit des dashboards sans session réelle.
-
-Les interactions de rendu sont substituées ; aucune donnée n'est lue en production.
-"""
+"""Contrôle d'accès réel de la navigation Dashboard sans session de production."""
 from contextlib import contextmanager
+
 import pytest
 from modules.dashboards import views, service
 
 
 @pytest.mark.parametrize("role", ["", "COMMERCIAL", "INCONNU"])
-def test_dashboards_deny_before_tabs(monkeypatch, role):
+def test_dashboards_deny_before_panel_selector(monkeypatch, role):
     messages = []
     monkeypatch.setattr(views.st, "session_state", {"user": {"role": role}})
     monkeypatch.setattr(views.st, "title", lambda *args, **kwargs: None)
     monkeypatch.setattr(views.st, "caption", lambda *args, **kwargs: None)
     monkeypatch.setattr(views.st, "error", lambda msg: messages.append(msg))
-    monkeypatch.setattr(views, "has_permission",
-                        lambda r, m, p: False if (m, p) == ("Dashboards", "lecture") else pytest.fail("RBAC incorrect"))
-    monkeypatch.setattr(views.st, "tabs", lambda *a, **kw: pytest.fail("Onglets ouverts malgré refus"))
+    monkeypatch.setattr(
+        views, "has_permission",
+        lambda r, m, p: False if (m, p) == ("Dashboards", "lecture")
+        else pytest.fail("RBAC incorrect"),
+    )
+    monkeypatch.setattr(
+        views.st, "selectbox",
+        lambda *a, **kw: pytest.fail("Navigation ouverte malgré refus"),
+    )
     assert views._show_dashboards_page_impl() is None
     assert len(messages) == 1
     assert "accès" in messages[0].lower()
 
 
-def test_authorized_role_reaches_tab_creation(monkeypatch):
-    class TabsReached(Exception):
+def test_authorized_role_reaches_lazy_panel_selector(monkeypatch):
+    class PanelReached(Exception):
         pass
 
     checks = []
     monkeypatch.setattr(views.st, "session_state", {"user": {"role": "ADMIN"}})
     monkeypatch.setattr(views.st, "title", lambda *args, **kwargs: None)
     monkeypatch.setattr(views.st, "caption", lambda *args, **kwargs: None)
-    monkeypatch.setattr(views, "has_permission",
-                        lambda role, module, perm: checks.append((role, module, perm)) or True)
+    monkeypatch.setattr(views.st, "toggle", lambda *args, **kwargs: False)
+    monkeypatch.setattr(views, "get_dashboard_data_provenance",
+                        lambda: {"marked": 0})
+    monkeypatch.setattr(
+        views, "has_permission",
+        lambda role, module, perm: checks.append((role, module, perm)) or True,
+    )
 
-    def at_tabs(labels):
-        assert len(labels) == 9
-        raise TabsReached()
+    def at_panel(label, options, **kwargs):
+        assert label == "Vue du tableau de bord"
+        assert len(options) == 9
+        assert kwargs["on_change"] is views._mark_dashboards_activity
+        raise PanelReached()
 
-    monkeypatch.setattr(views.st, "tabs", at_tabs)
-    with pytest.raises(TabsReached):
+    monkeypatch.setattr(views.st, "selectbox", at_panel)
+    with pytest.raises(PanelReached):
         views._show_dashboards_page_impl()
     assert checks == [("ADMIN", "Dashboards", "lecture")]
 
