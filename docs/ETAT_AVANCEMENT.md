@@ -1,3 +1,13 @@
+## 8 novembre 2026 — consolidation GitHub : 44 branches secondaires supprimées, seule `main` conservée
+
+- **Autorisation explicite** : le propriétaire demande de supprimer toutes les branches secondaires, après vérification/fusion, et de ne garder que `main`.
+- **Inventaire vérifié** : 45 branches distantes au départ, dont 44 secondaires. 40 sans commit en avance sur `main`, quatre historiques divergentes mais déjà fusionnées dans les PR #31, #32, #33, #34 (SHA des têtes vérifiés), aucune PR ouverte. Pas de refusion d'ancien code.
+- **Exécution réelle** : workflow ponctuel [#42518493728](https://github.com/Verwolfy/erp-mortier/actions/runs/42518493728) en `success`. Journal : **44 suppressions**. Vérification GitHub API finale : **une seule branche, `main`**. Preuve et inventaire dans `docs/BRANCHES_CONSOLIDATION_20261108.md`.
+- **Sécurité** : aucun `force-push`, aucune migration, aucun changement RLS/GRANT, aucun effacement de données, aucun tag supprimé. Les branches *locales* d'un poste externe ne sont pas inspectables.
+- **État de l'ERP** : le **nettoyage des branches GitHub est terminé**, mais pas la modernisation ERP complète. À faire : fiscalité legacy hardcodée en Python/SQL/RPC de production ; essais SQL sur environnement TEST ; validation SCF, paie et compliance ; recette Streamlit authentifiée ; analyse mesurée avant création des 18 index FK candidats. Trois valeurs CNAS `a_confirmer` restent interdites de calcul/dépôt automatique. Expert-comptable algérien requis avant production réglementaire.
+
+---
+
 ## 8 novembre 2026 — ERP-034 : complément des candidats d'index FK (proposition non exécutée)
 
 - **Audit performance vérifié** : Supabase PRINCIPALE signale 18 clés étrangères sans index de couverture, contre 15 propositions dans le candidat ERP-034 existant.
