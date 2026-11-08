@@ -4,13 +4,17 @@ Les références officielles générales ne suffisent pas à classifier les SKU.
 Aucune facture, écriture ou paramètre n'est créé par ce module.
 """
 from __future__ import annotations
+
+from datetime import date
 from typing import Any, Mapping
+
+from core.reglementation import RegleIndisponible, chercher_parametre
 
 class PreflightIndisponible(ValueError):
     pass
 
 TABLES = {
-    "parametres_reglementaires": "code,valeur,unite,statut_juridique,niveau_confiance",
+    "parametres_reglementaires": "code,valeur,unite,statut_juridique,niveau_confiance,date_effet,date_fin,source,date_verification",
     "regles_reglementaires": "code,donnees,statut_juridique,niveau_confiance",
     "scf_plan_comptes": "numero_compte,actif,mouvementable",
     "scf_exercices": "exercice_id,statut",
@@ -18,30 +22,37 @@ TABLES = {
 }
 _MAX = 999
 
-def examiner_referentiels(snapshots: Mapping[str, list[dict]]) -> dict[str, Any]:
+def examiner_referentiels(
+    snapshots: Mapping[str, list[dict]], *, date_reference: date | str | None = None
+) -> dict[str, Any]:
+    """Contrôle de disponibilité documentaire, jamais homologation juridique.
+
+    Les taux sont lus dans les versions confirmées et datées du registre,
+    sans comparaison à des pourcentages figés dans le code.
+    """
     if not isinstance(snapshots, Mapping) or set(snapshots) != set(TABLES):
         raise PreflightIndisponible("Inventaire incomplet")
     for key, rows in snapshots.items():
         if not isinstance(rows, list) or len(rows) > _MAX or not all(isinstance(r, dict) for r in rows):
             raise PreflightIndisponible(f"Inventaire {key} invalide")
     rates = snapshots["parametres_reglementaires"]
-    expected = {"TVA_TAUX_NORMAL": "0.19", "TVA_TAUX_REDUIT": "0.09"}
+    instant = date_reference if date_reference is not None else date.today()
     observed = {}
-    for row in rates:
-        code = row.get("code")
-        if code in expected:
-            if code in observed:
-                raise PreflightIndisponible("Taux TVA de référence dupliqué")
-            from decimal import Decimal, InvalidOperation
-            try:
-                value = Decimal(str(row.get("valeur")))
-            except (InvalidOperation, ValueError) as exc:
-                raise PreflightIndisponible("Taux TVA illisible") from exc
-            if (not value.is_finite() or value != Decimal(expected[code]) or
-                    row.get("unite") != "fraction" or row.get("statut_juridique") != "en_vigueur" or
-                    row.get("niveau_confiance") != "CONFIRMEE"):
-                raise PreflightIndisponible("Taux TVA référentiel contradictoire")
-            observed[code] = True
+    for code in ("TVA_TAUX_NORMAL", "TVA_TAUX_REDUIT"):
+        lignes_code = [row for row in rates if row.get("code") == code]
+        if not lignes_code:
+            continue
+        try:
+            param = chercher_parametre(
+                lignes_code, code, instant, unite_attendue="fraction"
+            )
+        except RegleIndisponible as exc:
+            raise PreflightIndisponible(
+                f"{code}: aucune version réglementaire unique, confirmée et datée"
+            ) from exc
+        if not 0 <= param.valeur <= 1:
+            raise PreflightIndisponible(f"{code}: taux de référence hors bornes")
+        observed[code] = True
     scf = snapshots["scf_plan_comptes"]
     ids = [r.get("numero_compte") for r in scf]
     if any(not isinstance(i, str) or not i for i in ids) or len(set(ids)) != len(ids):
@@ -74,7 +85,9 @@ def examiner_referentiels(snapshots: Mapping[str, list[dict]]) -> dict[str, Any]
         "statut": "CONFIGURATION_METIER_A_COMPLETER",
     }
 
-def lire_preflight(*, db_client: Any) -> dict[str, Any]:
+def lire_preflight(
+    *, db_client: Any, date_reference: date | str | None = None
+) -> dict[str, Any]:
     """Accès interne uniquement : client serveur explicitement fourni."""
     if db_client is None:
         raise PreflightIndisponible("Client serveur requis")
@@ -93,4 +106,4 @@ def lire_preflight(*, db_client: Any) -> dict[str, Any]:
         raise
     except Exception as exc:
         raise PreflightIndisponible("Registres réglementaires indisponibles") from exc
-    return examiner_referentiels(snapshots)
+    return examiner_referentiels(snapshots, date_reference=date_reference)
