@@ -68,6 +68,12 @@ BEGIN
     END IF;
 
     IF upper(trim(v_role)) NOT IN ('ADMIN', 'ADMINISTRATEUR', 'SUPERADMIN') THEN
+        -- Empecher une revocation de la ligne existante en cours de mutation.
+        -- Les INSERT concurrents de permissions doublonnes restent a tester.
+        PERFORM 1 FROM public.permissions AS p
+         WHERE upper(trim(p.role)) = upper(trim(v_role))
+           AND upper(trim(p.module)) = 'CRM'
+         FOR SHARE;
         SELECT count(*),
                count(*) FILTER (WHERE upper(trim(coalesce(p.ecriture, '')))
                                       IN ('OUI', 'TRUE', '1', 'YES'))
@@ -120,7 +126,110 @@ BEGIN
         END IF;
         -- Rejeter les dates non canoniques et les valeurs hors calendrier.
         IF (p_payload->>'date_rappel') <> '' THEN
-            IF (p_payload->>'date_rappel') !~ '^\\d{4}-\\d{2}-\\d{2}$' OR
+            IF (p_payload->>'date_rappel') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}
+               to_char((p_payload->>'date_rappel')::date, 'YYYY-MM-DD')
+                    <> (p_payload->>'date_rappel') THEN
+                RAISE EXCEPTION 'CRM_PAYLOAD_INVALID' USING ERRCODE = '22023';
+            END IF;
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM public.clients AS c
+             WHERE c.client_id = (p_payload->>'client_id')
+               AND upper(trim(coalesce(c.actif, ''))) IN
+                    ('OUI', 'TRUE', '1', 'YES', 'ACTIF', 'ACTIVE')
+        ) THEN
+            RAISE EXCEPTION 'CRM_CLIENT_UNAVAILABLE' USING ERRCODE = '22023';
+        END IF;
+    END IF;
+
+    -- Une premiere tentative reserve operation_id + document_id.
+    -- ON CONFLICT et PK UNIQUE serialisent les appels concurrents :
+    -- le perdant attend le commit/rollback du gagnant.
+    v_document_id := CASE p_kind
+        WHEN 'opportunite' THEN 'OPP-' ELSE 'INT-' END
+        || upper(replace(pg_catalog.gen_random_uuid()::text, '-', ''));
+    INSERT INTO erp_crm_private.operation_receipts (
+        operation_id, kind, actor_id, request_payload, document_id
+    ) VALUES (
+        p_operation_id, p_kind, p_actor_id, p_payload, v_document_id
+    ) ON CONFLICT (operation_id) DO NOTHING;
+    v_new := FOUND;
+
+    SELECT * INTO STRICT v_receipt
+      FROM erp_crm_private.operation_receipts
+     WHERE operation_id = p_operation_id
+     FOR UPDATE;
+
+    IF v_receipt.kind <> p_kind OR v_receipt.actor_id <> p_actor_id
+       OR v_receipt.request_payload <> p_payload THEN
+        RAISE EXCEPTION 'CRM_OPERATION_CONFLICT' USING ERRCODE = '22023';
+    END IF;
+    v_document_id := v_receipt.document_id;
+
+    IF v_new THEN
+        IF p_kind = 'opportunite' THEN
+            INSERT INTO public.pipeline (
+                opportunite_id, prospect_nom, contact, statut, commercial_id,
+                valeur_estimee, probabilite_pct, date_creation, date_derniere_action
+            ) VALUES (
+                v_document_id, p_payload->>'prospect_nom', p_payload->>'contact',
+                p_payload->>'statut', p_payload->>'commercial_id',
+                v_num_val, v_prob_val,
+                to_char(transaction_timestamp(), 'YYYY-MM-DD'),
+                to_char(transaction_timestamp(), 'YYYY-MM-DD')
+            );
+        ELSE
+            INSERT INTO public.interactions (
+                interaction_id, client_id, date_creation, type_action,
+                notes, date_rappel, statut_rappel
+            ) VALUES (
+                v_document_id, p_payload->>'client_id',
+                to_char(transaction_timestamp(), 'YYYY-MM-DD HH24:MI'),
+                p_payload->>'type_action', p_payload->>'notes',
+                p_payload->>'date_rappel', 'EN_ATTENTE'
+            );
+        END IF;
+    END IF;
+
+    -- Un registre sans document est INVALIDE, meme au replay.
+    IF p_kind = 'opportunite' THEN
+        IF NOT EXISTS (SELECT 1 FROM public.pipeline
+                        WHERE opportunite_id = v_document_id) THEN
+            RAISE EXCEPTION 'CRM_RECEIPT_ORPHAN' USING ERRCODE = '23514';
+        END IF;
+    ELSE
+        IF NOT EXISTS (SELECT 1 FROM public.interactions
+                        WHERE interaction_id = v_document_id) THEN
+            RAISE EXCEPTION 'CRM_RECEIPT_ORPHAN' USING ERRCODE = '23514';
+        END IF;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'operation_id', p_operation_id::text,
+        'document_id', v_document_id,
+        'kind', p_kind,
+        'replayed', NOT v_new
+    );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.erp_crm_create_idempotent(uuid,text,text,jsonb)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.erp_crm_create_idempotent(uuid,text,text,jsonb)
+  TO service_role;
+COMMIT;
+
+-- VERIFICATION EXCLUSIVEMENT EN TEST :
+-- SELECT has_function_privilege('anon',
+--    'public.erp_crm_create_idempotent(uuid,text,text,jsonb)','EXECUTE') = false;
+-- SELECT has_function_privilege('authenticated',
+--    'public.erp_crm_create_idempotent(uuid,text,text,jsonb)','EXECUTE') = false;
+-- SELECT has_function_privilege('service_role',
+--    'public.erp_crm_create_idempotent(uuid,text,text,jsonb)','EXECUTE') = true;
+-- TESTER : timeout apres commit, p_operation_id rejoue avec payload identique/
+-- different, appels concurrents, rollback sur erreur, role revoque et
+-- interaction pour client inactif. Aucun test d'ecriture sur la PROD.
+ OR
                to_char((p_payload->>'date_rappel')::date, 'YYYY-MM-DD')
                     <> (p_payload->>'date_rappel') THEN
                 RAISE EXCEPTION 'CRM_PAYLOAD_INVALID' USING ERRCODE = '22023';
