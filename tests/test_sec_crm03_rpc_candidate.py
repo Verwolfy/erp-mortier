@@ -198,7 +198,7 @@ def test_sql_revalidates_current_server_rights_on_every_call():
     assert "FOR SHARE" in source
     assert "v_perm_count <> 1" in source
     assert "CRM_ACCESS_DENIED" in source
-    assert "p_kind IN ('opportunite', 'interaction')" in source
+    assert "p_kind NOT IN ('opportunite', 'interaction')" in source
     assert "jsonb_typeof(p_payload->'notes') IS DISTINCT FROM 'string'" in source
     assert "CRM_CLIENT_UNAVAILABLE" in source
     assert "public.pipeline" in source
