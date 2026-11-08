@@ -173,12 +173,23 @@ def show_stocks_page():
         return
     user_id, can_write = access
 
-    tab1, tab2, tab3 = st.tabs(["📊 État des Stocks", "🔄 Entrée Manuelle (hors BR)", "📋 Historique des Mouvements"])
-
-    df_mp_global = get_mp_actives()
+    # st.tabs exécute les trois panneaux, même lorsqu'un seul est visible.
+    # Une sélection explicite évite les lectures et formulaires hors écran.
+    panels = ("📊 État des Stocks", "🔄 Entrée Manuelle (hors BR)",
+              "📋 Historique des Mouvements")
+    active_panel = st.selectbox(
+        "Vue Stocks", panels, key="_erp_stocks_active_panel",
+        on_change=_mark_stocks_activity,
+        help="Le contenu du seul panneau choisi est chargé.",
+    )
+    # Le référentiel n'est pas nécessaire pour la consultation des historiques
+    # avant un clic ni pour le formulaire d'un utilisateur sans droit d'écriture.
+    df_mp_global = (get_mp_actives() if active_panel == panels[0]
+                    or (active_panel == panels[1] and can_write)
+                    else pd.DataFrame())
 
     # --- ONGLET 1 : ÉTAT DES STOCKS ---
-    with tab1:
+    if active_panel == panels[0]:
         st.subheader("Consultation des stocks actuels", help=topic_help("stocks.etat"))
         show_context_help(st, "stocks.etat")
         sous_tab_vrac, sous_tab_emb, sous_tab_pf = st.tabs(["🧪 Matières Premières (Vrac)", "📦 Emballages", "🛍️ Produits Finis"])
@@ -233,7 +244,7 @@ def show_stocks_page():
                 st.info("Aucun stock de Produits Finis n'a encore été généré par la Production.")
 
     # --- ONGLET 2 : ENTRÉE MANUELLE ---
-    with tab2:
+    if active_panel == panels[1]:
         st.subheader("Ajustement / Entrée manuelle", help=topic_help("stocks.entree"))
         show_context_help(st, "stocks.entree")
         st.info("Les entrées de PF passent uniquement par la Production. Une réception "
@@ -283,7 +294,7 @@ def show_stocks_page():
             st.warning("Aucun article actif trouvé dans le référentiel.")
 
     # --- ONGLET 3 : HISTORIQUE DES MOUVEMENTS ---
-    with tab3:
+    if active_panel == panels[2]:
         st.subheader("Historique des mouvements", help=topic_help("stocks.historique"))
         show_context_help(st, "stocks.historique")
         st.caption("Consultation paginée : 50 mouvements maximum par registre et par clic.")
@@ -309,6 +320,9 @@ def show_stocks_page():
                     f"Page {int(page_stock)} : mouvements MP {len(mp_rows)}/{mp_total}, "
                     f"mouvements PF {len(pf_rows)}/{pf_total}."
                 )
+                # Historique ouvert explicitement : récupérer le référentiel
+                # seulement si une page MP doit être ventilée par catégorie.
+                df_mp_global = get_mp_actives() if not df_mouv.empty else pd.DataFrame()
                 if not df_mouv.empty and not df_mp_global.empty:
                     df_mouv_detail = pd.merge(
                         df_mouv, df_mp_global[["mp_id", "categorie_mp"]],
