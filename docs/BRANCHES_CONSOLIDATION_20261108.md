@@ -70,3 +70,15 @@ Le workflow temporaire `.github/workflows/cleanup-only-main-20261108.yml` est li
 6. Confirmer ensuite, via l'API GitHub, qu'il reste **uniquement `main`** ; consigner la sortie des Actions. En cas d'échec de droits, ne pas prétendre que les branches sont effacées.
 
 **Périmètre :** uniquement les branches GitHub distantes. Les branches locales d'un ordinateur externe ne sont pas accessibles au connecteur ; elles doivent être nettoyées séparément si nécessaire.
+
+## Résultat exécuté et vérifié — 8 novembre 2026 à 20:09 UTC
+
+**Nettoyage distant terminé.** Workflow [GitHub Actions #42518493728](https://github.com/Verwolfy/erp-mortier/actions/runs/42518493728) : état `completed`, conclusion `success`. Les journaux horodatés contiennent **44** mentions `SUPPRIMÉE :`, soit 44 références distantes effectivement supprimées.
+
+**Contrôle final API GitHub** : `GET /repos/Verwolfy/erp-mortier/branches?per_page=100` retourne un tableau d'une seule entrée : `main`, SHA `ef08d88c811b80cf14a16901c4400f15ecf50b91` juste après nettoyage.
+
+Aucune migration Supabase, aucune mutation de données ni aucun changement des droits SQL. Le script de nettoyage est **à usage unique** : son déclenchement exige la modification de son propre workflow sur `main` ET le message de commit exact `chore: consolidation finale des branches (run-once)`.
+
+**Limite de portée** : nettoyage des branches *distantes GitHub* seulement ; les branches locales éventuelles sur un poste utilisateur ne sont pas détectables ici.
+
+**Prochaines optimisations ERP indépendantes** : refonte de la fiscalité historique codée en dur (`modules/ventes/service.py`, `sql/005_atomic_sales.sql`, RPC production `erp_sale_transaction`) ; contrôle de la comptabilité SCF/paie ; validation en environnement Supabase TEST ; preuve du SHA réellement déployé dans Streamlit ; homologation réglementaire par un expert-comptable algérien. Les 18 index FK de `sql/supabase_pending/erp_034_fk_indexes_CANDIDAT_NON_EXECUTE.sql` restent **non exécutés** en production.
