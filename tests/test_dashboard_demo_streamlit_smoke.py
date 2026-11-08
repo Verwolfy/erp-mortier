@@ -1,8 +1,7 @@
-"""Smoke test de rendu Streamlit réel des 9 onglets KPI en mode DEMO.
+"""Smoke AppTest des 9 vues KPI en DEMO, rendues une seule à la fois.
 
-AppTest exécute le code UI Streamlit et ses widgets sans navigateur. Les
-graphiques ne sont pas validés pixel par pixel (limite AppTest) ; les calculs
-restent couverts par test_dashboard_demo_mode.py / test_dashboard_kpi_visuals.py.
+Aucune connexion Supabase. Les tests de service vérifient les formules ;
+AppTest vérifie la navigation et le rendu réel des widgets.
 """
 from __future__ import annotations
 
@@ -19,14 +18,11 @@ def _forbid_supabase(*_args, **_kwargs):
     raise AssertionError("Une lecture Supabase est interdite en démo")
 
 
-def test_all_nine_tabs_render_demo_without_db_or_exceptions(monkeypatch):
-    """Toute rubrique doit afficher ses KPI sans lecture réelle ni exception."""
+def test_all_nine_panels_render_demo_without_db_or_exceptions(monkeypatch):
     monkeypatch.setattr(views, "has_permission", lambda *_args, **_kw: True)
     monkeypatch.setattr(service, "fetch_data", _forbid_supabase)
     monkeypatch.setattr(service, "fetch_data_by_date_range", _forbid_supabase)
 
-    # Le vrai st.tabs est utilisé : contrairement aux tests de service,
-    # on valide ici aussi les appels st.metric / dataframe / chart / tooltip.
     script = """
 import streamlit as st
 from modules.dashboards.views import show_dashboards_page
@@ -36,29 +32,48 @@ st.session_state["_erp_dashboard_demo_mode"] = True
 show_dashboards_page()
 """
     at = AppTest.from_string(script, default_timeout=45).run()
-    assert len(at.exception) == 0, [e.message for e in at.exception]
-    assert len(at.tabs) == 9, [t.label for t in at.tabs]
-    assert "Direction" in at.tabs[0].label
-    assert "Finance" in at.tabs[-1].label
-    # Vérifier une couverture réelle de métriques, pas seulement des onglets.
-    assert len(at.metric) >= 20
-    assert any("MODE DÉMONSTRATION" in str(item.value)
-               for item in at.warning), "Bannière démo absente"
-    assert not any("Erreur" in str(item.value) for item in at.error)
+    labels = list(views._DASHBOARD_PANELS)
+    assert len(labels) == 9
+
+    # Contrairement aux st.tabs, une sélection calcule uniquement la vue active.
+    # Chaque passage oblige à réexécuter la véritable interface Streamlit.
+    total_metrics = 0
+    for label in labels:
+        if at.selectbox[0].value != label:
+            at = at.selectbox[0].set_value(label).run()
+        assert len(at.exception) == 0, [e.message for e in at.exception]
+        assert at.selectbox[0].value == label
+        assert list(at.selectbox[0].options) == labels
+        assert len(at.tabs) == 0, "Les anciens onglets exécutent tout en parallèle"
+        assert 1 <= len(at.metric) <= 4, (
+            label, "la vue active ne doit pas afficher les KPI des autres vues"
+        )
+        total_metrics += len(at.metric)
+        assert any("MODE DÉMONSTRATION" in str(item.value)
+                   for item in at.warning), "Bannière démo absente"
+        assert not any("Erreur" in str(item.value) for item in at.error)
+
+    assert total_metrics >= 20
 
 
-def test_mode_selector_precedes_tabs_in_streamlit_layout():
-    """Évite un sélecteur démo placé sous les neuf panneaux."""
+def test_demo_selector_precedes_panel_navigation_in_streamlit_layout():
     source = inspect.getsource(views._show_dashboards_page_impl)
     tree = ast.parse(source)
-    position = {}
+    toggles, selectors = [], []
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "st"
-                and node.func.attr in {"toggle", "tabs"}):
-            position[node.func.attr] = node.lineno
-    assert position["toggle"] < position["tabs"]
+        if (not isinstance(node, ast.Call)
+                or not isinstance(node.func, ast.Attribute)
+                or not isinstance(node.func.value, ast.Name)
+                or node.func.value.id != "st"):
+            continue
+        if node.func.attr == "toggle":
+            toggles.append(node)
+        if (node.func.attr == "selectbox" and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == "Vue du tableau de bord"):
+            selectors.append(node)
+    assert len(toggles) == 1 and len(selectors) == 1
+    assert toggles[0].lineno < selectors[0].lineno
 
 
 def test_default_calendar_uses_erp_clock(monkeypatch):
