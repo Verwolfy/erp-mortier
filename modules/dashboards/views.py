@@ -9,6 +9,7 @@ import datetime
 import plotly.graph_objects as go
 from config.roles import has_permission
 from core.strict_reads import DataReadError, read_section
+from core.query_diagnostics import query_metrics_snapshot
 from modules.dashboards.demo import SCENARIO_VERSION, build_demo_dataset
 from core.utils import get_local_now
 from modules.dashboards.service import (
@@ -454,3 +455,24 @@ def _show_dashboards_page_impl():
                     st.bar_chart(df_pie, horizontal=True)
                 else:
                     st.info("Aucun compte financier configuré.")
+
+    # OPT-04 : diagnostic local au rendu et réservé au profil administrateur.
+    # Pas d'identifiant, pas de table, pas de requête SQL ni de secret exporté.
+    # Les durées transport, autorisation et création de client se chevauchent.
+    if str(user_role or "").strip().upper() in {"ADMIN", "ADMINISTRATEUR", "SUPERADMIN"}:
+        metrics = query_metrics_snapshot()
+        if metrics is not None:
+            with st.expander("Diagnostic technique des lectures (ce rendu)"):
+                st.caption(
+                    f"Pages Supabase : {int(metrics['selects'])} | "
+                    f"Contrôles d'accès : {int(metrics['checks'])} | "
+                    f"Clients créés : {int(metrics['clients'])} | "
+                    f"Lectures réutilisées : {int(metrics['cache_hits'])}"
+                )
+                st.caption(
+                    f"Durée cumulée des lectures : {metrics['select_ms']:.1f} ms | "
+                    f"Contrôles d'accès : {metrics['check_ms']:.1f} ms | "
+                    f"Création de clients : {metrics['client_ms']:.1f} ms. "
+                    "Durées chevauchantes, non additives ; "
+                    "ne mesurent pas le rendu complet du navigateur."
+                )
