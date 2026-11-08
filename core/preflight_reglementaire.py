@@ -6,6 +6,7 @@ Aucune facture, écriture ou paramètre n'est créé par ce module.
 from __future__ import annotations
 
 from datetime import date
+from math import isfinite
 from typing import Any, Mapping
 
 from core.reglementation import RegleIndisponible, chercher_parametre
@@ -39,7 +40,19 @@ def examiner_referentiels(
     instant = date_reference if date_reference is not None else date.today()
     observed = {}
     for code in ("TVA_TAUX_NORMAL", "TVA_TAUX_REDUIT"):
-        lignes_code = [row for row in rates if row.get("code") == code]
+        lignes_code = []
+        for row in rates:
+            if row.get("code") != code:
+                continue
+            valeur = row.get("valeur")
+            if isinstance(valeur, float):
+                # PostgREST transporte NUMERIC en nombre JSON, décodé en float.
+                # Cette normalisation n'est autorisée que pour le précontrôle
+                # documentaire : aucun montant ni taux fiscal n'est calculé ici.
+                if not isfinite(valeur):
+                    raise PreflightIndisponible(f"{code}: valeur numérique invalide")
+                row = {**row, "valeur": str(valeur)}
+            lignes_code.append(row)
         if not lignes_code:
             continue
         try:
