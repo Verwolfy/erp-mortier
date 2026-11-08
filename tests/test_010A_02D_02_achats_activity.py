@@ -29,7 +29,7 @@ def test_five_achats_callbacks():
 
     assert sorted(callbacks) == sorted([
         "button", "button", "button", "button",
-        "selectbox", "form_submit_button"
+        "selectbox", "selectbox", "form_submit_button"
     ])
 
 
