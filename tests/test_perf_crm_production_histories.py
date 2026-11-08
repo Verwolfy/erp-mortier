@@ -6,7 +6,8 @@ def test_crm_historique_a_la_demande():
     content = Path("modules/crm/views.py").read_text(encoding="utf-8")
     assert 'if st.button("Afficher l\'historique CRM"' in content
     assert content.index('if st.button("Afficher l\'historique CRM"') < content.index("df_int, total = get_interactions_page(page=int(page_crm))")
-    assert "df_clients = get_clients_actifs() if can_write else pd.DataFrame()" in content
+    assert 'can_create = can_write and _crm_creation_guard("interaction", user_id)' in content
+    assert "df_clients = get_clients_actifs() if can_create else pd.DataFrame()" in content
 
 
 def test_production_historique_a_la_demande():
