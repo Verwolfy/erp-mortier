@@ -115,3 +115,19 @@ def test_preflight_refuse_deux_taux_confirmes_chevauchants():
     })
     with pytest.raises(PreflightIndisponible):
         examiner_referentiels(data, date_reference="2026-04-01")
+
+
+def test_preflight_accepte_un_numeric_json_en_lecture_seule():
+    data = snapshots()
+    data["parametres_reglementaires"][0]["valeur"] = 0.19
+    result = examiner_referentiels(data, date_reference="2026-11-01")
+    assert result["taux_reference_disponibles"] == 2
+    assert result["facturation_reglementaire_prete"] is False
+
+
+@pytest.mark.parametrize("nombre", [float("nan"), float("inf"), float("-inf")])
+def test_preflight_refuse_numeric_json_non_fini(nombre):
+    data = snapshots()
+    data["parametres_reglementaires"][0]["valeur"] = nombre
+    with pytest.raises(PreflightIndisponible):
+        examiner_referentiels(data, date_reference="2026-11-01")
