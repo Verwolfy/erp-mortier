@@ -5,12 +5,13 @@ Intègre le filtrage en cascade dynamique Pays -> Wilaya.
 Gestion dynamique des listes de référence synchronisées avec import_data.py.
 """
 import streamlit as st
+import logging
 from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
 from core.security_service import is_security_manager, STANDARD_ROLES, STANDARD_MODULES
 from core.listes_service import get_liste, liste_to_dict
-from core.db_service import fetch_data, insert_hybrid, update_hybrid
+from core.db_service import fetch_data, insert_hybrid, update_hybrid, get_supabase_client
 from modules.admin.tier_dedup import DuplicateTierError
 from modules.admin.service import (
     get_dataframe, EDITABLE_FIELDS, add_fournisseur, add_matiere_premiere,
@@ -36,6 +37,52 @@ UNITE_FALLBACK = ["KG", "T", "G", "L", "ML", "U", "SAC", "SEAU", "FUT", "IBC", "
 CAT_MP_FALLBACK = ["LIANT_HYD", "CHARGE_MIN", "RESINE_AQ", "RESINE_SOLV", "ADD_RHEO", "ADD_BETO", "PIGMENT_BL", "PIGMENT_COL", "SOLVANT", "BIOCIDE", "AGENT_SURF", "EMBALLAGE"]
 CAT_PF_FALLBACK = ["MORT_COLLE", "MORT_JOINTS", "END_FACADE", "END_LISS", "MORT_TECH", "ADJ_PLAST", "ADJ_PRISE", "ADJ_HYDRO", "ADJ_CURE", "PEINT_INT", "PEINT_EXT", "PEINT_TECH", "ETANCHEITE", "PRIMAIRE"]
 HS_CODE_FALLBACK = ["250510", "252220", "252329", "253090", "282110", "283650", "291816", "320611", "320649", "320820", "320910", "381600", "382440", "382450", "390529", "390690", "391239", "392321"]
+
+
+_LOG = logging.getLogger(__name__)
+_ACTIVE_ACCOUNT = frozenset({"OUI", "TRUE", "1", "YES", "ACTIF", "ACTIVE"})
+
+
+def _admin_access() -> bool | None:
+    """Autorisation Administration fraîche depuis le compte Supabase actif.
+
+    None : accès refusé ; False : lecture seule ; True : lecture/écriture.
+    Le rôle en session est intentionnellement ignoré.
+    """
+    try:
+        state = st.session_state
+        if state.get("authenticated") is not True:
+            return None
+        identity = state.get("user")
+        if not isinstance(identity, dict):
+            return None
+        user_id = identity.get("user_id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            return None
+        response = (get_supabase_client().table("users")
+                    .select("user_id,role,actif")
+                    .eq("user_id", user_id).limit(2).execute())
+        rows = response.data
+        if not isinstance(rows, list) or len(rows) != 1:
+            return None
+        actor = rows[0]
+        if not isinstance(actor, dict) or actor.get("user_id") != user_id:
+            return None
+        active = actor.get("actif")
+        if not (active is True or (
+                isinstance(active, str) and
+                active.strip().upper() in _ACTIVE_ACCOUNT)):
+            return None
+        role = actor.get("role")
+        if not isinstance(role, str) or not role.strip():
+            return None
+        if has_permission(role, "Administration", "lecture") is not True:
+            return None
+        return has_permission(role, "Administration", "ecriture") is True
+    except Exception as exc:
+        _LOG.warning("Habilitation Administration indisponible (%s)",
+                     type(exc).__name__)
+        return None
 
 
 def _mark_admin_activity() -> None:
@@ -576,8 +623,12 @@ def _revue_nextgen_preparation() -> None:
 def show_admin_page():
     st.title("⚙️ Administration & Référentiels")
 
-    user_role = st.session_state.get("user", {}).get("role", "")
-    can_write = has_permission(user_role, "Administration", "ecriture")
+    # Refus avant même l'affichage des panneaux ; aucune confiance dans
+    # le rôle mémorisé par le navigateur après révocation en base.
+    can_write = _admin_access()
+    if can_write is None:
+        st.error("Accès Administration refusé : compte ou droits non vérifiables.")
+        return
 
     if not can_write:
         st.info("🔒 Mode lecture seule : vous n'avez pas les droits d'ajout ou de modification.")
