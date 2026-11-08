@@ -138,8 +138,16 @@ def get_dashboard_data_provenance() -> dict:
             # Le résultat n'est partagé ni entre rendus ni entre utilisateurs.
             cache_key = ("provenance", table)
             if cache_key not in scope:
-                scope[cache_key] = fetch_provenance_identifiers(
-                    table, only_primary_key=True)
+                try:
+                    rows = fetch_provenance_identifiers(
+                        table, only_primary_key=True)
+                except TypeError:
+                    # Compatibilité en cas de déploiement incohérent du module
+                    # de projection : revenir à la lecture STRICTE historique,
+                    # avec les mêmes contrôles RBAC/pagination. Aucun résultat
+                    # ne doit être déclaré fiable si ce secours échoue.
+                    rows = fetch_data(table)
+                scope[cache_key] = deepcopy(rows)
             else:
                 record_cache_hit()
             frame = pd.DataFrame(deepcopy(scope[cache_key]))

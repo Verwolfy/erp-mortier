@@ -116,9 +116,12 @@ def _show_dashboards_page_impl():
         # développement : leur nature doit être validée avant homologation.
         try:
             provenance = get_dashboard_data_provenance()
-        except (PermissionError, DataReadError):
-            st.info("Provenance des données non vérifiable pour ce profil : "
-                    "les KPI ne sont pas certifiés comme données réelles.")
+        except (PermissionError, DataReadError, TypeError):
+            # Le diagnostic de provenance est auxiliaire : une incompatibilité
+            # de version ne doit pas arrêter tous les KPI. Refus de certification
+            # explicite, sans afficher l'erreur interne ni les données lues.
+            st.warning("Provenance des données non vérifiable : "
+                       "les KPI ne sont pas certifiés comme données réelles.")
         else:
             if provenance["marked"]:
                 st.warning(
