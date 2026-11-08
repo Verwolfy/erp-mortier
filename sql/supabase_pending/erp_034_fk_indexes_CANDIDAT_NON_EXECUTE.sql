@@ -1,11 +1,16 @@
 -- ERP 034 — proposition d'index complémentaires pour clés étrangères.
 -- STATUT : CANDIDAT NON EXECUTE. Vérifié par analyse du schéma principal le 2026-11-05.
+-- Complément du 2026-11-08 : trois FK coûts industriels ajoutées selon l'advisor Supabase.
+-- Couverture de 18 propositions ; ne constitue pas une mesure de gain de performance.
 -- Chaque CREATE INDEX CONCURRENTLY doit être exécuté hors transaction, séparément.
 -- Ne pas lancer automatiquement sans test de charge, contrôle des index existants,
 -- relecture du plan et validation de l'impact sur les écritures.
 -- L'ajout d'index ne modifie ni les données ni les droits RLS.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cq_of_id ON public.controle_qualite (of_id);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_conges_employe_id ON public.demandes_conges (employe_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_erp_cost_drivers_of ON public.erp_cost_drivers (of_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_erp_cost_snapshot_of ON public.erp_cost_of_validation_snapshot (of_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_erp_cost_pools_nature ON public.erp_cost_pools (nature_code);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_exo_clients_cree_par ON public.erp_exonerations_tva_clients (cree_par);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_exo_events_acteur ON public.erp_exonerations_tva_evenements (acteur_metier);
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_exo_ops_acteur ON public.erp_exonerations_tva_operations (acteur_id);
