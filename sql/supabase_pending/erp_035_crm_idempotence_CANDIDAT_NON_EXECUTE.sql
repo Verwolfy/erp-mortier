@@ -84,17 +84,17 @@ BEGIN
     IF p_kind = 'opportunite' THEN
         IF (p_payload - ARRAY['prospect_nom','contact','statut',
                 'commercial_id','valeur_estimee','probabilite_pct']) <> '{}'::jsonb
-           OR jsonb_typeof(p_payload->'prospect_nom') <> 'string'
+           OR jsonb_typeof(p_payload->'prospect_nom') IS DISTINCT FROM 'string'
            OR length(trim(p_payload->>'prospect_nom')) NOT BETWEEN 1 AND 200
-           OR jsonb_typeof(p_payload->'statut') <> 'string'
+           OR jsonb_typeof(p_payload->'statut') IS DISTINCT FROM 'string'
            OR (p_payload->>'statut') NOT IN
                 ('Nouveau','Contacté','En Négociation','Gagné','Perdu')
-           OR jsonb_typeof(p_payload->'contact') <> 'string'
+           OR jsonb_typeof(p_payload->'contact') IS DISTINCT FROM 'string'
            OR length(p_payload->>'contact') > 400
-           OR jsonb_typeof(p_payload->'commercial_id') <> 'string'
+           OR jsonb_typeof(p_payload->'commercial_id') IS DISTINCT FROM 'string'
            OR length(p_payload->>'commercial_id') > 128
-           OR jsonb_typeof(p_payload->'valeur_estimee') <> 'number'
-           OR jsonb_typeof(p_payload->'probabilite_pct') <> 'number'
+           OR jsonb_typeof(p_payload->'valeur_estimee') IS DISTINCT FROM 'number'
+           OR jsonb_typeof(p_payload->'probabilite_pct') IS DISTINCT FROM 'number'
         THEN
             RAISE EXCEPTION 'CRM_PAYLOAD_INVALID' USING ERRCODE = '22023';
         END IF;
@@ -107,13 +107,13 @@ BEGIN
     ELSE
         IF (p_payload - ARRAY['client_id','type_action','notes','date_rappel'])
                  <> '{}'::jsonb
-           OR jsonb_typeof(p_payload->'client_id') <> 'string'
+           OR jsonb_typeof(p_payload->'client_id') IS DISTINCT FROM 'string'
            OR length(trim(p_payload->>'client_id')) NOT BETWEEN 1 AND 128
-           OR jsonb_typeof(p_payload->'type_action') <> 'string'
+           OR jsonb_typeof(p_payload->'type_action') IS DISTINCT FROM 'string'
            OR length(trim(p_payload->>'type_action')) NOT BETWEEN 1 AND 100
-           OR jsonb_typeof(p_payload->'notes') <> 'string'
+           OR jsonb_typeof(p_payload->'notes') IS DISTINCT FROM 'string'
            OR length(p_payload->>'notes') > 4000
-           OR jsonb_typeof(p_payload->'date_rappel') <> 'string'
+           OR jsonb_typeof(p_payload->'date_rappel') IS DISTINCT FROM 'string'
            OR length(p_payload->>'date_rappel') > 10
         THEN
             RAISE EXCEPTION 'CRM_PAYLOAD_INVALID' USING ERRCODE = '22023';
