@@ -32,8 +32,8 @@ def test_incompatible_projection_uses_strict_full_read(monkeypatch):
     assert result["marked"] == 1
     assert len(result["sources"]) == 6
     expected = [table for table, _, _ in service._PROVENANCE_SOURCES]
-    assert calls == [v for table in expected
-                     for v in (("projection", table), ("strict", table))]
+    # Une signature obsolète rejette le mot clé avant d'entrer dans la fonction.
+    assert calls == [("strict", table) for table in expected]
 
 
 def test_fallback_permission_denial_does_not_report_zero(monkeypatch):
