@@ -126,7 +126,6 @@ def test_opportunity_creation_rechecks_revocation_at_submit(ui, monkeypatch):
     ]
     select(st, PANELS[0])
     st.form_submit_button.return_value = True
-    crm.create_opportunite = MagicMock()
     monkeypatch.setattr(crm, "create_opportunite", MagicMock())
     crm.show_crm_page()
     assert query.execute.call_count == 2
