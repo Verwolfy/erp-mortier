@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from math import isfinite
+import re
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -76,7 +77,7 @@ def build_rpc_request(
         _string(payload["prospect_nom"], "Prospect", 200)
         _string(payload["contact"], "Contact", 400, optional=True)
         _string(payload["commercial_id"], "Commercial", 128, optional=True)
-        if payload["statut"] not in _STATUSES:
+        if not isinstance(payload["statut"], str) or payload["statut"] not in _STATUSES:
             raise ValueError("Statut CRM invalide")
         _number(payload["valeur_estimee"], "Valeur", 0, 10**15 - 1)
         _number(payload["probabilite_pct"], "Probabilité", 0, 100)
@@ -127,7 +128,7 @@ def require_rpc_confirmation(response: Any, request: dict[str, Any]) -> str:
     if (data.get("operation_id") != operation_id or
             data.get("kind") != request["p_kind"] or
             type(data.get("replayed")) is not bool or
-            not isinstance(doc_id, str) or not doc_id.startswith(prefix) or
-            len(doc_id) != len(prefix) + 32):
+            not isinstance(doc_id, str) or
+            re.fullmatch(re.escape(prefix) + r"[0-9A-F]{32}", doc_id) is None):
         raise CRMResponseUncertain(operation_id)
     return doc_id
