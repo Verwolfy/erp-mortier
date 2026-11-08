@@ -54,7 +54,7 @@ def test_stock_state_renders_only_stock_panel_without_entry_form(ui):
     ui.mod.show_stocks_page()
     ui.mod.get_mp_actives.assert_called_once()
     ui.stocks.get_stock_actuel_mp.assert_called_once()
-    ui.stocks.get_stock_actuel_pf.assert_called_once()
+    ui.stocks.get_stock_actuel_pf.assert_not_called()
     ui.st.form.assert_not_called()
     ui.st.button.assert_not_called()
 
