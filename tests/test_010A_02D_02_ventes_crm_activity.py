@@ -13,7 +13,7 @@ import pytest
             "selectbox": 9,
             "form_submit_button": 2,
         }),
-        ("crm", {"form_submit_button": 2}),
+        ("crm", {"form_submit_button": 2, "selectbox": 1}),
     ],
 )
 def test_010a_commercial_callback_counts(module, expected):
