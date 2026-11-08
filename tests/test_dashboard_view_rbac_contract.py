@@ -13,32 +13,45 @@ FUNCTIONS = ["get_kpis_direction", "get_kpis_pnl", "get_kpis_ventes",
              "get_kpis_crm", "get_kpis_rh", "get_kpis_finance"]
 
 
-def test_nine_tabs_have_read_isolation_and_matching_service_calls():
+def _panel_index(node):
+    if not (isinstance(node, ast.If) and isinstance(node.test, ast.Compare)):
+        return None
+    test = node.test
+    if (not isinstance(test.left, ast.Name) or test.left.id != "active_panel"
+            or len(test.ops) != 1 or not isinstance(test.ops[0], ast.Eq)
+            or len(test.comparators) != 1):
+        return None
+    sub = test.comparators[0]
+    if (not isinstance(sub, ast.Subscript) or not isinstance(sub.value, ast.Name)
+            or sub.value.id != "_DASHBOARD_PANELS"
+            or not isinstance(sub.slice, ast.Constant)
+            or type(sub.slice.value) is not int):
+        return None
+    return sub.slice.value
+
+
+def test_nine_panels_have_isolated_reads_and_matching_service_calls():
     tree = ast.parse(VIEW.read_text(encoding="utf-8"))
     page = next(node for node in tree.body
                 if isinstance(node, ast.FunctionDef)
                 and node.name == "_show_dashboards_page_impl")
     sections = []
-    for node in ast.walk(page):
-        if not isinstance(node, ast.With):
+    for node in page.body:
+        idx = _panel_index(node)
+        if idx is None:
             continue
-        contexts = [item.context_expr for item in node.items]
-        if len(contexts) < 2:
-            continue
-        tab, read = contexts[:2]
-        if (not isinstance(tab, ast.Subscript)
-                or not isinstance(tab.value, ast.Name)
-                or tab.value.id != "onglets"
-                or not isinstance(tab.slice, ast.Constant)
-                or not isinstance(tab.slice.value, int)
-                or not isinstance(read, ast.Call)
-                or not isinstance(read.func, ast.Name)
-                or read.func.id != "read_section"):
-            continue
+        assert len(node.body) == 1 and isinstance(node.body[0], ast.With)
+        panel = node.body[0]
+        assert len(panel.items) == 1
+        read = panel.items[0].context_expr
+        assert (isinstance(read, ast.Call)
+                and isinstance(read.func, ast.Name)
+                and read.func.id == "read_section")
         assert len(read.args) == 1 and isinstance(read.args[0], ast.Constant)
-        calls = {call.func.id for stmt in node.body for call in ast.walk(stmt)
-                 if isinstance(call, ast.Call) and isinstance(call.func, ast.Name)}
-        sections.append((tab.slice.value, read.args[0].value, calls))
+        calls = {call.func.id for call in ast.walk(panel)
+                 if isinstance(call, ast.Call)
+                 and isinstance(call.func, ast.Name)}
+        sections.append((idx, read.args[0].value, calls))
     assert len(sections) == len(SECTIONS)
     assert sorted(idx for idx, _, _ in sections) == list(range(9))
     for idx, name, calls in sections:
@@ -46,27 +59,50 @@ def test_nine_tabs_have_read_isolation_and_matching_service_calls():
         assert FUNCTIONS[idx] in calls
 
 
-def test_page_fails_closed_before_rendering_tabs():
+def test_fail_closed_rbac_precedes_lazy_navigation_and_no_eager_tabs():
     tree = ast.parse(VIEW.read_text(encoding="utf-8"))
-    page = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+    page = next(n for n in tree.body
+                if isinstance(n, ast.FunctionDef)
                 and n.name == "_show_dashboards_page_impl")
-    checks = [(idx, node) for idx, node in enumerate(page.body)
+    guards = [(idx, node) for idx, node in enumerate(page.body)
               if isinstance(node, ast.If) and isinstance(node.test, ast.UnaryOp)
               and isinstance(node.test.op, ast.Not)
               and isinstance(node.test.operand, ast.Name)
               and node.test.operand.id == "can_read"]
-    assert len(checks) == 1
-    idx, deny = checks[0]
+    assert len(guards) == 1
+    idx, deny = guards[0]
     assert any(isinstance(n, ast.Return) for n in deny.body)
-    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+    assert any(isinstance(n, ast.Call)
+               and isinstance(n.func, ast.Name)
                and n.func.id == "has_permission"
                for stmt in page.body[:idx] for n in ast.walk(stmt))
-    tabs = [(i, n) for i, n in enumerate(page.body)
-            if isinstance(n, ast.Assign)
-            and isinstance(n.value, ast.Call)
-            and isinstance(n.value.func, ast.Attribute)
-            and n.value.func.attr == "tabs"]
-    assert len(tabs) == 1 and idx < tabs[0][0]
+    selectors = [(i, n) for i, n in enumerate(page.body)
+                 if isinstance(n, ast.Assign)
+                 and isinstance(n.value, ast.Call)
+                 and isinstance(n.value.func, ast.Attribute)
+                 and n.value.func.attr == "selectbox"]
+    assert len(selectors) == 1 and idx < selectors[0][0]
+    assert not any(isinstance(n, ast.Call)
+                   and isinstance(n.func, ast.Attribute)
+                   and n.func.attr == "tabs"
+                   for n in ast.walk(page))
+
+
+def test_kpi_calculations_only_occur_inside_a_selected_panel():
+    tree = ast.parse(VIEW.read_text(encoding="utf-8"))
+    page = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                and n.name == "_show_dashboards_page_impl")
+    panels = [node for node in page.body if _panel_index(node) is not None]
+
+    def calls(node):
+        return [n for n in ast.walk(node) if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name) and n.func.id in FUNCTIONS]
+
+    for panel in panels:
+        assert len(calls(panel)) == 1, "Une vue calcule exactement ses propres KPI"
+    for stmt in page.body:
+        if _panel_index(stmt) is None:
+            assert not calls(stmt), "KPI lancé sans sélection explicite de panneau"
 
 
 def test_read_scope_wraps_complete_page():
