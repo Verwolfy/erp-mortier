@@ -46,6 +46,8 @@ with patch('modules.rh.views._rh_access',return_value=('ADMIN',True,False)), pat
 app=AppTest.from_string(source).run()
 assert not app.exception
 assert any('10 fiche(s) SIM-RH' in w.value for w in app.warning)
+app=app.selectbox(key='_erp_rh_active_panel').set_value('🌴 Gestion des Congés').run()
+assert not app.exception
 employees=[s for s in app.selectbox if s.label=='Employé']
 assert len(employees)==1 and len(employees[0].options)==8
 assert not any('009' in o or '010' in o for o in employees[0].options)

@@ -18,6 +18,8 @@ with patch('modules.rh.views._rh_access',return_value=('ADMIN',True,False)), pat
 """
 app=AppTest.from_string(source).run()
 assert not app.exception
+app=app.selectbox(key='_erp_rh_active_panel').set_value('🌴 Gestion des Congés').run()
+assert not app.exception
 assert any('SIM-CNG' in w.value for w in app.warning)
 app.button(key='FormSubmitter:form_conges-Soumettre la demande').click().run()
 assert not app.exception

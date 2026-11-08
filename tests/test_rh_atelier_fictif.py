@@ -20,6 +20,8 @@ with patch('modules.rh.views._rh_access',return_value=('ADMIN',True,True)), patc
 '''
 app=AppTest.from_string(source).run()
 assert not app.exception, app.exception
+app=app.selectbox(key='_erp_rh_active_panel').set_value('🧪 Atelier paie fictive').run()
+assert not app.exception, app.exception
 selector=app.selectbox(key='rh_test_employe')
 assert selector.options==['SIM-RH-001'],selector.options
 app.button(key='rh_test_calculer').click().run()
