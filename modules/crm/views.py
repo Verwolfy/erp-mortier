@@ -60,6 +60,82 @@ def _mark_crm_activity() -> None:
     st.session_state["_erp_crm_interacted"] = True
 
 
+_CRM_CREATIONS = frozenset({"opportunite", "interaction"})
+
+
+def _crm_creation_key(kind: str, user_id: str) -> str:
+    if kind not in _CRM_CREATIONS:
+        raise ValueError("Nature CRM inconnue")
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise ValueError("Identité CRM non confirmée")
+    return f"crm_creation_{kind}_{user_id}"
+
+
+def _crm_creation_guard(kind: str, user_id: str) -> bool:
+    """Bloque une deuxième soumission tant que la précédente n'est pas résolue.
+
+    Un résultat incertain NE permet pas de déverrouiller le formulaire depuis
+    l'UI : une vérification humaine de l'enregistrement est indispensable.
+    """
+    key = _crm_creation_key(kind, user_id)
+    record = st.session_state.get(key)
+    if record is None:
+        return True
+    if not isinstance(record, dict) or record.get("status") not in (
+            "uncertain", "confirmed"):
+        st.error("Dossier de reprise CRM non vérifiable : création bloquée.")
+        return False
+    reference = record.get("document_id")
+    if record["status"] == "uncertain":
+        st.error(
+            "Création CRM non confirmée : toute nouvelle tentative est bloquée "
+            "pour éviter un doublon. Vérifiez cette opération dans Supabase "
+            "avec un administrateur ; ne la réémettez pas automatiquement."
+        )
+        if isinstance(reference, str) and reference.strip():
+            st.code(reference)
+        return False
+    st.success("Dernière création CRM confirmée.")
+    if isinstance(reference, str) and reference.strip():
+        st.code(reference)
+    if st.button(
+            "Préparer une nouvelle création CRM",
+            key=f"crm_nouvelle_{kind}_{user_id}", on_click=_mark_crm_activity):
+        del st.session_state[key]
+        st.rerun()
+    return False
+
+
+def _crm_create_once(kind: str, user_id: str, write, *args) -> None:
+    """Une seule tentative ; sans retry tant que l'état n'est pas confirmé."""
+    key = _crm_creation_key(kind, user_id)
+    if key in st.session_state:
+        st.error("Un dossier CRM existe déjà : nouvelle insertion interdite.")
+        return
+    # Marquer AVANT l'appel : un timeout peut survenir après COMMIT PostgreSQL.
+    record = {"status": "uncertain", "document_id": None}
+    st.session_state[key] = record
+    try:
+        reference = write(*args)
+        if not isinstance(reference, str) or not reference.strip():
+            raise RuntimeError("Référence CRM absente ou non confirmée")
+    except Exception as exc:
+        candidate = getattr(exc, "document_id", None)
+        if isinstance(candidate, str) and candidate.strip():
+            record["document_id"] = candidate
+        _LOG.warning("Création CRM non confirmée (%s)", type(exc).__name__)
+        st.error(
+            "Création CRM non confirmée. Vérifiez l'enregistrement dans "
+            "Supabase avant toute nouvelle saisie. Aucune réémission automatique."
+        )
+        if record["document_id"]:
+            st.code(record["document_id"])
+        return
+    record.update(status="confirmed", document_id=reference)
+    st.success("Création CRM confirmée.")
+    st.rerun()
+
+
 def get_clients_actifs():
     df = pd.DataFrame(fetch_data("clients"))
     return df[df["actif"] == "OUI"] if not df.empty and "actif" in df.columns else pd.DataFrame()
@@ -89,7 +165,7 @@ def show_crm_page():
         with read_section("Pipeline"):
             st.subheader("Gestion du Pipeline", help=topic_help("crm.pipeline"))
             show_context_help(st, "crm.pipeline")
-            if can_write:
+            if can_write and _crm_creation_guard("opportunite", user_id):
                 with st.expander("➕ Nouvelle Opportunité"):
                     with st.form("form_opp"):
                         c1, c2 = st.columns(2)
@@ -107,9 +183,11 @@ def show_crm_page():
                             if fresh is None or fresh[0] != user_id or fresh[1] is not True:
                                 st.error("Droit CRM écriture absent ou révoqué ; création interdite.")
                             elif prospect:
-                                create_opportunite(prospect, contact, statut, commercial, valeur, float(probabilite))
-                                st.success("Opportunité créée !")
-                                st.rerun()
+                                _crm_create_once(
+                                    "opportunite", user_id, create_opportunite,
+                                    prospect, contact, statut, commercial, valeur,
+                                    float(probabilite),
+                                )
                             else:
                                 st.error("Le nom du prospect est obligatoire.")
 
@@ -123,10 +201,14 @@ def show_crm_page():
         with read_section("Clients CRM"):
             st.subheader("Consigner une Interaction", help=topic_help("crm.interaction"))
             show_context_help(st, "crm.interaction")
-            df_clients = get_clients_actifs() if can_write else pd.DataFrame()
+            can_create = can_write and _crm_creation_guard("interaction", user_id)
+            df_clients = get_clients_actifs() if can_create else pd.DataFrame()
 
             if not can_write:
                 st.info("🔒 Mode lecture seule.")
+            elif not can_create:
+                # Un dossier incertain ou confirmé ne doit pas ouvrir de form.
+                pass
             elif df_clients.empty:
                 st.warning("Veuillez configurer des clients dans l'Administration.")
             else:
@@ -151,9 +233,10 @@ def show_crm_page():
                         if fresh is None or fresh[0] != user_id or fresh[1] is not True:
                             st.error("Droit CRM écriture absent ou révoqué ; enregistrement interdit.")
                         else:
-                            create_interaction(client_choisi, type_action, notes, date_rappel_str)
-                            st.success("Interaction enregistrée !")
-                            st.rerun()
+                            _crm_create_once(
+                                "interaction", user_id, create_interaction,
+                                client_choisi, type_action, notes, date_rappel_str,
+                            )
 
     if active_panel == panels[2]:
         with read_section("Historique CRM"):
