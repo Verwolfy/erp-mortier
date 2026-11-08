@@ -201,6 +201,33 @@ def test_sql_revalidates_current_server_rights_on_every_call():
     assert "p_kind NOT IN ('opportunite', 'interaction')" in source
     assert "jsonb_typeof(p_payload->'notes') IS DISTINCT FROM 'string'" in source
     assert "CRM_CLIENT_UNAVAILABLE" in source
+    assert "PERFORM 1 FROM public.permissions AS p" in source
+    assert "!~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}
+    assert "public.interactions" in source
+
+
+def test_sql_rpc_is_granted_only_to_backend_service_role():
+    source = DRAFT.read_text(encoding="utf-8")
+    assert ("REVOKE ALL ON FUNCTION "
+            "public.erp_crm_create_idempotent(uuid,text,text,jsonb)") in source
+    assert "FROM PUBLIC, anon, authenticated;" in source
+    assert ("GRANT EXECUTE ON FUNCTION "
+            "public.erp_crm_create_idempotent(uuid,text,text,jsonb)") in source
+    assert "TO service_role;" in source
+    assert "GRANT EXECUTE" in source
+    assert "TO authenticated;" not in source
+    assert "TO anon;" not in source
+    assert "auth.role()" not in source
+
+
+def test_existing_crm_path_not_switched_to_untested_rpc():
+    service_source = (
+        ROOT / "modules" / "crm" / "service.py"
+    ).read_text(encoding="utf-8")
+    assert 'insert_hybrid("pipeline", data_opp)' in service_source
+    assert 'insert_hybrid("interactions", data_int)' in service_source
+    assert "erp_crm_create_idempotent" not in service_source
+ OR" in source
     assert "public.pipeline" in source
     assert "public.interactions" in source
 
