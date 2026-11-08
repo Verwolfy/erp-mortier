@@ -54,21 +54,32 @@ def show_rh_page():
         st.error("Accès RH refusé : session, compte ou permission non vérifiable.")
         return
     user_role, can_write, can_read_paie = access
-    try:
-        df_emp = get_employes()
-        df_conges = get_conges()
-    except (DataReadError, PermissionError):
-        st.error("RH : données indisponibles ou accès refusé. Réessayez la consultation ; aucune liste vide ne peut être confirmée.")
-        return
     noms_onglets = ["👨‍💼 Registre des Employés", "🌴 Gestion des Congés"]
     if can_read_paie:
         noms_onglets.append("🧮 Simulation IRG (non validée)")
         noms_onglets.append("🔎 Préparation Paie IRG / CNAS")
         noms_onglets.append("🧪 Atelier paie fictive")
-    onglets = st.tabs(noms_onglets)
-    tab1, tab2 = onglets[:2]
 
-    with tab1:
+    # Un seul panneau visible, après contrôle frais des droits RH/Paie en base.
+    active_panel = st.selectbox(
+        "Vue RH", noms_onglets, key="_erp_rh_active_panel",
+        on_change=_mark_rh_activity,
+        help="Seuls les registres nécessaires à la vue sont chargés.",
+    )
+    needs_employees = (
+        active_panel == noms_onglets[0]
+        or (active_panel == noms_onglets[1] and can_write)
+        or (can_read_paie and active_panel == noms_onglets[4])
+    )
+    try:
+        df_emp = get_employes() if needs_employees else pd.DataFrame()
+        df_conges = (get_conges() if active_panel == noms_onglets[1]
+                     else pd.DataFrame())
+    except (DataReadError, PermissionError):
+        st.error("RH : données indisponibles ou accès refusé. Réessayez la consultation ; aucune liste vide ne peut être confirmée.")
+        return
+
+    if active_panel == noms_onglets[0]:
         st.subheader("Employés", help=topic_help("rh.employes"))
         show_context_help(st, "rh.employes")
         if can_write:
@@ -106,7 +117,7 @@ def show_rh_page():
         else:
             st.info("Aucun employé enregistré.")
 
-    with tab2:
+    if active_panel == noms_onglets[1]:
         st.subheader("Demandes de Congés", help=topic_help("rh.conges"))
         show_context_help(st, "rh.conges")
         if can_write:
@@ -153,7 +164,7 @@ def show_rh_page():
         else:
             st.info("Aucune demande de congé.")
     if can_read_paie:
-        with onglets[2]:
+        if active_panel == noms_onglets[2]:
             st.subheader("Simulation IRG - traitements et salaires", help=topic_help("rh.irg"))
             show_context_help(st, "rh.irg")
             st.warning(
@@ -208,10 +219,10 @@ def show_rh_page():
 
 
     if can_read_paie:
-        with onglets[3]:
+        if active_panel == noms_onglets[3]:
             _preflight_paie_tab(user_role)
 
-        with onglets[4]:
+        if active_panel == noms_onglets[4]:
             _atelier_paie_fictive(df_emp, user_role)
 
 
