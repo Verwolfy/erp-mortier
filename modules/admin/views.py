@@ -1028,10 +1028,20 @@ def show_user_management():
         st.error("Habilitation SECURITY_MANAGER requise.")
         return
 
-    tab1, tab2, tab3, tab4 = st.tabs(["Créer un Utilisateur", "Définir les Permissions", "Annuaire Existant", "Piste d'Audit (Logs)"])
+    # st.tabs exécute les quatre sections, même masquées : l'annuaire et
+    # les journaux ne doivent pas être lus à l'ouverture d'un formulaire.
+    security_panels = (
+        "Créer un Utilisateur", "Définir les Permissions",
+        "Annuaire Existant", "Piste d'Audit (Logs)",
+    )
+    security_panel = st.selectbox(
+        "Vue Sécurité", security_panels, key="_erp_security_active_panel",
+        on_change=_mark_admin_activity,
+        help="Le seul panneau sélectionné est exécuté.",
+    )
 
     # ONGLET 1 : Création de compte
-    with tab1:
+    if security_panel == security_panels[0]:
         st.subheader("Ajouter un nouvel accès", help=topic_help("admin.utilisateur"))
         show_context_help(st, "admin.utilisateur")
         with st.form("form_add_user", clear_on_submit=True):
@@ -1057,7 +1067,7 @@ def show_user_management():
                     st.warning("Veuillez remplir tous les champs obligatoires (*).")
 
     # ONGLET 2 : Gestion des permissions
-    with tab2:
+    if security_panel == security_panels[1]:
         st.subheader("Attribuer des droits d'accès à un rôle", help=topic_help("admin.permissions"))
         show_context_help(st, "admin.permissions")
         st.info("Rappel : Les statuts doivent s'écrire 'OUI' ou 'NON'.")
@@ -1087,7 +1097,7 @@ def show_user_management():
                     st.warning("Veuillez saisir un nom de rôle.")
 
     # ONGLET 3 : Consultation rapide
-    with tab3:
+    if security_panel == security_panels[2]:
         st.subheader("Annuaire des Utilisateurs", help=topic_help("admin.annuaire"))
         show_context_help(st, "admin.annuaire")
         df_users = get_users()
@@ -1105,7 +1115,7 @@ def show_user_management():
             st.write("Aucune permission trouvée.")
 
     # ONGLET 4 : Piste d'audit (Logs)
-    with tab4:
+    if security_panel == security_panels[3]:
         st.subheader("Historique des Actions (Audit Trail)", help=topic_help("admin.audit"))
         show_context_help(st, "admin.audit")
         st.info("Les créations sensibles réalisées via RPC sont auditées atomiquement ; les anciennes actions peuvent être en mode best-effort.")
