@@ -23,6 +23,7 @@ st.set_page_config(
 from config.roles import get_allowed_modules, has_permission
 from modules.auth.views import logout, show_login_page
 from modules.help.contextual import show_context_help, topic_help, field_help
+from core.release_provenance import release_caption
 
 _LOG = logging.getLogger(__name__)
 TIMEOUT_SECONDS = 1800  # 30 minutes, compatible avec auth/views.py
@@ -255,6 +256,9 @@ def main() -> None:
     with st.sidebar:
         st.write(f"👤 **{user['nom']}**")
         st.caption(f"Rôle : {role}")
+        # Affiché UNIQUEMENT après authentification et contrôle frais du rôle.
+        # Une simple variable de CI ne constitue pas la preuve du code exécuté.
+        st.caption(release_caption())
         if st.button("🚪 Déconnexion", use_container_width=True,
                      help="Terminer votre session ERP ; se reconnecter pour accéder de nouveau aux modules."):
             logout()
