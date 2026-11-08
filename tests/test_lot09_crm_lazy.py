@@ -25,6 +25,9 @@ def ui(monkeypatch):
     st.button.return_value = False
     st.selectbox.side_effect = lambda _label, options, **_kw: list(options)[0]
     st.number_input.return_value = 1
+    st.columns.side_effect = lambda count: [
+        MagicMock() for _ in range(count if isinstance(count, int) else len(count))
+    ]
     monkeypatch.setattr(crm, "st", st)
     perm = MagicMock(return_value=True)
     monkeypatch.setattr(crm, "has_permission", perm)
