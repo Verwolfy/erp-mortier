@@ -59,7 +59,7 @@ from core.strict_reads import DataReadError
 from modules.crm.views import show_crm_page
 st.session_state['authenticated'] = True
 st.session_state['user'] = {'user_id':'USR-CRM-TEST', 'role':'ADMIN'}
-with patch('modules.crm.views.has_permission', side_effect=lambda role, module, permission: permission == 'lecture'), \\
+with patch('modules.crm.views._crm_access', return_value=('USR-CRM-TEST', False)), \\
      patch('modules.crm.views.get_pipeline', side_effect=DataReadError('private-data-sentinel')), \\
      patch('modules.crm.views.get_clients_actifs', side_effect=DataReadError('private-data-sentinel')), \\
      patch('modules.crm.views.get_interactions', side_effect=DataReadError('private-data-sentinel')), \\
