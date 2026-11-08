@@ -184,26 +184,40 @@ def show_stocks_page():
     )
     # Le référentiel n'est pas nécessaire pour la consultation des historiques
     # avant un clic ni pour le formulaire d'un utilisateur sans droit d'écriture.
-    df_mp_global = (get_mp_actives() if active_panel == panels[0]
-                    or (active_panel == panels[1] and can_write)
+    df_mp_global = (get_mp_actives()
+                    if active_panel == panels[1] and can_write
                     else pd.DataFrame())
 
     # --- ONGLET 1 : ÉTAT DES STOCKS ---
     if active_panel == panels[0]:
         st.subheader("Consultation des stocks actuels", help=topic_help("stocks.etat"))
         show_context_help(st, "stocks.etat")
-        sous_tab_vrac, sous_tab_emb, sous_tab_pf = st.tabs(["🧪 Matières Premières (Vrac)", "📦 Emballages", "🛍️ Produits Finis"])
-        df_stock = get_stock_actuel_mp()
+        categories = ("🧪 Matières Premières (Vrac)", "📦 Emballages",
+                      "🛍️ Produits Finis")
+        active_category = st.selectbox(
+            "Catégorie de stock", categories,
+            key="_erp_stocks_active_category",
+            on_change=_mark_stocks_activity,
+            help="Les stocks MP et PF sont lus uniquement dans leur catégorie.",
+        )
+        if active_category != categories[2]:
+            df_mp_global = get_mp_actives()
+            df_stock = get_stock_actuel_mp()
+            if not df_stock.empty and not df_mp_global.empty:
+                df_display = pd.merge(
+                    df_stock,
+                    df_mp_global[['mp_id', 'nom', 'unite_stock', 'stock_mini', 'categorie_mp']],
+                    on='mp_id', how='left',
+                )
+                is_emballage = df_display["categorie_mp"].fillna("").str.strip().str.upper().isin(
+                    ["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])
+                df_vrac = df_display.loc[~is_emballage]
+                df_emb = df_display.loc[is_emballage]
+            else:
+                df_vrac = pd.DataFrame()
+                df_emb = pd.DataFrame()
 
-        if not df_stock.empty and not df_mp_global.empty:
-            df_display = pd.merge(df_stock, df_mp_global[['mp_id', 'nom', 'unite_stock', 'stock_mini', 'categorie_mp']], on='mp_id', how='left')
-            df_vrac = df_display[~df_display["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
-            df_emb = df_display[df_display["categorie_mp"].fillna("").str.strip().str.upper().isin(["EMBALLAGE", "EMBALLAGE_CONSOMMABLE"])]
-        else:
-            df_vrac = pd.DataFrame()
-            df_emb = pd.DataFrame()
-
-        with sous_tab_vrac:
+        if active_category == categories[0]:
 
             show_context_help(st, "stocks.vrac")
             if not df_vrac.empty:
@@ -214,7 +228,7 @@ def show_stocks_page():
             else:
                 st.info("Aucun stock actuel disponible pour les Matières Premières (Vrac).")
 
-        with sous_tab_emb:
+        if active_category == categories[1]:
 
             show_context_help(st, "stocks.emballages")
             if not df_emb.empty:
@@ -225,7 +239,7 @@ def show_stocks_page():
             else:
                 st.info("Aucun stock actuel disponible pour les Emballages.")
 
-        with sous_tab_pf:
+        if active_category == categories[2]:
 
             show_context_help(st, "stocks.pf")
             df_stock_pf = get_stock_actuel_pf()

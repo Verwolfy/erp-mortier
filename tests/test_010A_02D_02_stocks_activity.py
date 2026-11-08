@@ -30,7 +30,7 @@ def test_four_stocks_callbacks():
                         callbacks.append(call.func.attr)
 
     assert sorted(callbacks) == sorted([
-        "button", "button", "button", "radio", "selectbox", "form_submit_button"
+        "button", "button", "button", "radio", "selectbox", "selectbox", "form_submit_button"
     ])
 
 

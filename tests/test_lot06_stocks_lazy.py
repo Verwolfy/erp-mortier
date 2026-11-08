@@ -54,7 +54,7 @@ def test_stock_state_renders_only_stock_panel_without_entry_form(ui):
     ui.mod.show_stocks_page()
     ui.mod.get_mp_actives.assert_called_once()
     ui.stocks.get_stock_actuel_mp.assert_called_once()
-    ui.stocks.get_stock_actuel_pf.assert_called_once()
+    ui.stocks.get_stock_actuel_pf.assert_not_called()
     ui.st.form.assert_not_called()
     ui.st.button.assert_not_called()
 
@@ -84,10 +84,12 @@ def test_navigation_tracks_activity_without_renewing_session(ui):
     _choose(ui, "📊 État des Stocks")
     ui.mod.get_mp_actives = MagicMock(return_value=pd.DataFrame())
     ui.mod.show_stocks_page()
-    call = ui.st.selectbox.call_args
-    assert call.args[0] == "Vue Stocks"
-    assert len(call.args[1]) == 3
-    assert call.kwargs["on_change"] is ui.mod._mark_stocks_activity
+    calls = [call for call in ui.st.selectbox.call_args_list
+             if call.args and call.args[0] in {"Vue Stocks", "Catégorie de stock"}]
+    assert [call.args[0] for call in calls] == ["Vue Stocks", "Catégorie de stock"]
+    assert all(len(call.args[1]) == 3 for call in calls)
+    assert all(call.kwargs["on_change"] is ui.mod._mark_stocks_activity
+               for call in calls)
     ui.mod._mark_stocks_activity()
     assert ui.st.session_state["_erp_stocks_interacted"] is True
     assert "last_activity" not in ui.st.session_state
