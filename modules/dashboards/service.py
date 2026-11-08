@@ -70,8 +70,22 @@ def _lire_periode(table_name: str, date_column: str,
     """Même source par rendu : DEMO 100% local OU requête bornée réelle."""
     demo = _DASHBOARD_DEMO.get()
     if demo is None:
-        return pd.DataFrame(fetch_data_by_date_range(
-            table_name, date_column, start_date, end_date))
+        # Cache borné au rendu courant, jamais partagé entre sessions. La clé
+        # inclut la période complète : aucun mélange de filtres ou de tables.
+        cache = _DASHBOARD_READS.get()
+        if cache is None:
+            return pd.DataFrame(fetch_data_by_date_range(
+                table_name, date_column, start_date, end_date))
+        cache_key = ("periode", table_name, date_column, start_date, end_date)
+        if cache_key not in cache:
+            # Une erreur réseau/RBAC n'est jamais transformée en résultat vide
+            # ni conservée ; le prochain accès doit échouer/retester à nouveau.
+            rows = fetch_data_by_date_range(
+                table_name, date_column, start_date, end_date)
+            cache[cache_key] = deepcopy(rows)
+        # Copie profonde des lignes, y compris les éventuels objets imbriqués :
+        # aucune mutation d'un KPI ne peut corrompre la lecture suivante.
+        return pd.DataFrame(deepcopy(cache[cache_key]))
     if table_name not in demo:
         raise DataReadError("Source de démonstration absente")
     frame = pd.DataFrame(deepcopy(demo[table_name]))
