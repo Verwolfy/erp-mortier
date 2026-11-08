@@ -217,7 +217,11 @@ def get_supabase_client() -> Client:
     url = st.secrets["supabase"]["url"]
     key = st.secrets["supabase"]["key"]
     require_supabase_target(policy_from_streamlit(st.secrets), url)
-    return create_client(url, key)
+    # Mesure locale uniquement dans une portée d'affichage explicite.
+    # Aucun cache de client Auth partagé entre sessions ou utilisateurs.
+    from core.query_diagnostics import measured_query_stage
+    with measured_query_stage("client"):
+        return create_client(url, key)
 
 
 def check_server_permission(table_name: str) -> bool:
