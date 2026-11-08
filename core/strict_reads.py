@@ -9,6 +9,7 @@ from datetime import date
 import logging
 
 from core import db_service as db
+from core.query_diagnostics import measured_query_stage
 
 _LOG = logging.getLogger(__name__)
 
@@ -57,7 +58,8 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
     try:
         while True:
             # Revalider à chaque page ; aucune permission déduite du cache UI.
-            db._require_read_permission(table_name)
+            with measured_query_stage("check"):
+                db._require_read_permission(table_name)
             query = db.get_supabase_client().table(table_name).select(
                 key if only_primary_key else db._read_projection(table_name),
                 count="exact")
@@ -65,7 +67,9 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
                 query = query.eq(equal_column, equal_value)
             if date_column is not None:
                 query = query.gte(date_column, start_date).lte(date_column, end_date)
-            response = query.order(key).range(len(rows), len(rows) + page_size - 1).execute()
+            with measured_query_stage("select"):
+                response = query.order(key).range(
+                    len(rows), len(rows) + page_size - 1).execute()
             batch, total = response.data, response.count
             if not isinstance(batch, list) or type(total) is not int or total < 0:
                 raise DataReadError("Réponse de lecture non vérifiable")
@@ -136,7 +140,8 @@ def fetch_history_page_strict(table_name, *, page=1, page_size=50,
     if start >= max_total:
         raise ValueError("Page hors de la limite autorisée")
     try:
-        db._require_read_permission(table_name)
+        with measured_query_stage("check"):
+            db._require_read_permission(table_name)
         query = db.get_supabase_client().table(table_name).select(
             db._read_projection(table_name), count="exact")
         if start_date is not None:
@@ -144,8 +149,9 @@ def fetch_history_page_strict(table_name, *, page=1, page_size=50,
             query = query.gte(date_column, start_date).lte(date_column, end_date)
         if date_column is not None:
             query = query.order(date_column, desc=True, nullsfirst=False)
-        response = (query.order(key, desc=True)
-                    .range(start, start + page_size - 1).execute())
+        with measured_query_stage("select"):
+            response = (query.order(key, desc=True)
+                        .range(start, start + page_size - 1).execute())
         batch, count = response.data, response.count
         if (not isinstance(batch, list) or type(count) is not int or
                 count < 0 or count > max_total or len(batch) > page_size):

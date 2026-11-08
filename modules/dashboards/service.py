@@ -8,6 +8,7 @@ from datetime import timedelta
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
+from core.query_diagnostics import query_metrics_scope, record_cache_hit
 
 # Cache éphémère par rendu, jamais partagé entre sessions utilisateurs.
 # Il stocke des lignes brutes, puis retourne des DataFrame indépendants.
@@ -31,7 +32,8 @@ def dashboard_read_scope(*, demo_rows: dict | None = None):
     token = _DASHBOARD_READS.set({})
     demo_token = _DASHBOARD_DEMO.set(deepcopy(demo_rows))
     try:
-        yield
+        with query_metrics_scope():
+            yield
     finally:
         _DASHBOARD_DEMO.reset(demo_token)
         _DASHBOARD_READS.reset(token)
@@ -63,6 +65,8 @@ def charger_donnees(table_name: str) -> pd.DataFrame:
         return pd.DataFrame(fetch_data(table_name))
     if table_name not in current:
         current[table_name] = fetch_data(table_name)
+    else:
+        record_cache_hit()
     return pd.DataFrame(current[table_name]).copy(deep=True)
 
 
@@ -84,6 +88,8 @@ def _lire_periode(table_name: str, date_column: str,
             rows = fetch_data_by_date_range(
                 table_name, date_column, start_date, end_date)
             cache[cache_key] = deepcopy(rows)
+        else:
+            record_cache_hit()
         # Copie profonde des lignes, y compris les éventuels objets imbriqués :
         # aucune mutation d'un KPI ne peut corrompre la lecture suivante.
         return pd.DataFrame(deepcopy(cache[cache_key]))
@@ -134,6 +140,8 @@ def get_dashboard_data_provenance() -> dict:
             if cache_key not in scope:
                 scope[cache_key] = fetch_provenance_identifiers(
                     table, only_primary_key=True)
+            else:
+                record_cache_hit()
             frame = pd.DataFrame(deepcopy(scope[cache_key]))
         else:
             # La source DEMO et les tables déjà chargées par un KPI gardent
