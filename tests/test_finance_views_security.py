@@ -429,15 +429,20 @@ def test_no_rpc_direct_and_no_raw_update(ui):
 
 
 def test_all_page_reads_are_after_access(ui):
+    ui.st.selectbox.side_effect = (
+        lambda label, options, **_kw:
+        "📒 Pré-audit Finance → SCF" if label == "Vue Finance" else list(options)[0]
+    )
     ui.mod.show_finance_page()
-    assert ui.db.fetch_data_paginated.call_count >= 3
-    assert [c.args[0] for c in ui.db.fetch_data_paginated.call_args_list][:2] == ["comptes", "reglements"]
+    assert [c.args[0] for c in ui.db.fetch_data_paginated.call_args_list] == ["comptes", "reglements"]
 
 
 def test_failed_finance_loading_blocks(ui):
     ui.db.fetch_data_paginated.side_effect = RuntimeError("db")
     ui.mod.show_finance_page()
     assert ui.db.fetch_data_paginated.call_count == 1
+    ui.st.error.assert_called_once_with(
+        "Données Finance indisponibles ; aucune modification possible.")
 
 
 def test_number_missing_duplicate_reference_not_sent(ui):
@@ -490,9 +495,16 @@ def test_supplier_requires_allocation_history(ui):
 
 
 def test_paginated_reads_used_for_financial_totals(ui):
-    ui.mod.show_finance_page()
+    # Les totaux ne lisent plus trois tables simultanément : ouvrir
+    # explicitement chacune des vues qui requièrent une source.
+    for panel in ("📊 Tableau de bord", "🏦 Comptes", "📖 Journal des écritures"):
+        ui.st.selectbox.side_effect = (
+            lambda label, options, **_kw:
+            panel if label == "Vue Finance" else list(options)[0]
+        )
+        ui.mod.show_finance_page()
     names = [c.args[0] for c in ui.db.fetch_data_paginated.call_args_list]
-    assert "reglements" in names and "comptes" in names and "ecritures_comptables" in names
+    assert names == ["reglements", "comptes", "ecritures_comptables"]
     for call in ui.db.fetch_data_paginated.call_args_list:
         assert call.kwargs.get("max_rows") == 10000
 
