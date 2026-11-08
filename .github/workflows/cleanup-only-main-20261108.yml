@@ -1,0 +1,118 @@
+name: 'ERP - Nettoyage unique des branches secondaires'
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/cleanup-only-main-20261108.yml'
+
+permissions: {}
+
+jobs:
+  nettoyage:
+    if: "github.event.head_commit.message == 'chore: consolidation finale des branches (run-once)'"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Vérifier intégralement puis supprimer les branches autorisées
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const initialMainSha = 'f7efb4eff4c48fb4d4ede1e83ea97d747cfee037';
+            const expected = {
+              "design/sec-crm03-idempotent-rpc-test-only-20261108": "17775a278fa2bda212e2b6752657c0b1280f5684",
+              "feat/aide-contextuelle-erp-20261107": "a85e16ba92334204bf9191f799c6ad7e68b44f4d",
+              "feat/couts-prevalidation-fiabilisation-20261106": "44b485a27f3c7b1f9da1815edb0da7e7a3c41fe3",
+              "feat/dashboard-demo-isole-20261107": "680c3a72f89cd818074c789e53be34cb18309d79",
+              "feat/dashboard-kpi-pilotage-20261107": "b712bc6bde227bfec7df26bc3a737a24241b9645",
+              "feat/lot11-nextgen-export-readonly-20261101": "6e31ac2f83375b1b7aa5f62c946b986565637247",
+              "feat/lot12-nextgen-complete-reads-20261101": "0486d4cdf45b44b1ed3ae5eed5956037d0e154d2",
+              "feat/lot13-migration-evidence-readonly-20261101": "54fcefd5cce573d990e30b5f2451d6b7ffdba51f",
+              "feat/nextgen-crm-inbox-readonly-20261101": "1165a6c7ae040465582ec45263b4ed3a83ddec73",
+              "feat/nextgen-crm-ui-fingerprint-20261101": "975b6e9feb1eb908969d5b79e04a020f81eec885",
+              "feat/nextgen-privacy-dual-gate-20261101": "adc2d4a5d96b79f882aeaf2dd2ab4ad329dfca1a",
+              "feat/nextgen-sku-qualification-readonly-20261101": "c1818da93af12725bdc22c84a19b6fa3e769fbf8",
+              "feat/p0-integration-environment-preflight-20261108": "734039c3df66b130735451291e35fa6d7f1eaf60",
+              "feat/p0-workflow-contracts-release-provenance-20261108": "786ff71d86c9651f57e7f1f394c53221f0cd9427",
+              "fix/anti-doublons-tier-edition-20261107": "ebe7a7e852a8720e81b6d7eac75cee3a3d9d4e9b",
+              "fix/anti-doublons-tiers-20261107": "79ccdf555dbb6741a139a6bf3d87f1c73ae1d386",
+              "fix/couts-audit-zero-20261106": "b6a2f4ef564f48a5f26550437f908ef0576db3b7",
+              "fix/couts-preflight-nonzero-20261107": "e4e148276fb9b3e8560d7f6f397e4484aa6daadb",
+              "fix/dashboard-demo-ux-visual-20261107": "9e6721104df2a56ad741220ece7db74f3e3e8504",
+              "fix/documents-fpdf2-warnings-20261107": "6a205d08d69743d4384d3a312dfccb160d3a14c4",
+              "fix/incident-dashboard-provenance-typeerror-20261108": "35c6972068d8d9e5999cb8c83e92f7b8109f7d82",
+              "fix/p0-secret-input-gate-20261108": "116a4c6b8478323f487fdbffca3f9896b0556ab7",
+              "fix/streamlit-couts-deploiement-20261107": "0110ec76fd0677ad16ec66014d1b2d60f3b599ef",
+              "ops/streamlit-observation-20261107": "24632d1f9fed8d1e0b0f4294b8fb885fb7488bc2",
+              "perf/dashboard-lazy-panels-20261108": "4a89f7e6aa96f171bf082016fcf7fa5a128a546c",
+              "perf/dashboard-period-read-cache-20261108": "9a641ca4ce79b9168bf139532cab012c7133e5e5",
+              "perf/dashboard-provenance-projection-20261108": "54b14a599bc701528a40f09d2b01336ba0364fb7",
+              "perf/erp-034-fk-index-gap-20261108": "6633affdbfb969dcbd6b49f61df0292ec21d5bdb",
+              "perf/lot06-stocks-lazy-20261108": "c0bacea3be109b8f7a0d6a9ded4386dfee566f62",
+              "perf/lot06b-stocks-category-lazy-20261108": "471e5307b2facd97266d29de6b0620299906cfb9",
+              "perf/lot07-achats-lazy-20261108": "30b65a11c2dd57a6bf48f1224e6d8a375540f6e7",
+              "perf/lot08-production-lazy-20261108": "8037ff4989c029ab4152e22e3cf907702890a14e",
+              "perf/lot09-crm-lazy-20261108": "71eafda3207fa25fb3c2d40ceddb60706fed8d72",
+              "perf/lot10-ventes-lazy-20261108": "21b2130e991f50d0489d3350f001dcb8b3f476bf",
+              "perf/lot11-finance-lazy-20261108": "4eb6226bddac3fe3f960b671c8d72fd51c528732",
+              "perf/lot12-rh-lazy-20261108": "b90538525eea9e3e030dd171fbd5a565dbabd0f1",
+              "perf/lot13-security-users-lazy-20261108": "35580e7d047b560ac75f14490b7e47b8736febbe",
+              "perf/lot14-admin-referentials-lazy-20261108": "ad69f6fd1724e273d2de21b6177483d94e5902b9",
+              "perf/opt04-render-query-metrics-20261108": "352fd58e22f34c0c552e20ffa7c8dd6ff0e93122",
+              "perf/opt05-page-client-reuse-20261108": "fb284ccbb0e908d0c5a014423d809050457b6208",
+              "security/sec-admin-fresh-rbac-20261108": "45b309fcffabf5ba904158eb1f97fecfdf43fe41",
+              "security/sec-crm-fresh-rbac-20261108": "d53a3347ae23e98a7481abe6b66f683eb91a8cf3",
+              "security/sec-crm-uncertain-insert-20261108": "2bfa02c698bf381964b7e9428f1f6c65bd53101b",
+              "test/dashboard-demo-streamlit-smoke-20261107": "739ebfabc0527bca1f9f64d9c71f9722c6eb1ada"
+            };
+            const historicalMergedPrs = {
+              "feat/nextgen-crm-inbox-readonly-20261101": 31,
+              "feat/nextgen-privacy-dual-gate-20261101": 32,
+              "feat/nextgen-crm-ui-fingerprint-20261101": 33,
+              "feat/nextgen-sku-qualification-readonly-20261101": 34
+            };
+            const getBranches = () => github.paginate(github.rest.repos.listBranches, { owner, repo, per_page: 100 });
+            const branches = await getBranches();
+            const main = branches.find(x => x.name === 'main');
+            if (!main) throw new Error('Branche main absente : abandon.');
+            const mainSha = main.commit.sha;
+            const mainLineage = await github.rest.repos.compareCommits({owner, repo, base: initialMainSha, head: mainSha});
+            if (mainLineage.data.behind_by !== 0) throw new Error('main diverge du commit déjà audité : abandon.');
+            const present = branches.filter(x => x.name !== 'main');
+            const unknown = present.filter(x => !Object.prototype.hasOwnProperty.call(expected, x.name));
+            if (unknown.length) throw new Error('Nouvelles branches non auditées : '+unknown.map(x=>x.name).join(', '));
+            const openPrs = await github.paginate(github.rest.pulls.list, {owner, repo, state: 'open', per_page: 100});
+            const busy = present.filter(b => openPrs.some(p => p.head.repo?.full_name === owner + '/' + repo && p.head.ref === b.name));
+            if (busy.length) throw new Error('PR ouvertes : '+busy.map(x=>x.name).join(', '));
+            const ready = [];
+            for (const branch of present) {
+              if (branch.protected) throw new Error('Branche protégée : '+branch.name);
+              if (branch.commit.sha !== expected[branch.name]) throw new Error('SHA modifié : '+branch.name);
+              const comparison = await github.rest.repos.compareCommits({owner, repo, base: branch.commit.sha, head: mainSha});
+              if (comparison.data.behind_by !== 0) {
+                const prNumber = historicalMergedPrs[branch.name];
+                if (!prNumber) throw new Error('Commits non fusionnés : '+branch.name);
+                const pr = (await github.rest.pulls.get({owner, repo, pull_number: prNumber})).data;
+                if (!pr.merged || pr.base.ref !== 'main' || pr.head.sha !== branch.commit.sha)
+                  throw new Error('PR non concordante pour '+branch.name);
+                const mergeAncestor = await github.rest.repos.compareCommits({owner, repo, base: pr.merge_commit_sha, head: mainSha});
+                if (mergeAncestor.data.behind_by !== 0) throw new Error('Fusion PR absente de main : '+branch.name);
+              }
+              ready.push(branch);
+            }
+            core.info('PRÉCONTRÔLE OK : '+ready.length+' branches sur '+Object.keys(expected).length+' encore présentes.');
+            for (const branch of ready) {
+              const fresh = (await github.rest.repos.getBranch({owner, repo, branch: branch.name})).data;
+              if (fresh.commit.sha !== branch.commit.sha || fresh.protected) throw new Error('Référence modifiée avant suppression : '+branch.name);
+              await github.rest.git.deleteRef({owner, repo, ref: 'heads/'+branch.name});
+              core.info('SUPPRIMÉE : '+branch.name);
+            }
+            const finalBranches = await getBranches();
+            if (finalBranches.length !== 1 || finalBranches[0].name !== 'main')
+              throw new Error('Contrôle final non conforme : '+finalBranches.map(x=>x.name).join(', '));
+            core.info('NETTOYAGE TERMINÉ : seule la branche main subsiste, SHA '+finalBranches[0].commit.sha);
