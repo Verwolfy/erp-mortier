@@ -19,15 +19,21 @@ class DataReadError(RuntimeError):
 
 def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
                       date_column=None, start_date=None, end_date=None,
-                      equal_column=None, equal_value=None):
+                      equal_column=None, equal_value=None,
+                      only_primary_key=False):
     """SELECT paginé, trié par PK et contrôlé par count exact à chaque page.
 
     Une limite API plus petite que page_size est acceptée : on poursuit à partir
     du nombre effectivement reçu. Un total absent, variable ou excessif bloque
     le résultat, tout comme une page vide prématurée ou une PK répétée.
+
+    Le mode only_primary_key lit uniquement la PK déclarée, en conservant
+    EXACTEMENT les contrôles de droits, les bornes et la pagination.
+    Ne doit pas être utilisé comme contournement du contrôle RBAC.
     """
     if (type(page_size) is not int or not 1 <= page_size <= 1000 or
-            type(max_rows) is not int or not 1 <= max_rows <= 100000):
+            type(max_rows) is not int or not 1 <= max_rows <= 100000 or
+            type(only_primary_key) is not bool):
         raise ValueError("Bornes de lecture invalides")
     columns = db._readable_columns(table_name)
     key = db._PRIMARY_KEY_OVERRIDES.get(table_name, db.SCHEMA_CONFIG[table_name]["cols"][0])
@@ -53,7 +59,8 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
             # Revalider à chaque page ; aucune permission déduite du cache UI.
             db._require_read_permission(table_name)
             query = db.get_supabase_client().table(table_name).select(
-                db._read_projection(table_name), count="exact")
+                key if only_primary_key else db._read_projection(table_name),
+                count="exact")
             if equal_column is not None:
                 query = query.eq(equal_column, equal_value)
             if date_column is not None:
