@@ -45,3 +45,33 @@ def test_trace_ligne_et_fichier(tmp_path):
     assert mod.audit(tmp_path) == [
         {"path": "core/testme.py", "line": 2, "rule": "constante_tva_timbre"}
     ]
+
+
+def test_aucune_nouvelle_constante_reglementaire():
+    """Le passif historique reste visible ; toute nouvelle occurrence est bloquée.
+
+    Ceci n'homologue pas les 6 écarts existants. Ils doivent disparaître
+    après refonte et essais du calcul fiscal Python + RPC PostgreSQL.
+    """
+    from collections import Counter
+
+    findings = mod.audit(Path(__file__).resolve().parents[1])
+    actual = Counter((entry["path"], entry["rule"]) for entry in findings)
+    legacy = Counter({
+        ("modules/ventes/service.py", "constante_tva_timbre"): 3,
+        ("sql/005_atomic_sales.sql", "calcul_tva_sql"): 1,
+        ("sql/005_atomic_sales.sql", "timbre_sql"): 1,
+        ("sql/005_atomic_sales.sql", "taux_facture_sql"): 1,
+    })
+    assert not (actual - legacy), (
+        "Nouvelle constante fiscale détectée : "
+        + repr(sorted((actual - legacy).items()))
+    )
+
+
+def test_preflight_tva_ne_fixe_plus_de_taux_numerique():
+    path = Path(__file__).resolve().parents[1] / "core/preflight_reglementaire.py"
+    code = path.read_text(encoding="utf-8")
+    assert '0.19' not in code
+    assert '0.09' not in code
+    assert "chercher_parametre" in code
