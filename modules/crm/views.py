@@ -2,13 +2,58 @@
 Interface utilisateur du module CRM.
 """
 import streamlit as st
+import logging
 from modules.help.contextual import show_context_help, topic_help, field_help
 import pandas as pd
 from config.roles import has_permission
+from core.db_service import get_supabase_client
 from core.strict_reads import fetch_data_strict as fetch_data, read_section
 from core.listes_service import get_liste, liste_to_dict
 from modules.crm.service import create_opportunite, create_interaction, get_pipeline, get_interactions
 from modules.crm.site_requests import inbox_enabled, list_requests_readonly, MAX_ROWS
+
+_LOG = logging.getLogger(__name__)
+_ACTIVE = frozenset({"OUI", "TRUE", "1", "ACTIF", "ACTIVE", "YES"})
+
+
+def _crm_access() -> tuple[str, bool] | None:
+    """Rôle et compte CRM réinterrogés en base, jamais tirés de la session.
+
+    Un contrôle serveur est aussi exécuté lors de chaque validation d'écriture.
+    Toute réponse absente, contradictoire ou erreur réseau refuse l'accès.
+    """
+    try:
+        if st.session_state.get("authenticated") is not True:
+            return None
+        session_user = st.session_state.get("user")
+        if not isinstance(session_user, dict):
+            return None
+        user_id = session_user.get("user_id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            return None
+        response = (get_supabase_client().table("users")
+                    .select("user_id,role,actif")
+                    .eq("user_id", user_id).limit(2).execute())
+        records = response.data
+        if not isinstance(records, list) or len(records) != 1:
+            return None
+        actor = records[0]
+        if not isinstance(actor, dict) or actor.get("user_id") != user_id:
+            return None
+        active = actor.get("actif")
+        if not (active is True or (
+                isinstance(active, str) and active.strip().upper() in _ACTIVE)):
+            return None
+        role = actor.get("role")
+        if not isinstance(role, str) or not role.strip():
+            return None
+        if has_permission(role, "CRM", "lecture") is not True:
+            return None
+        return user_id, has_permission(role, "CRM", "ecriture") is True
+    except Exception as exc:
+        _LOG.warning("Accès CRM non vérifiable (%s)", type(exc).__name__)
+        return None
+
 
 def _mark_crm_activity() -> None:
     """Signale une interaction sans renouvellement direct."""
@@ -23,20 +68,13 @@ def show_crm_page():
     st.title("🤝 CRM & Relation Client")
     st.caption("Version lectures CRM : SOF-ERP-20261101-READ-01")
 
-    # Ne pas rendre le module accessible sur appel direct sans session valide.
-    # La lecture de la boîte NextGen conserve sa propre revalidation serveur.
-    identity = st.session_state.get("user")
-    if (st.session_state.get("authenticated") is not True
-            or not isinstance(identity, dict)
-            or not isinstance(identity.get("user_id"), str)
-            or not identity["user_id"].strip()):
-        st.error("Accès CRM refusé : session non confirmée.")
+    # Le rôle et l'état actif sont revalidés depuis Supabase avant toute vue.
+    # Le rôle contenu dans la session ne constitue jamais une autorisation.
+    access = _crm_access()
+    if access is None:
+        st.error("Accès CRM refusé : compte ou droits non vérifiables.")
         return
-    user_role = identity.get("role", "")
-    if not has_permission(user_role, "CRM", "lecture"):
-        st.error("Accès CRM refusé : droit de lecture absent.")
-        return
-    can_write = has_permission(user_role, "CRM", "ecriture")
+    user_id, can_write = access
 
     # Contrairement à st.tabs, une sélection ne calcule pas les vues masquées.
     panels = ("🎯 Pipeline (Opportunités)", "📞 Consigner une interaction",
@@ -65,7 +103,10 @@ def show_crm_page():
                         probabilite = c2.slider("Probabilité de succès (%)", 0, 100, 50, help=field_help("Probabilité de succès (%)", module="crm"))
 
                         if st.form_submit_button("Ajouter au pipeline", type="primary", on_click=_mark_crm_activity, help=field_help("Ajouter au pipeline", module="crm")):
-                            if prospect:
+                            fresh = _crm_access()
+                            if fresh is None or fresh[0] != user_id or fresh[1] is not True:
+                                st.error("Droit CRM écriture absent ou révoqué ; création interdite.")
+                            elif prospect:
                                 create_opportunite(prospect, contact, statut, commercial, valeur, float(probabilite))
                                 st.success("Opportunité créée !")
                                 st.rerun()
@@ -106,9 +147,13 @@ def show_crm_page():
                     date_rappel_str = str(date_rappel) if date_rappel else ""
 
                     if st.form_submit_button("Enregistrer l'interaction", type="primary", on_click=_mark_crm_activity, help=field_help("Enregistrer l'interaction", module="crm")):
-                        create_interaction(client_choisi, type_action, notes, date_rappel_str)
-                        st.success("Interaction enregistrée !")
-                        st.rerun()
+                        fresh = _crm_access()
+                        if fresh is None or fresh[0] != user_id or fresh[1] is not True:
+                            st.error("Droit CRM écriture absent ou révoqué ; enregistrement interdit.")
+                        else:
+                            create_interaction(client_choisi, type_action, notes, date_rappel_str)
+                            st.success("Interaction enregistrée !")
+                            st.rerun()
 
     if active_panel == panels[2]:
         with read_section("Historique CRM"):
