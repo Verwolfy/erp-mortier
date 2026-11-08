@@ -131,3 +131,23 @@ def test_preflight_refuse_numeric_json_non_fini(nombre):
     data["parametres_reglementaires"][0]["valeur"] = nombre
     with pytest.raises(PreflightIndisponible):
         examiner_referentiels(data, date_reference="2026-11-01")
+
+
+def test_preflight_refuse_un_projet_applicable_en_parallele():
+    data = snapshots()
+    data["parametres_reglementaires"].append({
+        **data["parametres_reglementaires"][0],
+        "valeur": "0.20",
+        "statut_juridique": "a_confirmer",
+        "niveau_confiance": "RECOUPEE",
+    })
+    with pytest.raises(PreflightIndisponible, match="version applicable non confirmée"):
+        examiner_referentiels(data, date_reference="2026-11-01")
+
+
+@pytest.mark.parametrize("date_reference", [
+    "2026-02-30", "20261101", "", 20261101, object(),
+])
+def test_preflight_refuse_date_reference_invalide(date_reference):
+    with pytest.raises(PreflightIndisponible):
+        examiner_referentiels(snapshots(), date_reference=date_reference)
