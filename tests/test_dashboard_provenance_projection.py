@@ -80,8 +80,8 @@ def test_invalid_provenance_id_fails_closed_and_never_cached(monkeypatch):
         for _ in range(2):
             with pytest.raises(DataReadError, match="provenance"):
                 service.get_dashboard_data_provenance()
-    # L'accès a échoué sur le contrôle métier, sans faux total zéro.
-    assert calls == ["factures"]
+    # Une valeur rejetée n'est jamais mémorisée, sans faux total zéro.
+    assert calls == ["factures", "factures"]
 
 
 def test_failed_provenance_fetch_does_not_get_cached(monkeypatch):
