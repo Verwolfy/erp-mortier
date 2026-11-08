@@ -269,222 +269,233 @@ def show_achats_page():
         return
     user_id, can_write = access
     st.session_state.setdefault(_cart_key(user_id), [])
-    tab1, tab2, tab3 = st.tabs(["➕ Nouvelle Commande", "📦 Réception & Entrée Stock", "📋 Historique & Suivi"])
+    # L'affichage de st.tabs exécute les 3 blocs et leurs lectures à chaque rendu.
+    # Le panneau sélectionné est le seul rendu, après la vérification du compte.
+    panels = ("➕ Nouvelle Commande", "📦 Réception & Entrée Stock",
+              "📋 Historique & Suivi")
+    active_panel = st.selectbox(
+        "Vue Achats", panels, key="_erp_achats_active_panel",
+        on_change=_mark_achats_activity,
+        help="Seul le panneau sélectionné charge ses données.",
+    )
 
     # --- COMMANDE FOURNISSEUR ---
-    with tab1, read_section("Nouvelle commande"):
-        show_context_help(st, "achats.commande")
-        if not can_write:
-            st.info("🔒 Mode lecture seule.")
-        elif _pending_panel("commande", user_id):
-            pass
-        else:
-            df_fournisseurs = get_fournisseurs_actifs()
-            df_mp = get_mp_actives()
-            if df_fournisseurs.empty or df_mp.empty:
-                st.warning("Configurez d'abord les fournisseurs et matières premières actifs.")
+    if active_panel == panels[0]:
+        with read_section("Nouvelle commande"):
+            show_context_help(st, "achats.commande")
+            if not can_write:
+                st.info("🔒 Mode lecture seule.")
+            elif _pending_panel("commande", user_id):
+                pass
             else:
-                st.subheader("1. Informations Fournisseur", help=topic_help("achats.commande"))
-                col1, col2 = st.columns(2)
-                liste_fournisseurs = {row["fournisseur_id"]: f"{row['fournisseur_id']} - {row['nom']}"
-                                     for _, row in df_fournisseurs.iterrows()}
-                fournisseur_id = col1.selectbox("Fournisseur", options=list(liste_fournisseurs),
-                                                format_func=lambda x: liste_fournisseurs[x], help=field_help("Fournisseur", module="achats"))
-                type_achat = col2.selectbox("Type d'achat", ["Matière Première", "Emballage", "Frais Généraux"], help=field_help("Type d'achat", module="achats"))
-                col3, col4, col5 = st.columns(3)
-                dict_devise = liste_to_dict(get_liste("Devise", strict=True)) or {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
-                devise = col3.selectbox("Devise", options=list(dict_devise),
-                                       format_func=lambda x: dict_devise.get(x, x), help=field_help("Devise", module="achats"))
-                # Les prix du panier sont saisis dans la devise selectionnee.
-                currency_key = f"achats_panier_devise_{user_id}"
-                previous_currency = st.session_state.get(currency_key)
-                if previous_currency is not None and previous_currency != devise:
-                    if st.session_state[_cart_key(user_id)]:
-                        st.session_state[_cart_key(user_id)] = []
-                        st.warning("Devise modifiee : panier efface pour eviter de reutiliser des prix dans la mauvaise devise.")
-                st.session_state[currency_key] = devise
-                taux_change = col4.number_input(
-                     "Taux (DZD pour 1 unité de devise)",
-                     min_value=0.000001, value=1.0, step=0.1,
-                     disabled=str(devise).upper() == "DZD",
-                     key=f"achat_taux_{str(devise).upper()}", help=field_help("Taux (DZD pour 1 unité de devise)", module="achats"))
-                if str(devise).upper() == "DZD":
-                    taux_change = 1.0
-                st.caption("Exemple : 1 EUR = 150 DZD → taux = 150. La valorisation du stock est toujours en DZD.")
-                date_voulue = col5.date_input("Date de livraison souhaitée", help=field_help("Date de livraison souhaitée", module="achats"))
-                st.divider()
-                st.subheader("2. Lignes de Commande", help=topic_help("achats.commande"))
-                with st.expander("➕ Ajouter un article", expanded=True):
-                    c_mp, c_qte, c_prix, c_btn = st.columns([3, 1, 1, 1])
-                    liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
-                    mp_choisie = c_mp.selectbox("Article", options=list(liste_mp),
-                                               format_func=lambda x: liste_mp[x], help=field_help("Article", module="achats"))
-                    qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=0.001, format="%.3f", help=field_help("Quantité en unité de stock", module="achats"))
-                    prix_u = c_prix.number_input(f"Prix unitaire ({devise})", min_value=0.0, step=1.0)
-                    if c_btn.button("Ajouter", use_container_width=True, help=field_help("Ajouter", module="achats")):
-                        mp_row = df_mp[df_mp["mp_id"] == mp_choisie].iloc[0]
-                        unit = str(mp_row.get("unite_stock") or "Unité")
-                        st.session_state[_cart_key(user_id)].append({
-                            "mp_id": mp_choisie, "nom_article": liste_mp[mp_choisie],
-                            "unite_cond": unit, "qte_cond": qte, "qte_totale": qte,
-                            "prix_unitaire": prix_u, "total_devise": qte * prix_u,
-                        })
-                        st.rerun()
-                if st.session_state[_cart_key(user_id)]:
-                    df_panier = pd.DataFrame(st.session_state[_cart_key(user_id)])
-                    st.dataframe(df_panier[["mp_id", "nom_article", "qte_totale", "prix_unitaire", "total_devise"]],
-                                 use_container_width=True)
-                    # Apercu indicatif : PostgreSQL recalcule le total avant d'ecrire.
-                    total_devise = sum((Decimal(str(x["total_devise"]))
-                                         for x in st.session_state[_cart_key(user_id)]), Decimal(0))
-                    total_local = total_devise * Decimal(str(taux_change))
-                    st.caption(f"Total : {total_devise:,.2f} {devise} = {total_local:,.2f} DZD (taux saisi)")
-                    if st.button("🗑️ Vider", on_click=_mark_achats_activity, help=field_help("🗑️ Vider", module="achats")):
-                        st.session_state[_cart_key(user_id)] = []
-                        st.rerun()
+                df_fournisseurs = get_fournisseurs_actifs()
+                df_mp = get_mp_actives()
+                if df_fournisseurs.empty or df_mp.empty:
+                    st.warning("Configurez d'abord les fournisseurs et matières premières actifs.")
                 else:
-                    st.info("Aucun article dans la commande.")
-                st.divider()
-                st.subheader("3. Modalités & Validation", help=topic_help("achats.commande"))
-                c_mode, c_delai, c_valider = st.columns(3)
-                dict_mode = liste_to_dict(get_liste("ModePaiement", strict=True)) or {
-                    "Virement": "Virement", "Chèque": "Chèque", "Espèces": "Espèces"}
-                mode = c_mode.selectbox("Mode de paiement", options=list(dict_mode),
-                                        format_func=lambda x: dict_mode.get(x, x), help=field_help("Mode de paiement", module="achats"))
-                dict_delai = liste_to_dict(get_liste("ConditionPaiement", strict=True)) or {
-                    "Comptant": "Comptant", "30 jours": "30 jours", "60 jours": "60 jours"}
-                delai = c_delai.selectbox("Délai de paiement", options=list(dict_delai),
-                                          format_func=lambda x: dict_delai.get(x, x), help=field_help("Délai de paiement", module="achats"))
-                if c_valider.button("✅ Générer la commande", type="primary", use_container_width=True,
-                                    disabled=not st.session_state[_cart_key(user_id)], help=field_help("✅ Générer la commande", module="achats")):
-                    payload = {"fournisseur_id": fournisseur_id, "type_achat": type_achat,
-                               "devise": devise, "taux_change": taux_change,
-                               "mode_paiement": mode, "delai_paiement": delai,
-                               "date_voulue": str(date_voulue),
-                               "panier": deepcopy(st.session_state[_cart_key(user_id)])}
-                    _start_operation("commande", user_id, payload)
+                    st.subheader("1. Informations Fournisseur", help=topic_help("achats.commande"))
+                    col1, col2 = st.columns(2)
+                    liste_fournisseurs = {row["fournisseur_id"]: f"{row['fournisseur_id']} - {row['nom']}"
+                                         for _, row in df_fournisseurs.iterrows()}
+                    fournisseur_id = col1.selectbox("Fournisseur", options=list(liste_fournisseurs),
+                                                    format_func=lambda x: liste_fournisseurs[x], help=field_help("Fournisseur", module="achats"))
+                    type_achat = col2.selectbox("Type d'achat", ["Matière Première", "Emballage", "Frais Généraux"], help=field_help("Type d'achat", module="achats"))
+                    col3, col4, col5 = st.columns(3)
+                    dict_devise = liste_to_dict(get_liste("Devise", strict=True)) or {"DZD": "DZD", "EUR": "EUR", "USD": "USD"}
+                    devise = col3.selectbox("Devise", options=list(dict_devise),
+                                           format_func=lambda x: dict_devise.get(x, x), help=field_help("Devise", module="achats"))
+                    # Les prix du panier sont saisis dans la devise selectionnee.
+                    currency_key = f"achats_panier_devise_{user_id}"
+                    previous_currency = st.session_state.get(currency_key)
+                    if previous_currency is not None and previous_currency != devise:
+                        if st.session_state[_cart_key(user_id)]:
+                            st.session_state[_cart_key(user_id)] = []
+                            st.warning("Devise modifiee : panier efface pour eviter de reutiliser des prix dans la mauvaise devise.")
+                    st.session_state[currency_key] = devise
+                    taux_change = col4.number_input(
+                         "Taux (DZD pour 1 unité de devise)",
+                         min_value=0.000001, value=1.0, step=0.1,
+                         disabled=str(devise).upper() == "DZD",
+                         key=f"achat_taux_{str(devise).upper()}", help=field_help("Taux (DZD pour 1 unité de devise)", module="achats"))
+                    if str(devise).upper() == "DZD":
+                        taux_change = 1.0
+                    st.caption("Exemple : 1 EUR = 150 DZD → taux = 150. La valorisation du stock est toujours en DZD.")
+                    date_voulue = col5.date_input("Date de livraison souhaitée", help=field_help("Date de livraison souhaitée", module="achats"))
+                    st.divider()
+                    st.subheader("2. Lignes de Commande", help=topic_help("achats.commande"))
+                    with st.expander("➕ Ajouter un article", expanded=True):
+                        c_mp, c_qte, c_prix, c_btn = st.columns([3, 1, 1, 1])
+                        liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
+                        mp_choisie = c_mp.selectbox("Article", options=list(liste_mp),
+                                                   format_func=lambda x: liste_mp[x], help=field_help("Article", module="achats"))
+                        qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=0.001, format="%.3f", help=field_help("Quantité en unité de stock", module="achats"))
+                        prix_u = c_prix.number_input(f"Prix unitaire ({devise})", min_value=0.0, step=1.0)
+                        if c_btn.button("Ajouter", use_container_width=True, help=field_help("Ajouter", module="achats")):
+                            mp_row = df_mp[df_mp["mp_id"] == mp_choisie].iloc[0]
+                            unit = str(mp_row.get("unite_stock") or "Unité")
+                            st.session_state[_cart_key(user_id)].append({
+                                "mp_id": mp_choisie, "nom_article": liste_mp[mp_choisie],
+                                "unite_cond": unit, "qte_cond": qte, "qte_totale": qte,
+                                "prix_unitaire": prix_u, "total_devise": qte * prix_u,
+                            })
+                            st.rerun()
+                    if st.session_state[_cart_key(user_id)]:
+                        df_panier = pd.DataFrame(st.session_state[_cart_key(user_id)])
+                        st.dataframe(df_panier[["mp_id", "nom_article", "qte_totale", "prix_unitaire", "total_devise"]],
+                                     use_container_width=True)
+                        # Apercu indicatif : PostgreSQL recalcule le total avant d'ecrire.
+                        total_devise = sum((Decimal(str(x["total_devise"]))
+                                             for x in st.session_state[_cart_key(user_id)]), Decimal(0))
+                        total_local = total_devise * Decimal(str(taux_change))
+                        st.caption(f"Total : {total_devise:,.2f} {devise} = {total_local:,.2f} DZD (taux saisi)")
+                        if st.button("🗑️ Vider", on_click=_mark_achats_activity, help=field_help("🗑️ Vider", module="achats")):
+                            st.session_state[_cart_key(user_id)] = []
+                            st.rerun()
+                    else:
+                        st.info("Aucun article dans la commande.")
+                    st.divider()
+                    st.subheader("3. Modalités & Validation", help=topic_help("achats.commande"))
+                    c_mode, c_delai, c_valider = st.columns(3)
+                    dict_mode = liste_to_dict(get_liste("ModePaiement", strict=True)) or {
+                        "Virement": "Virement", "Chèque": "Chèque", "Espèces": "Espèces"}
+                    mode = c_mode.selectbox("Mode de paiement", options=list(dict_mode),
+                                            format_func=lambda x: dict_mode.get(x, x), help=field_help("Mode de paiement", module="achats"))
+                    dict_delai = liste_to_dict(get_liste("ConditionPaiement", strict=True)) or {
+                        "Comptant": "Comptant", "30 jours": "30 jours", "60 jours": "60 jours"}
+                    delai = c_delai.selectbox("Délai de paiement", options=list(dict_delai),
+                                              format_func=lambda x: dict_delai.get(x, x), help=field_help("Délai de paiement", module="achats"))
+                    if c_valider.button("✅ Générer la commande", type="primary", use_container_width=True,
+                                        disabled=not st.session_state[_cart_key(user_id)], help=field_help("✅ Générer la commande", module="achats")):
+                        payload = {"fournisseur_id": fournisseur_id, "type_achat": type_achat,
+                                   "devise": devise, "taux_change": taux_change,
+                                   "mode_paiement": mode, "delai_paiement": delai,
+                                   "date_voulue": str(date_voulue),
+                                   "panier": deepcopy(st.session_state[_cart_key(user_id)])}
+                        _start_operation("commande", user_id, payload)
 
     # --- BON DE RÉCEPTION ---
-    with tab2, read_section("Réception"):
-        st.subheader("Générer un bon de réception (BR)", help=topic_help("achats.reception"))
-        show_context_help(st, "achats.reception")
-        if not can_write:
-            st.info("🔒 Mode lecture seule.")
-        elif _pending_panel("reception", user_id):
-            pass
-        else:
-            df_commandes = get_commandes()
-            if df_commandes.empty or "statut" not in df_commandes.columns:
-                st.info("Aucune commande réceptionnable.")
+    if active_panel == panels[1]:
+        with read_section("Réception"):
+            st.subheader("Générer un bon de réception (BR)", help=topic_help("achats.reception"))
+            show_context_help(st, "achats.reception")
+            if not can_write:
+                st.info("🔒 Mode lecture seule.")
+            elif _pending_panel("reception", user_id):
+                pass
             else:
-                available = df_commandes[df_commandes["statut"].isin(_RECEIVABLE)]
-                if available.empty:
-                    st.info("Aucune commande en attente ou partiellement réceptionnée.")
+                df_commandes = get_commandes()
+                if df_commandes.empty or "statut" not in df_commandes.columns:
+                    st.info("Aucune commande réceptionnable.")
                 else:
-                    labels = {row["commande_achat_id"]:
-                              f"{row['commande_achat_id']} - {row['fournisseur_id']} ({row['date_commande']})"
-                              for _, row in available.iterrows()}
-                    selected = st.selectbox("Commande à réceptionner", options=list(labels),
-                                            format_func=lambda x: labels[x], on_change=_mark_achats_activity, help=field_help("Commande à réceptionner", module="achats"))
-                    if selected:
-                        try:
-                            lines = get_lignes_achats(selected)
-                            balances = _remaining_quantities(selected, lines, get_bons_reception())
-                            selected_order = available[available["commande_achat_id"] == selected].iloc[0]
-                            order_currency = str(selected_order.get("devise") or "").strip().upper()
-                            order_exchange = _decimal_positive(selected_order.get("taux_change"), "Taux de commande")
-                            if not order_currency or (order_currency == "DZD" and order_exchange != 1):
-                                raise ValueError("Devise et taux de commande non coherents")
-                        except (ValueError, KeyError) as exc:
-                            _LOG.warning("Solde BC incohérent (%s)", type(exc).__name__)
-                            st.error("Historique de cette commande incomplet : réception bloquée.")
-                        else:
-                            if not balances:
-                                st.info("Toutes les quantités de cette commande sont déjà réceptionnées.")
+                    available = df_commandes[df_commandes["statut"].isin(_RECEIVABLE)]
+                    if available.empty:
+                        st.info("Aucune commande en attente ou partiellement réceptionnée.")
+                    else:
+                        labels = {row["commande_achat_id"]:
+                                  f"{row['commande_achat_id']} - {row['fournisseur_id']} ({row['date_commande']})"
+                                  for _, row in available.iterrows()}
+                        selected = st.selectbox("Commande à réceptionner", options=list(labels),
+                                                format_func=lambda x: labels[x], on_change=_mark_achats_activity, help=field_help("Commande à réceptionner", module="achats"))
+                        if selected:
+                            try:
+                                lines = get_lignes_achats(selected)
+                                balances = _remaining_quantities(selected, lines, get_bons_reception())
+                                selected_order = available[available["commande_achat_id"] == selected].iloc[0]
+                                order_currency = str(selected_order.get("devise") or "").strip().upper()
+                                order_exchange = _decimal_positive(selected_order.get("taux_change"), "Taux de commande")
+                                if not order_currency or (order_currency == "DZD" and order_exchange != 1):
+                                    raise ValueError("Devise et taux de commande non coherents")
+                            except (ValueError, KeyError) as exc:
+                                _LOG.warning("Solde BC incohérent (%s)", type(exc).__name__)
+                                st.error("Historique de cette commande incomplet : réception bloquée.")
                             else:
-                                st.markdown("**Quantités restant à réceptionner**")
-                                st.caption(f"Prix de commande : {order_currency} ; valorisation des entrees en DZD "
-                                            f"au taux historique {order_exchange}. Prix non modifiable a la reception.")
-                                items_recus = []
-                                with st.form(f"form_reception_{selected}"):
-                                    c1, c2 = st.columns(2)
-                                    date_rec = c1.date_input("Date de réception", value=get_local_now(), help=field_help("Date de réception", module="achats"))
-                                    conformite = c2.radio("Contrôle conformité",
-                                                          ["CONFORME", "RESERVE", "NON_CONFORME"],
-                                                          horizontal=True, help=field_help("Contrôle conformité", module="achats"))
-                                    c3, c4 = st.columns(2)
-                                    remarques = c3.text_input("Remarques / Observation", help=field_help("Remarques / Observation", module="achats"))
-                                    peremption = c4.date_input("Date de péremption (facultative)", value=None, help=field_help("Date de péremption (facultative)", module="achats"))
-                                    st.divider()
-                                    for row in balances:
-                                        remaining = row["remaining"]
-                                        # Préserver les petits soldes sans les afficher comme zéro.
-                                        precision = max(3, -Decimal(str(remaining)).normalize().as_tuple().exponent)
-                                        qte = st.number_input(
-                                            f"{row['mp_id']} (commandé {row['ordered']}, déjà reçu "
-                                            f"{row['received']}, solde {remaining})",
-                                            min_value=0.0, max_value=remaining,
-                                            value=remaining, step=float(Decimal(1).scaleb(-precision)),
-                                            format=f"%.{precision}f",
-                                            key=f"ach_rec_{selected}_{row['mp_id']}")
-                                        if qte > 0:
-                                            stock_unit_cost = (Decimal(str(row["prix_unitaire"])) * order_exchange)
-                                            st.caption(f"Cout d'entree estime : {stock_unit_cost:,.4f} DZD / unite de stock")
-                                            items_recus.append({"mp_id": row["mp_id"],
-                                                                "quantite_recue": qte,
-                                                                "prix_unitaire": row["prix_unitaire"]})
-                                    submitted = st.form_submit_button("📦 Valider la réception", type="primary", on_click=_mark_achats_activity, help=field_help("📦 Valider la réception", module="achats"))
-                                if submitted:
-                                    if conformite != "CONFORME":
-                                        st.error("Réception non conforme/réservée : aucun stock créé. "
-                                                 "La quarantaine n'est pas encore disponible.")
-                                    elif not items_recus:
-                                        st.error("Indiquez au moins une quantité positive.")
-                                    else:
-                                        _start_operation("reception", user_id, {
-                                            "commande_achat_id": selected,
-                                            "date_reception": str(date_rec),
-                                            "controle_conformite": "OUI",
-                                            "remarques": remarques,
-                                            "items_recus": deepcopy(items_recus),
-                                            "date_peremption": str(peremption) if peremption else "",
-                                        })
+                                if not balances:
+                                    st.info("Toutes les quantités de cette commande sont déjà réceptionnées.")
+                                else:
+                                    st.markdown("**Quantités restant à réceptionner**")
+                                    st.caption(f"Prix de commande : {order_currency} ; valorisation des entrees en DZD "
+                                                f"au taux historique {order_exchange}. Prix non modifiable a la reception.")
+                                    items_recus = []
+                                    with st.form(f"form_reception_{selected}"):
+                                        c1, c2 = st.columns(2)
+                                        date_rec = c1.date_input("Date de réception", value=get_local_now(), help=field_help("Date de réception", module="achats"))
+                                        conformite = c2.radio("Contrôle conformité",
+                                                              ["CONFORME", "RESERVE", "NON_CONFORME"],
+                                                              horizontal=True, help=field_help("Contrôle conformité", module="achats"))
+                                        c3, c4 = st.columns(2)
+                                        remarques = c3.text_input("Remarques / Observation", help=field_help("Remarques / Observation", module="achats"))
+                                        peremption = c4.date_input("Date de péremption (facultative)", value=None, help=field_help("Date de péremption (facultative)", module="achats"))
+                                        st.divider()
+                                        for row in balances:
+                                            remaining = row["remaining"]
+                                            # Préserver les petits soldes sans les afficher comme zéro.
+                                            precision = max(3, -Decimal(str(remaining)).normalize().as_tuple().exponent)
+                                            qte = st.number_input(
+                                                f"{row['mp_id']} (commandé {row['ordered']}, déjà reçu "
+                                                f"{row['received']}, solde {remaining})",
+                                                min_value=0.0, max_value=remaining,
+                                                value=remaining, step=float(Decimal(1).scaleb(-precision)),
+                                                format=f"%.{precision}f",
+                                                key=f"ach_rec_{selected}_{row['mp_id']}")
+                                            if qte > 0:
+                                                stock_unit_cost = (Decimal(str(row["prix_unitaire"])) * order_exchange)
+                                                st.caption(f"Cout d'entree estime : {stock_unit_cost:,.4f} DZD / unite de stock")
+                                                items_recus.append({"mp_id": row["mp_id"],
+                                                                    "quantite_recue": qte,
+                                                                    "prix_unitaire": row["prix_unitaire"]})
+                                        submitted = st.form_submit_button("📦 Valider la réception", type="primary", on_click=_mark_achats_activity, help=field_help("📦 Valider la réception", module="achats"))
+                                    if submitted:
+                                        if conformite != "CONFORME":
+                                            st.error("Réception non conforme/réservée : aucun stock créé. "
+                                                     "La quarantaine n'est pas encore disponible.")
+                                        elif not items_recus:
+                                            st.error("Indiquez au moins une quantité positive.")
+                                        else:
+                                            _start_operation("reception", user_id, {
+                                                "commande_achat_id": selected,
+                                                "date_reception": str(date_rec),
+                                                "controle_conformite": "OUI",
+                                                "remarques": remarques,
+                                                "items_recus": deepcopy(items_recus),
+                                                "date_peremption": str(peremption) if peremption else "",
+                                            })
 
     # --- HISTORIQUE ---
-    with tab3, read_section("Historique achats"):
-        st.subheader("Commandes et réceptions", help=topic_help("achats.historique"))
-        show_context_help(st, "achats.historique")
-        st.caption("Chargement à la demande : 50 lignes maximum par registre et par page.")
-        page_achats = st.number_input(
-            "Page des historiques Achats", min_value=1, max_value=1000,
-            value=1, step=1, key="ng_achats_history_page"
-        , help=field_help("Page des historiques Achats", module="achats"))
-        from core.history_filters import history_period_inputs
-        period = history_period_inputs("ng_achats_history")
-        if period is not None and st.button(
-                "Afficher l'historique Achats", key="ng_achats_history_load",
-                on_click=_mark_achats_activity, help=field_help("Afficher l'historique Achats", module="achats")):
-            from core.strict_reads import fetch_history_page_strict
-            rows_commandes, total_commandes = fetch_history_page_strict(
-                "commandes_achats", page=int(page_achats), date_column="date_commande", **period
-            )
-            rows_receptions, total_receptions = fetch_history_page_strict(
-                "bons_reception", page=int(page_achats), date_column="date_reception", **period
-            )
-            st.caption(
-                f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
-                f"réceptions {len(rows_receptions)}/{total_receptions}."
-            )
-            st.subheader("Commandes d'Achats", help=topic_help("achats.historique"))
-            if rows_commandes:
-                st.dataframe(pd.DataFrame(rows_commandes), use_container_width=True,
-                             hide_index=True)
-            else:
-                st.info("Aucune commande sur cette page.")
-            st.divider()
-            st.subheader("Bons de réception", help=topic_help("achats.historique"))
-            if rows_receptions:
-                st.dataframe(pd.DataFrame(rows_receptions), use_container_width=True,
-                             hide_index=True)
-            else:
-                st.info("Aucun bon de réception sur cette page.")
+    if active_panel == panels[2]:
+        with read_section("Historique achats"):
+            st.subheader("Commandes et réceptions", help=topic_help("achats.historique"))
+            show_context_help(st, "achats.historique")
+            st.caption("Chargement à la demande : 50 lignes maximum par registre et par page.")
+            page_achats = st.number_input(
+                "Page des historiques Achats", min_value=1, max_value=1000,
+                value=1, step=1, key="ng_achats_history_page"
+            , help=field_help("Page des historiques Achats", module="achats"))
+            from core.history_filters import history_period_inputs
+            period = history_period_inputs("ng_achats_history")
+            if period is not None and st.button(
+                    "Afficher l'historique Achats", key="ng_achats_history_load",
+                    on_click=_mark_achats_activity, help=field_help("Afficher l'historique Achats", module="achats")):
+                from core.strict_reads import fetch_history_page_strict
+                rows_commandes, total_commandes = fetch_history_page_strict(
+                    "commandes_achats", page=int(page_achats), date_column="date_commande", **period
+                )
+                rows_receptions, total_receptions = fetch_history_page_strict(
+                    "bons_reception", page=int(page_achats), date_column="date_reception", **period
+                )
+                st.caption(
+                    f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
+                    f"réceptions {len(rows_receptions)}/{total_receptions}."
+                )
+                st.subheader("Commandes d'Achats", help=topic_help("achats.historique"))
+                if rows_commandes:
+                    st.dataframe(pd.DataFrame(rows_commandes), use_container_width=True,
+                                 hide_index=True)
+                else:
+                    st.info("Aucune commande sur cette page.")
+                st.divider()
+                st.subheader("Bons de réception", help=topic_help("achats.historique"))
+                if rows_receptions:
+                    st.dataframe(pd.DataFrame(rows_receptions), use_container_width=True,
+                                 hide_index=True)
+                else:
+                    st.info("Aucun bon de réception sur cette page.")
