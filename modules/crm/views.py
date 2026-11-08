@@ -23,91 +23,113 @@ def show_crm_page():
     st.title("🤝 CRM & Relation Client")
     st.caption("Version lectures CRM : SOF-ERP-20261101-READ-01")
 
-    user_role = st.session_state.get("user", {}).get("role", "")
+    # Ne pas rendre le module accessible sur appel direct sans session valide.
+    # La lecture de la boîte NextGen conserve sa propre revalidation serveur.
+    identity = st.session_state.get("user")
+    if (st.session_state.get("authenticated") is not True
+            or not isinstance(identity, dict)
+            or not isinstance(identity.get("user_id"), str)
+            or not identity["user_id"].strip()):
+        st.error("Accès CRM refusé : session non confirmée.")
+        return
+    user_role = identity.get("role", "")
+    if not has_permission(user_role, "CRM", "lecture"):
+        st.error("Accès CRM refusé : droit de lecture absent.")
+        return
     can_write = has_permission(user_role, "CRM", "ecriture")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Pipeline (Opportunités)", "📞 Consigner une interaction", "📋 Historique des échanges", "🌐 Demandes NextGen"])
+    # Contrairement à st.tabs, une sélection ne calcule pas les vues masquées.
+    panels = ("🎯 Pipeline (Opportunités)", "📞 Consigner une interaction",
+              "📋 Historique des échanges", "🌐 Demandes NextGen")
+    active_panel = st.selectbox(
+        "Vue CRM", panels, key="_erp_crm_active_panel",
+        on_change=_mark_crm_activity,
+        help="Une seule vue CRM est chargée à la fois.",
+    )
 
-    with tab1, read_section("Pipeline"):
-        st.subheader("Gestion du Pipeline", help=topic_help("crm.pipeline"))
-        show_context_help(st, "crm.pipeline")
-        if can_write:
-            with st.expander("➕ Nouvelle Opportunité"):
-                with st.form("form_opp"):
-                    c1, c2 = st.columns(2)
-                    prospect = c1.text_input("Nom du prospect / entreprise *", help=field_help("Nom du prospect / entreprise *", module="crm"))
-                    contact = c2.text_input("Contact (Nom, Email, Tel)", help=field_help("Contact (Nom, Email, Tel)", module="crm"))
+    if active_panel == panels[0]:
+            with read_section("Pipeline"):
+            st.subheader("Gestion du Pipeline", help=topic_help("crm.pipeline"))
+            show_context_help(st, "crm.pipeline")
+            if can_write:
+                with st.expander("➕ Nouvelle Opportunité"):
+                    with st.form("form_opp"):
+                        c1, c2 = st.columns(2)
+                        prospect = c1.text_input("Nom du prospect / entreprise *", help=field_help("Nom du prospect / entreprise *", module="crm"))
+                        contact = c2.text_input("Contact (Nom, Email, Tel)", help=field_help("Contact (Nom, Email, Tel)", module="crm"))
 
-                    statut = c1.selectbox("Statut", ["Nouveau", "Contacté", "En Négociation", "Gagné", "Perdu"], help=field_help("Statut", module="crm"))
-                    commercial = c2.text_input("ID Commercial assigné (ex: USR-0001)", help=field_help("ID Commercial assigné (ex: USR-0001)", module="crm"))
+                        statut = c1.selectbox("Statut", ["Nouveau", "Contacté", "En Négociation", "Gagné", "Perdu"], help=field_help("Statut", module="crm"))
+                        commercial = c2.text_input("ID Commercial assigné (ex: USR-0001)", help=field_help("ID Commercial assigné (ex: USR-0001)", module="crm"))
 
-                    valeur = c1.number_input("Valeur estimée (DZD)", min_value=0.0, step=1000.0, help=field_help("Valeur estimée (DZD)", module="crm"))
-                    probabilite = c2.slider("Probabilité de succès (%)", 0, 100, 50, help=field_help("Probabilité de succès (%)", module="crm"))
+                        valeur = c1.number_input("Valeur estimée (DZD)", min_value=0.0, step=1000.0, help=field_help("Valeur estimée (DZD)", module="crm"))
+                        probabilite = c2.slider("Probabilité de succès (%)", 0, 100, 50, help=field_help("Probabilité de succès (%)", module="crm"))
 
-                    if st.form_submit_button("Ajouter au pipeline", type="primary", on_click=_mark_crm_activity, help=field_help("Ajouter au pipeline", module="crm")):
-                        if prospect:
-                            create_opportunite(prospect, contact, statut, commercial, valeur, float(probabilite))
-                            st.success("Opportunité créée !")
-                            st.rerun()
-                        else:
-                            st.error("Le nom du prospect est obligatoire.")
+                        if st.form_submit_button("Ajouter au pipeline", type="primary", on_click=_mark_crm_activity, help=field_help("Ajouter au pipeline", module="crm")):
+                            if prospect:
+                                create_opportunite(prospect, contact, statut, commercial, valeur, float(probabilite))
+                                st.success("Opportunité créée !")
+                                st.rerun()
+                            else:
+                                st.error("Le nom du prospect est obligatoire.")
 
-        df_pipe = get_pipeline()
-        if not df_pipe.empty:
-            st.dataframe(df_pipe, use_container_width=True)
-        else:
-            st.info("Aucune opportunité en cours.")
-
-    with tab2, read_section("Clients CRM"):
-        st.subheader("Consigner une Interaction", help=topic_help("crm.interaction"))
-        show_context_help(st, "crm.interaction")
-        df_clients = get_clients_actifs() if can_write else pd.DataFrame()
-
-        if not can_write:
-            st.info("🔒 Mode lecture seule.")
-        elif df_clients.empty:
-            st.warning("Veuillez configurer des clients dans l'Administration.")
-        else:
-            with st.form("form_interaction"):
-                c_cli, c_type = st.columns(2)
-                liste_clients = {row["client_id"]: f"{row['client_id']} - {row['nom']}" for _, row in df_clients.iterrows()}
-                client_choisi = c_cli.selectbox("Client concerné", options=list(liste_clients.keys()), format_func=lambda x: liste_clients[x], help=field_help("Client concerné", module="crm"))
-
-                # Utilisation du format PascalCase
-                dict_types = liste_to_dict(get_liste("TypeInteractionCRM", strict=True))
-                if not dict_types:
-                    dict_types = {"Appel": "Appel", "Email": "Email", "Visite": "Visite", "Relance": "Relance"}
-                type_action = c_type.selectbox("Type d'action", options=list(dict_types.keys()), format_func=lambda x: dict_types.get(x, x), help=field_help("Type d'action", module="crm"))
-
-                notes = st.text_area("Notes et compte-rendu", help=field_help("Notes et compte-rendu", module="crm"))
-                date_rappel = st.date_input("Date de prochain rappel (optionnel)", value=None, help=field_help("Date de prochain rappel (optionnel)", module="crm"))
-
-                date_rappel_str = str(date_rappel) if date_rappel else ""
-
-                if st.form_submit_button("Enregistrer l'interaction", type="primary", on_click=_mark_crm_activity, help=field_help("Enregistrer l'interaction", module="crm")):
-                    create_interaction(client_choisi, type_action, notes, date_rappel_str)
-                    st.success("Interaction enregistrée !")
-                    st.rerun()
-
-    with tab3, read_section("Historique CRM"):
-        st.subheader("Historique des Interactions", help=topic_help("crm.historique"))
-        show_context_help(st, "crm.historique")
-        st.caption("Chargement à la demande pour éviter une lecture inutile à chaque navigation.")
-        page_crm = st.number_input(
-            "Page historique CRM", min_value=1, max_value=1000, value=1,
-            step=1, key="ng_crm_history_page", help=field_help("Page historique CRM", module="crm"))
-        if st.button("Afficher l'historique CRM", key="ng_crm_load_history", help=field_help("Afficher l'historique CRM", module="crm")):
-            from modules.crm.service import get_interactions_page
-            df_int, total = get_interactions_page(page=int(page_crm))
-            if not df_int.empty:
-                st.caption(f"Page {int(page_crm)} — {len(df_int)} lignes affichées sur {total} au total (50 maximum par page).")
-                st.dataframe(df_int, use_container_width=True)
-            elif total:
-                st.info(f"Page sans résultat ; {total} interactions disponibles. Choisissez une page antérieure.")
+            df_pipe = get_pipeline()
+            if not df_pipe.empty:
+                st.dataframe(df_pipe, use_container_width=True)
             else:
-                st.info("Aucun historique disponible.")
+                st.info("Aucune opportunité en cours.")
 
-    with tab4:
+    if active_panel == panels[1]:
+            with read_section("Clients CRM"):
+            st.subheader("Consigner une Interaction", help=topic_help("crm.interaction"))
+            show_context_help(st, "crm.interaction")
+            df_clients = get_clients_actifs() if can_write else pd.DataFrame()
+
+            if not can_write:
+                st.info("🔒 Mode lecture seule.")
+            elif df_clients.empty:
+                st.warning("Veuillez configurer des clients dans l'Administration.")
+            else:
+                with st.form("form_interaction"):
+                    c_cli, c_type = st.columns(2)
+                    liste_clients = {row["client_id"]: f"{row['client_id']} - {row['nom']}" for _, row in df_clients.iterrows()}
+                    client_choisi = c_cli.selectbox("Client concerné", options=list(liste_clients.keys()), format_func=lambda x: liste_clients[x], help=field_help("Client concerné", module="crm"))
+
+                    # Utilisation du format PascalCase
+                    dict_types = liste_to_dict(get_liste("TypeInteractionCRM", strict=True))
+                    if not dict_types:
+                        dict_types = {"Appel": "Appel", "Email": "Email", "Visite": "Visite", "Relance": "Relance"}
+                    type_action = c_type.selectbox("Type d'action", options=list(dict_types.keys()), format_func=lambda x: dict_types.get(x, x), help=field_help("Type d'action", module="crm"))
+
+                    notes = st.text_area("Notes et compte-rendu", help=field_help("Notes et compte-rendu", module="crm"))
+                    date_rappel = st.date_input("Date de prochain rappel (optionnel)", value=None, help=field_help("Date de prochain rappel (optionnel)", module="crm"))
+
+                    date_rappel_str = str(date_rappel) if date_rappel else ""
+
+                    if st.form_submit_button("Enregistrer l'interaction", type="primary", on_click=_mark_crm_activity, help=field_help("Enregistrer l'interaction", module="crm")):
+                        create_interaction(client_choisi, type_action, notes, date_rappel_str)
+                        st.success("Interaction enregistrée !")
+                        st.rerun()
+
+    if active_panel == panels[2]:
+            with read_section("Historique CRM"):
+            st.subheader("Historique des Interactions", help=topic_help("crm.historique"))
+            show_context_help(st, "crm.historique")
+            st.caption("Chargement à la demande pour éviter une lecture inutile à chaque navigation.")
+            page_crm = st.number_input(
+                "Page historique CRM", min_value=1, max_value=1000, value=1,
+                step=1, key="ng_crm_history_page", help=field_help("Page historique CRM", module="crm"))
+            if st.button("Afficher l'historique CRM", key="ng_crm_load_history", help=field_help("Afficher l'historique CRM", module="crm")):
+                from modules.crm.service import get_interactions_page
+                df_int, total = get_interactions_page(page=int(page_crm))
+                if not df_int.empty:
+                    st.caption(f"Page {int(page_crm)} — {len(df_int)} lignes affichées sur {total} au total (50 maximum par page).")
+                    st.dataframe(df_int, use_container_width=True)
+                elif total:
+                    st.info(f"Page sans résultat ; {total} interactions disponibles. Choisissez une page antérieure.")
+                else:
+                    st.info("Aucun historique disponible.")
+
+    if active_panel == panels[3]:
         st.subheader("Demandes reçues du site NextGen", help=topic_help("crm.nextgen"))
         show_context_help(st, "crm.nextgen")
         # Fixed UI fingerprint allows an authenticated operator to confirm deployed UI version.
