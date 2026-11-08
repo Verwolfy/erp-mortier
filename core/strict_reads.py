@@ -57,19 +57,22 @@ def fetch_data_strict(table_name, *, page_size=500, max_rows=10000,
     rows, seen, expected = [], set(), None
     try:
         while True:
-            # Revalider à chaque page ; aucune permission déduite du cache UI.
-            with measured_query_stage("check"):
-                db._require_read_permission(table_name)
-            query = db.get_supabase_client().table(table_name).select(
-                key if only_primary_key else db._read_projection(table_name),
-                count="exact")
-            if equal_column is not None:
-                query = query.eq(equal_column, equal_value)
-            if date_column is not None:
-                query = query.gte(date_column, start_date).lte(date_column, end_date)
-            with measured_query_stage("select"):
-                response = query.order(key).range(
-                    len(rows), len(rows) + page_size - 1).execute()
+            # Un client éphémère PAR PAGE sert aux deux requêtes :
+            # vérification RBAC toujours fraîche, puis lecture métier.
+            # Aucune réutilisation entre pages, rendus ou utilisateurs.
+            with db.strict_read_page_client_scope():
+                with measured_query_stage("check"):
+                    db._require_read_permission(table_name)
+                query = db.get_supabase_client().table(table_name).select(
+                    key if only_primary_key else db._read_projection(table_name),
+                    count="exact")
+                if equal_column is not None:
+                    query = query.eq(equal_column, equal_value)
+                if date_column is not None:
+                    query = query.gte(date_column, start_date).lte(date_column, end_date)
+                with measured_query_stage("select"):
+                    response = query.order(key).range(
+                        len(rows), len(rows) + page_size - 1).execute()
             batch, total = response.data, response.count
             if not isinstance(batch, list) or type(total) is not int or total < 0:
                 raise DataReadError("Réponse de lecture non vérifiable")
@@ -140,18 +143,19 @@ def fetch_history_page_strict(table_name, *, page=1, page_size=50,
     if start >= max_total:
         raise ValueError("Page hors de la limite autorisée")
     try:
-        with measured_query_stage("check"):
-            db._require_read_permission(table_name)
-        query = db.get_supabase_client().table(table_name).select(
-            db._read_projection(table_name), count="exact")
-        if start_date is not None:
-            # Ces filtres s'appliquent AVANT la pagination et au total exact.
-            query = query.gte(date_column, start_date).lte(date_column, end_date)
-        if date_column is not None:
-            query = query.order(date_column, desc=True, nullsfirst=False)
-        with measured_query_stage("select"):
-            response = (query.order(key, desc=True)
-                        .range(start, start + page_size - 1).execute())
+        with db.strict_read_page_client_scope():
+            with measured_query_stage("check"):
+                db._require_read_permission(table_name)
+            query = db.get_supabase_client().table(table_name).select(
+                db._read_projection(table_name), count="exact")
+            if start_date is not None:
+                # Ces filtres s'appliquent AVANT la pagination et au total exact.
+                query = query.gte(date_column, start_date).lte(date_column, end_date)
+            if date_column is not None:
+                query = query.order(date_column, desc=True, nullsfirst=False)
+            with measured_query_stage("select"):
+                response = (query.order(key, desc=True)
+                            .range(start, start + page_size - 1).execute())
         batch, count = response.data, response.count
         if (not isinstance(batch, list) or type(count) is not int or
                 count < 0 or count > max_total or len(batch) > page_size):
