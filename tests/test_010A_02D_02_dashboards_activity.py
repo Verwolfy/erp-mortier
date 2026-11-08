@@ -22,9 +22,11 @@ def test_dashboard_selectbox_callback():
         and node.func.attr == "selectbox"
     ]
 
-    # Matière + unité de stock : deux filtres nécessaires pour comparer
-    # les prix convertis, sans mélanger des unités incompatibles.
-    assert len(widgets) == 2
+    # Navigation paresseuse + deux filtres achats (matière et unité).
+    # Les trois sélecteurs doivent signaler l'activité sans forcer de refresh.
+    assert len(widgets) == 3
+    assert isinstance(widgets[0].args[0], ast.Constant)
+    assert widgets[0].args[0].value == "Vue du tableau de bord"
     for widget in widgets:
         callbacks = [kw.value for kw in widget.keywords if kw.arg == "on_change"]
         assert len(callbacks) == 1

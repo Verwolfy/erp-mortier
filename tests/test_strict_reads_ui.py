@@ -33,10 +33,18 @@ with patch('modules.dashboards.views.has_permission', return_value=True), \\
      patch('modules.dashboards.service.fetch_data_by_date_range', side_effect=read):
     show_dashboards_page()
 """).run(timeout=20)
+# Les panneaux sont chargés à la demande : chaque erreur reste locale
+# à sa vue, sans afficher de données inventées ni fuiter le message privé.
+for panel in ('👑 Vue Direction', '📈 Rentabilité (P&L)', '🛒 Ventes & Facturation'):
+    if app.selectbox[0].value != panel:
+        app = app.selectbox[0].set_value(panel).run()
+    assert not app.exception, app.exception
+    assert len(app.error) == 1, [e.value for e in app.error]
+    assert all('private-data-sentinel' not in e.value for e in app.error)
+    assert not [m for m in app.metric if m.label.startswith(('CA ', 'Chiffre', 'Facturation brute'))]
+app = app.selectbox[0].set_value('👥 RH').run()
 assert not app.exception, app.exception
-assert len(app.error) == 3, [e.value for e in app.error]
-assert all('private-data-sentinel' not in e.value for e in app.error)
-assert not [m for m in app.metric if m.label.startswith(('CA ', 'Chiffre', 'Facturation brute'))]
+assert not app.error, [e.value for e in app.error]
 assert any(m.label == 'Effectif Actif' for m in app.metric)
 ''')
 
@@ -81,6 +89,7 @@ with patch('modules.dashboards.views.has_permission', return_value=True), \\
      patch('modules.dashboards.service.fetch_data_by_date_range', return_value=[]):
     show_dashboards_page()
 """).run(timeout=20)
+app = app.selectbox[0].set_value('🛒 Ventes & Facturation').run()
 assert not app.exception, app.exception
 assert not app.error, app.error
 assert any(m.label == 'Facturation brute TTC' and m.value == '0.00 DZD' for m in app.metric)
