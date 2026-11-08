@@ -17,6 +17,10 @@ def ui(monkeypatch):
     st = MagicMock()
     st.session_state = {"authenticated": True, "user": {"user_id": "USR-1", "role": "ADMIN"}}
     st.tabs.side_effect = lambda labels: [MagicMock() for _ in labels]
+    st.selectbox.side_effect = (
+        lambda label, options, **_kw:
+        "🔄 Entrée Manuelle (hors BR)" if label == "Vue Stocks" else list(options)[0]
+    )
     st.columns.return_value = [MagicMock(), MagicMock()]
     st.radio.return_value = "🧪 Matière Première (Vrac)"
     st.form_submit_button.return_value = False
@@ -123,14 +127,14 @@ def test_stale_session_admin_role_cannot_override_actual_role(ui):
     ui.db.fetch_data.assert_not_called()
 
 
-def test_readonly_user_can_see_stock_but_not_entry_form(ui):
+def test_readonly_user_can_see_entry_warning_without_fetch_or_form(ui):
     ui.roles.has_permission.side_effect = lambda role, module, kind: kind == "lecture"
     _valid_mp(ui)
     ui.mod.show_stocks_page()
-    ui.mod.get_mp_actives.assert_called_once()
+    ui.mod.get_mp_actives.assert_not_called()
     ui.st.form.assert_not_called()
     ui.st.warning.assert_called()
-    ui.st.session_state.get("stocks_entree_manuelle_USR-1") is None
+    assert ui.st.session_state.get("stocks_entree_manuelle_USR-1") is None
 
 
 def test_successful_entry_preserves_confirmation_and_blocks_duplicate(ui):
@@ -245,8 +249,15 @@ def test_denied_write_cannot_retry_old_pending_operation(ui):
     ui.st.button.return_value = True
     ui.mod.show_stocks_page()
     ui.stocks.enregistrer_entree_mp.assert_not_called()
-    # La consultation des historiques reste possible sans droit d'écriture.
-    # Le bouton lecture seule ne doit jamais relancer l'entrée en stock.
+    ui.st.button.assert_not_called()
+    # Naviguer explicitement vers l'historique reste possible sans écriture ;
+    # un panneau non sélectionné ne doit plus s'exécuter en arrière-plan.
+    ui.st.selectbox.side_effect = (
+        lambda label, options, **_kw:
+        "📋 Historique des Mouvements" if label == "Vue Stocks" else list(options)[0]
+    )
+    ui.mod.show_stocks_page()
+    ui.stocks.enregistrer_entree_mp.assert_not_called()
     ui.st.button.assert_called_once()
     call = ui.st.button.call_args
     assert call.args == ("Afficher les mouvements de stock",)
