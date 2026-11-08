@@ -28,7 +28,10 @@ def ui(monkeypatch):
     st.columns.side_effect = lambda count: [_mk_col(st) for _ in range(count if isinstance(count, int) else len(count))]
     st.form_submit_button.return_value = False
     st.button.return_value = False
-    st.selectbox.return_value = "CMA-1"
+    st.selectbox.side_effect = (
+        lambda label, options, **_kwargs:
+        "📦 Réception & Entrée Stock" if label == "Vue Achats" else "CMA-1"
+    )
     st.number_input.return_value = 5.0
     st.radio.return_value = "CONFORME"
     st.date_input.return_value = "2026-10-21"
@@ -181,6 +184,10 @@ def test_stale_session_role_cannot_grant_read(ui):
 
 def test_read_only_role_can_view_history_not_write(ui):
     ui.roles.has_permission.side_effect = lambda role, module, permission: permission == "lecture"
+    ui.st.selectbox.side_effect = (
+        lambda label, options, **_kwargs:
+        "📋 Historique & Suivi" if label == "Vue Achats" else "CMA-1"
+    )
     ui.mod.show_achats_page()
     ui.achats.create_commande_achat.assert_not_called()
     ui.achats.creer_bon_reception.assert_not_called()
