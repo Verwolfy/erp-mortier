@@ -54,6 +54,8 @@ def ui(monkeypatch):
     documents = MagicMock()
 
     monkeypatch.setattr(admin, "get_opts", get_opts)
+    monkeypatch.setattr(admin, "get_liste", lambda *_a, **_kw: [])
+    monkeypatch.setattr(admin, "liste_to_dict", lambda *_a, **_kw: {})
     monkeypatch.setattr(admin, "get_dataframe", get_dataframe)
     monkeypatch.setattr(admin, "render_editable_dataframe", edit)
     monkeypatch.setattr(catalog_search_view, "render_catalog_search", search)
