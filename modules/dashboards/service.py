@@ -144,6 +144,9 @@ def get_dashboard_data_provenance() -> dict:
             continue
         if identifier not in frame or not frame[identifier].map(
                 lambda val: isinstance(val, str) and bool(val.strip())).all():
+            # Ne pas retenir un relevé métier invalide dans le cache du rendu.
+            if scope is not None:
+                scope.pop(("provenance", table), None)
             raise DataReadError("Identifiants de provenance non qualifiés")
         labels = frame[identifier].str.strip().str.upper()
         marked = int(labels.str.startswith(("DEMO", "SIM")).sum())
