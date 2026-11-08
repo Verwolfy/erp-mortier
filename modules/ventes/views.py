@@ -687,20 +687,31 @@ def show_ventes_page() -> None:
     try:
         # La totalité des factures reste réservée au workflow de validation.
         # Un lecteur n'a besoin que de la page sélectionnée dans le suivi.
-        invoices = get_factures() if can_write else pd.DataFrame()
-        tab_draft, tab_order, tab_ship, tab_workflow, tab_tva = st.tabs([
+        # st.tabs rend tous les panneaux, même lorsqu'ils sont masqués.
+        # Sélection unique après vérification fraîche du compte en base.
+        panels = (
             "Facture / Avoir", "Commandes clients", "Bons de livraison",
             "Suivi factures", "TVA par SKU (contrôle)",
-        ])
-        with tab_draft:
+        )
+        active_panel = st.selectbox(
+            "Vue Ventes", panels, key="_erp_ventes_active_panel",
+            on_change=_mark_ventes_activity,
+            help="Seule la vue sélectionnée consulte ses référentiels.",
+        )
+        # La liste complète est requise pour les avoirs et le suivi de
+        # validation, jamais pour Commandes, Livraison ou TVA.
+        invoices = (get_factures()
+                    if can_write and active_panel in (panels[0], panels[3])
+                    else pd.DataFrame())
+        if active_panel == panels[0]:
             _draft_tab(user_id, can_write, invoices)
-        with tab_order:
+        elif active_panel == panels[1]:
             _order_tab(user_id, can_write)
-        with tab_ship:
+        elif active_panel == panels[2]:
             _ship_tab(user_id, can_write)
-        with tab_workflow:
+        elif active_panel == panels[3]:
             _workflow_tab(user_id, can_write, invoices)
-        with tab_tva:
+        elif active_panel == panels[4]:
             _controle_tva_sku_tab(user_id)
     except Exception as exc:
         _LOG.warning("Interface Ventes interrompue (%s)", type(exc).__name__)

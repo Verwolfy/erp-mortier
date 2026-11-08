@@ -10,7 +10,7 @@ import pytest
     [
         ("ventes", {
             "button": 10,
-            "selectbox": 9,
+            "selectbox": 10,
             "form_submit_button": 2,
         }),
         ("crm", {"form_submit_button": 2}),

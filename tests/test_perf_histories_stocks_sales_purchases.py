@@ -27,7 +27,7 @@ def test_pages_ne_chargent_pas_avant_le_clic():
 
 def test_validation_des_factures_conserve_vue_complete():
     ventes = Path("modules/ventes/views.py").read_text(encoding="utf-8")
-    assert 'invoices = get_factures() if can_write else pd.DataFrame()' in ventes
+    assert 'if can_write and active_panel in (panels[0], panels[3])' in ventes
     assert '_workflow_tab(user_id, can_write, invoices)' in ventes
     assert 'eligible = factures[factures["statut"] == "BROUILLON"]' in ventes
 
