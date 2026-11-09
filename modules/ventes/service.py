@@ -380,3 +380,23 @@ def creer_commande_client(
         )
 
     return result["commande_vente_id"]
+
+
+def lire_diagnostic_fiscal_sku(date_reference: str) -> list[dict]:
+    """Lecture serveur du diagnostic TVA SKU ; aucune facture ni qualification créée.
+
+    La vue Ventes doit appeler le service, jamais une RPC directement.
+    Le rôle SQL service_role est restreint par la migration ERP-047.
+    """
+    jour = _date(date_reference, "Date de référence TVA")
+    try:
+        response = _stock_rpc_client().rpc(
+            "erp_tva_sku_readiness", {"p_date": jour}
+        ).execute()
+        lignes = response.data
+    except Exception as exc:
+        raise RuntimeError("Diagnostic TVA SKU SQL indisponible") from exc
+    if (not isinstance(lignes, list) or len(lignes) > 10000
+            or any(not isinstance(x, dict) for x in lignes)):
+        raise RuntimeError("Diagnostic TVA SKU SQL incomplet ou invalide")
+    return lignes
