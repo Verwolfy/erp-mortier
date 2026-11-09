@@ -24,8 +24,11 @@ def test_sql_013_sans_regle_universelle_activable_implicitement():
     assert "erp_sku_fiscalite" not in SQL
 
 
-def test_timbre_encore_calcule_sur_facture_dans_le_brouillon():
-    # À retirer seulement avec un véritable moteur de quittances validé.
-    assert "erp_facture_parametre('TIMBRE_ESPECES_TAUX'" in SQL
-    assert "erp_facture_parametre('TIMBRE_ESPECES_PLAFOND'" in SQL
+def test_timbre_interdit_sur_facture_dans_le_brouillon():
+    # Le futur moteur de quittances demeure absent : le brouillon refuse
+    # le paiement espèces au lieu d'inventer un calcul de timbre.
+    assert "Facture especes: timbre de quittance non homologue" in SQL
+    assert "erp_facture_parametre('TIMBRE_ESPECES_TAUX'" not in SQL
+    assert "erp_facture_parametre('TIMBRE_ESPECES_PLAFOND'" not in SQL
+    assert "v_stamp := 0;" in SQL
     assert "La base production" in GUIDE
