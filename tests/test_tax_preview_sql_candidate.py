@@ -16,10 +16,13 @@ SQL = SQL_PATH.read_text(encoding="utf-8")
 
 def test_candidate_sql_pg17_parser_and_function_body():
     assert pglast.parse_sql(SQL)
-    functions = [
-        stmt for stmt in pglast.split(SQL)
-        if stmt.lstrip().upper().startswith("CREATE OR REPLACE FUNCTION")
-    ]
+    functions = []
+    for statement in pglast.split(SQL):
+        # pglast.split conserve les commentaires précédant un CREATE FUNCTION.
+        marker = "CREATE OR REPLACE FUNCTION"
+        offset = statement.upper().find(marker)
+        if offset != -1:
+            functions.append(statement[offset:])
     assert len(functions) == 2
     for function in functions:
         assert pglast.parse_plpgsql(function)
