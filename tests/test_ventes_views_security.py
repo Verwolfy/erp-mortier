@@ -723,7 +723,7 @@ def test_reperage_version_interface_apres_autorisation(ui):
         setattr(ui.mod, nom, MagicMock())
     ui.mod.show_ventes_page()
     ui.st.caption.assert_any_call(
-        "Version interface Ventes : SOF-ERP-20261030-EXO-HIST-02"
+        "Version interface Ventes : SOF-ERP-20261109-TAX-READINESS-01"
     )
 
 
@@ -953,3 +953,46 @@ def test_historique_revoque_ou_futur_exige_revue_hors_plage_du_jour(ui):
     q.limit.assert_called_once_with(200)
     q.lte.assert_not_called()
     q.gte.assert_not_called()
+
+
+def test_tva_ui_affiche_diagnostic_sql_date_apres_autorisation(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [
+        {"sku_id": "SKU-1", "pf_id": "PF-1", "actif": "OUI"}
+    ]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+    client.rpc.return_value.execute.return_value = types.SimpleNamespace(data=[
+        {"sku_id": "SKU-1", "etat_technique": "SANS_FICHE",
+         "fiches_applicables": 0, "code_tva": None}
+    ])
+
+    ui.mod._controle_tva_sku_tab("USR-1")
+
+    client.rpc.assert_called_once_with(
+        "erp_tva_sku_readiness", {"p_date": "2026-10-29"}
+    )
+    ui.st.metric.assert_any_call("Prêts techniquement (SQL)", 0)
+    ui.sales.create_facture_brouillon.assert_not_called()
+
+
+def test_tva_ui_refuse_diagnostic_sql_incomplet(ui):
+    ui.st.button.return_value = True
+    ui.mod._sale_access = MagicMock(return_value=("USR-1", False))
+    ui.db.fetch_data_paginated.return_value = [
+        {"sku_id": "SKU-1", "pf_id": "PF-1", "actif": "OUI"}
+    ]
+    client = ui.db.get_supabase_client.return_value
+    response = client.table.return_value.select.return_value.range.return_value
+    response.execute.return_value = types.SimpleNamespace(data=[], count=0)
+    client.rpc.return_value.execute.return_value = types.SimpleNamespace(data=[])
+
+    ui.mod._controle_tva_sku_tab("USR-1")
+
+    assert not any(call.args[0] == "Prêts techniquement (SQL)"
+                   for call in ui.st.metric.call_args_list)
+    assert any("Diagnostic réglementaire SQL indisponible"
+               in call.args[0] for call in ui.st.warning.call_args_list)
+    ui.sales.create_facture_brouillon.assert_not_called()
