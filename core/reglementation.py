@@ -75,25 +75,30 @@ def chercher_parametre(
             raise RegleIndisponible("Enregistrement réglementaire invalide")
         if row.get("code") != code:
             continue
-        if row.get("statut_juridique") != "en_vigueur" or row.get("niveau_confiance") != "CONFIRMEE":
+        # Une version applicable mais encore non confirmée est une ambiguïté
+        # réglementaire : ne jamais l'ignorer au profit d'une autre version.
+        # Les versions échues ou futures restent hors de la date recherchée.
+        start = _date(row.get("date_effet"), "date_effet")
+        end = _date(row["date_fin"], "date_fin") if row.get("date_fin") is not None else None
+        if end is not None and end < start:
+            raise RegleIndisponible(f"{code}: intervalle de validité invalide")
+        if not (start <= instant and (end is None or instant <= end)):
             continue
+        if (row.get("statut_juridique") != "en_vigueur"
+                or row.get("niveau_confiance") != "CONFIRMEE"):
+            raise RegleIndisponible(f"{code}: version applicable non confirmée")
         source = row.get("source")
         if not isinstance(source, str) or not source.strip():
             raise RegleIndisponible(f"{code}: source obligatoire")
-        start = _date(row.get("date_effet"), "date_effet")
-        end = _date(row["date_fin"], "date_fin") if row.get("date_fin") is not None else None
         verified = _date(row.get("date_verification"), "date_verification")
-        if end is not None and end < start:
-            raise RegleIndisponible(f"{code}: intervalle de validité invalide")
-        if start <= instant and (end is None or instant <= end):
-            if unite_attendue is not None and row.get("unite") != unite_attendue:
-                raise RegleIndisponible(
-                    f"{code}: unité invalide (attendu : {unite_attendue})"
-                )
-            candidates.append(ParametreApplicable(
-                code, _decimal(row.get("valeur"), "valeur"), start, end,
-                source.strip(), verified,
-            ))
+        if unite_attendue is not None and row.get("unite") != unite_attendue:
+            raise RegleIndisponible(
+                f"{code}: unité invalide (attendu : {unite_attendue})"
+            )
+        candidates.append(ParametreApplicable(
+            code, _decimal(row.get("valeur"), "valeur"), start, end,
+            source.strip(), verified,
+        ))
     if len(candidates) != 1:
         raise RegleIndisponible(
             f"{code}: {len(candidates)} règle(s) confirmée(s) applicable(s) ; calcul bloqué"
