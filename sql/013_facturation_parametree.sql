@@ -12,21 +12,29 @@ SET search_path = pg_catalog, public
 AS $tax$
 DECLARE
     v_nombre integer;
+    v_non_confirmes integer;
     v_valeur numeric;
 BEGIN
     IF p_code IS NULL OR p_date IS NULL OR p_unite IS NULL THEN
         RAISE EXCEPTION 'Parametre fiscal invalide' USING ERRCODE='22023';
     END IF;
-    SELECT count(*), max(valeur) INTO v_nombre, v_valeur
+    -- L'ancienne recherche écartait les brouillons applicables avant le
+    -- comptage et pouvait ignorer une version contradictoire. On compte
+    -- TOUTES les versions de ce code applicables à la date d'opération.
+    SELECT count(*), max(valeur),
+           count(*) FILTER (WHERE (
+               unite = p_unite
+               AND statut_juridique = 'en_vigueur'
+               AND niveau_confiance = 'CONFIRMEE'
+               AND nullif(btrim(source), '') IS NOT NULL
+               AND date_verification IS NOT NULL
+           ) IS NOT TRUE)
+      INTO v_nombre, v_valeur, v_non_confirmes
       FROM public.parametres_reglementaires
-      WHERE code = p_code AND unite = p_unite
-        AND statut_juridique = 'en_vigueur'
-        AND niveau_confiance = 'CONFIRMEE'
-        AND nullif(btrim(source), '') IS NOT NULL
-        AND date_verification IS NOT NULL
+      WHERE code = p_code
         AND date_effet <= p_date AND (date_fin IS NULL OR date_fin >= p_date);
-    IF v_nombre <> 1 OR v_valeur IS NULL THEN
-        RAISE EXCEPTION 'Parametre fiscal absent ou ambigu: %', p_code
+    IF v_nombre <> 1 OR v_non_confirmes <> 0 OR v_valeur IS NULL THEN
+        RAISE EXCEPTION 'Parametre fiscal absent, concurrent ou non confirme: %', p_code
             USING ERRCODE='23514';
     END IF;
     IF (p_unite='fraction' AND (v_valeur < 0 OR v_valeur > 1))
