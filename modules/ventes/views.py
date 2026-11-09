@@ -32,7 +32,7 @@ from modules.ventes.service import (
 _LOG = logging.getLogger(__name__)
 # Repère public de la livraison de l'écran, sans revendication d'un SHA
 # déployé. Permet une vérification visuelle de Streamlit après mise à jour.
-_UI_REVISION = "SOF-ERP-20261030-EXO-HIST-02"
+_UI_REVISION = "SOF-ERP-20261109-TAX-READINESS-01"
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
@@ -753,8 +753,9 @@ def _controle_tva_sku_tab(user_id: str) -> None:
                 or not isinstance(response.count, int)
                 or response.count != len(rows) or len(rows) > 1000):
             raise QualificationTVAIndisponible("Lecture TVA incomplète")
+        reference_date = get_local_now().date().isoformat()
         result = verifier_couverture_tva(
-            skus, rows, get_local_now().date().isoformat(), uniquement_actifs=True
+            skus, rows, reference_date, uniquement_actifs=True
         )
     except Exception as exc:
         _LOG.warning("Couverture TVA non consultable (%s)", type(exc).__name__)
@@ -771,6 +772,52 @@ def _controle_tva_sku_tab(user_id: str) -> None:
         st.dataframe(
             pd.DataFrame(result["lignes"]), use_container_width=True,
             hide_index=True,
+        )
+    # Complément SQL daté : seule la RPC serveur connaît l'état des taux
+    # réglementaires et les conflits de versions. Aucun calcul ni écriture
+    # de TVA en facture n'est effectué par cet affichage.
+    try:
+        sql_response = get_supabase_client().rpc(
+            "erp_tva_sku_readiness", {"p_date": reference_date}
+        ).execute()
+        sql_rows = sql_response.data
+        etats_autorises = frozenset({
+            "SANS_FICHE", "A_VALIDER", "CONFLIT_VERSIONS",
+            "HORS_MOTEUR_PILOTE", "TAUX_A_VERIFIER",
+            "PRET_TECHNIQUEMENT",
+        })
+        if (not isinstance(sql_rows, list)
+                or len(sql_rows) != result["nombre_skus"]
+                or len(sql_rows) > 10000):
+            raise ValueError("Diagnostic SQL fiscal incomplet")
+        ids_lus: set[str] = set()
+        for entry in sql_rows:
+            if (not isinstance(entry, dict)
+                    or not isinstance(entry.get("sku_id"), str)
+                    or not entry["sku_id"].strip()
+                    or entry["sku_id"] in ids_lus
+                    or entry.get("etat_technique") not in etats_autorises
+                    or isinstance(entry.get("fiches_applicables"), bool)
+                    or not isinstance(entry.get("fiches_applicables"), int)
+                    or entry["fiches_applicables"] < 0):
+                raise ValueError("Ligne du diagnostic fiscal SQL invalide")
+            ids_lus.add(entry["sku_id"])
+        n_prets = sum(
+            entry["etat_technique"] == "PRET_TECHNIQUEMENT"
+            for entry in sql_rows
+        )
+        n_bloques = len(sql_rows) - n_prets
+        st.metric("Prêts techniquement (SQL)", n_prets)
+        st.caption(
+            f"Diagnostic SQL daté au {reference_date} : {n_bloques} SKU "
+            "non prêts. Ce résultat ne vaut ni homologation juridique "
+            "ni autorisation de facturer."
+        )
+    except Exception as exc:
+        _LOG.warning("Diagnostic SQL TVA indisponible (%s)", type(exc).__name__)
+        st.warning(
+            "Diagnostic réglementaire SQL indisponible : les chiffres de "
+            "couverture précédents ne certifient pas la préparation fiscale."
         )
     # Export strictement local et après revalidation des droits de lecture.
     # Ce fichier ne valide aucun SKU et ne crée aucun enregistrement fiscal.
