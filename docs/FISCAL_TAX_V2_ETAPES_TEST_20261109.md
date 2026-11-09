@@ -30,7 +30,7 @@ L'existence de cette CI constitue une preuve *technique SQL isolée*, mais **pas
 ## Contrôles exécutés
 
 - [GitHub Actions PostgreSQL 17 isolé #42623241192](https://github.com/Verwolfy/erp-mortier/actions/runs/42623241192) : **success**, exécution réelle de la candidate sur une base jetable, tous contrôles SQL réussis.
-- [GitHub Actions tests ERP #42623649404](https://github.com/Verwolfy/erp-mortier/actions/runs/42623649404) et [audit #42623649371](https://github.com/Verwolfy/erp-mortier/actions/runs/42623649371) : **success**, 3 192 tests sur le commit `d9cedbe`, avant l'ajout de l'adaptateur Python. Les tests du SHA final de ce lot doivent être vérifiés séparément.
+- [GitHub Actions tests ERP #42624303327](https://github.com/Verwolfy/erp-mortier/actions/runs/42624303327) et [audit #42624303505](https://github.com/Verwolfy/erp-mortier/actions/runs/42624303505) : **success**, **3 233 tests réussis**, zéro échec, un avertissement de dépendance, sur le SHA `8b639693` incluant l'adaptateur Python et ses tests. Les commits purement documentaires ultérieurs restent soumis à la CI.
 
 ## Blocages métier et techniques vérifiés dans Supabase
 
