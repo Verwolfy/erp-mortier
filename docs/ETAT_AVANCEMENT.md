@@ -1,3 +1,12 @@
+## 9 novembre 2026 — calcul TVA daté par ligne, hors transaction de production
+
+- **Action GitHub `main`** : nouvelle API `core.fiscalite_facturation.calculer_tva_lignes_classees`, isolée et sans IO. Elle reçoit des lignes de SKU avec classification TVA explicite, preuve de classification, montants HT en décimaux exacts et une date. Elle sélectionne exclusivement les références datées `TVA_TAUX_NORMAL` ou `TVA_TAUX_REDUIT`, exige statut `en_vigueur` et confiance `CONFIRMEE`, refuse un registre ambigu/incomplet et calcule la TVA par ligne.
+- **Blocages explicites** : espèces/timbre non pris en charge ; exonérations, avoirs et cas spéciaux non déduits. Une classification fournie par l'appelant n'est **pas une homologation**. La fonction n'est pas reliée à `create_facture_brouillon` ni à `erp_sale_transaction`, et **ne crée aucun document**. Aucun taux réel n'est ajouté dans le code : tests sur valeurs fictives uniquement.
+- **Régression** : `tests/test_fiscalite_facturation.py` couvre plusieurs taux par ligne, versions fiscales datées, absence de justificatif, conflit de versions, taux invalide et refus de timbre espèces. CI de la dernière tête `main` à contrôler.
+- **Suite** : qualifier chaque SKU/régime et les quittances, développer le même contrôle atomique SQL sur base TEST, supprimer ensuite les six constantes historiques Python/SQL avec migration réversible et homologation comptable. La **production Supabase reste inchangée**. Branches GitHub : `main` seule.
+
+---
+
 ## 9 novembre 2026 — FISCAL-READINESS-01 : couverture TVA SKU et SQL candidat durci
 
 - **Production Supabase lue, non modifiée** : diagnostic SQL reproductible `sql/audits/fiscal_sales_readiness_readonly_20261109.sql` exécuté sur `wenydirqtmkywbxbxfal`. Au 9 novembre : **145 SKU actifs, 145 sans classification `VALIDEE` applicable**, deux lignes de `erp_sku_fiscalite` en `A_VALIDER`, zéro `VALIDEE` ; deux taux généraux TVA `CONFIRMEE` ; zéro `TVA_VENTE_TAUX`, zéro RPC `erp_facture_parametre`, RPC ventes legacy contenant encore ses anciens littéraux. Ce diagnostic **ne vaut pas homologation**.
