@@ -45,3 +45,22 @@ def test_pas_de_modification_des_montants_des_factures_anciennes():
     for field in ("MONTANT_HT", "MONTANT_TVA", "MONTANT_TTC", "TAUX_TVA"):
         assert f"UPDATE PUBLIC.FACTURES SET {field}" not in compact
     assert "DELETE FROM public.factures" not in SQL
+
+
+def test_version_applicable_non_confirmee_ou_unite_concurrente_bloque():
+    # Le filtre temporel seul détermine les versions applicables avant
+    # d'examiner leur validation, même si une version confirmée coexiste.
+    helper = SQL.split("CREATE OR REPLACE FUNCTION public.erp_facture_parametre(")[1].split(
+        "CREATE OR REPLACE FUNCTION public.erp_sale_transaction("
+    )[0]
+    assert "count(*) FILTER (WHERE (" in helper
+    assert "v_non_confirmes <> 0" in helper
+    assert "WHERE code = p_code\n        AND date_effet <= p_date" in helper
+    assert "unite = p_unite" in helper
+    assert "IS NOT TRUE" in helper
+    assert "v_nombre <> 1 OR v_non_confirmes <> 0" in helper
+
+
+def test_contrat_preparatoire_sql_013_pas_execute_automatiquement():
+    assert "BROUILLON : NON APPLICABLE AVANT AUDIT ET TESTS SQL SUR TEST" in SQL
+    assert "SECURITY INVOKER" in SQL
