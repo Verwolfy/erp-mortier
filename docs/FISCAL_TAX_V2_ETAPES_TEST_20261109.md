@@ -1,5 +1,13 @@
 # TAX-V2 — Passage de la simulation à la facturation réglementaire (9 novembre 2026)
 
+## Mise à jour — essais sur base principale, ERP-044 appliquée
+
+Selon décision explicite du propriétaire, **Supabase TEST reste INACTIVE** ; les étapes SQL se font désormais directement sur `erp-mortier` principal et le code sur `main`. **ERP-044 est effectivement appliquée sur Supabase principal**, migration native `20261109141222`, SQL dans `sql/044_tva_sku_qualification_preview_pilote.sql`. Les objets `erp_sku_tva_qualifications` et `erp_tax_preview_classified` existent, permissions contrôlées ; test de calcul sur un SKU DEMO réussi dans une transaction totalement annulée (0 ligne fictive conservée). Détail : `docs/ERP_044_DEPLOIEMENT_PRINCIPAL_20261109.md`.
+
+**Attention — double référentiel à résoudre** : `erp_sku_fiscalite` préexistante porte 2 lignes `A_VALIDER`, aucune `VALIDEE` ; la nouvelle table pilote ERP-044 est vide. Ni l'une ni l'autre n'autorise pour l'instant une facturation réelle par SKU. L'ancienne transaction `erp_sale_transaction` conserve ses constantes historiques et n'a pas été modifiée. La suite devra réconcilier le modèle fiscal préexistant, sans inventer de validation.
+
+## Historique de préparation (état antérieur au déploiement ERP-044)
+
 ## Résultat de ce lot
 
 Le dépôt `Verwolfy/erp-mortier` conserve une seule branche `main`. Une **migration candidate non exécutée** a été ajoutée :
@@ -25,7 +33,7 @@ L'existence de cette CI constitue une preuve *technique SQL isolée*, mais **pas
 
 `modules/ventes/fiscal_preview.py` fournit `simuler_tva_sql` : un adaptateur **lecture seule** exigeant un client interne explicitement injecté, une date fiscale ISO, des montants monétaires sous forme de chaînes et un panier de SKU. Il n'accepte **aucun `code_tva` ni attestation envoyés par le navigateur** : la qualification provient de `erp_sku_tva_qualifications` consultée par la fonction PostgreSQL. Il contrôle à la réception chaque code et taux, les sources, les dates, les arrondis TVA, le détail des lignes et les sommes globales. Toute réponse absente, float, incohérente ou erreur RPC bloque l'aperçu ; aucun appel à la transaction `erp_sale_transaction`.
 
-`tests/test_fiscal_preview_rpc.py` teste ce pont avec des fausses réponses : deux taux fictifs, refus de données forgées, des erreurs réseau, dates invalides, taux ou totaux incohérents et absence d'écriture. **Ce module n'est pas branché à l'écran de création des factures**. Sans déploiement préalable de la candidate en TEST, l'appel RPC est normalement indisponible, ce qui n'affecte pas le circuit existant.
+`tests/test_fiscal_preview_rpc.py` teste ce pont avec des fausses réponses : deux taux fictifs, refus de données forgées, des erreurs réseau, dates invalides, taux ou totaux incohérents et absence d'écriture. **Ce module n'est pas branché à l'écran de création des factures**. La RPC pilote est désormais installée en base principale, mais son appel échoue sans qualification validée ; le circuit existant n'est pas modifié.
 
 ## Contrôles exécutés
 
@@ -45,13 +53,13 @@ L'existence de cette CI constitue une preuve *technique SQL isolée*, mais **pas
 
 1. **Valider la CI PostgreSQL jetable** et les tests Python sans erreur ; corriger les défauts, consigner le SHA `main`.
 2. **Faire homologuer** la qualification TVA par SKU et le régime fiscal applicable à l'entreprise avec une source juridique auditable. Les taux généraux ne suffisent pas à déduire l'application produit. Ne pas mélanger les codes d'une ancienne maquette (`TVA_VENTE_TAUX`) avec les codes confirmés `TVA_TAUX_NORMAL/REDUIT` sans contrat de correspondance.
-3. **Rétablir un environnement TEST isolé** après vérification de l'impact financier et du contrôle d'accès ; appliquer la candidate puis exécuter les tests d'intégration sous les rôles réels.
+3. **Conserver TEST inactif**. Tester et poursuivre directement sur la base principale, avec transactions annulées pour les jeux fictifs et contrôles des rôles réels.
 4. **Adapter le modèle facture** : inclure `code_tva`, `taux_tva`, `montant_tva` et la preuve de classification de chaque ligne, établir une règle de répartition de toute remise globale, traiter les avoirs et les exemptions. Interdire l'enregistrement d'une facture mixte dans le seul champ global actuel.
 5. **Modifier simultanément la RPC et le service Python** : même calcul daté par ligne, validation SQL atomique en production, traçabilité de l'opération, protection contre les retries, conservation des ID légaux et des mouvements de stock existants. Retirer alors, et seulement alors, les six constantes legacy. Ne pas modifier les données historiques sans procédure d'audit.
 6. **Recette E2E** : brouillon/validation/avoir/livraison, privilèges, reprise après timeout, écarts TVA, clôture SCF, Streamlit authentifié et preuve SHA déployé. Homologation comptable et juridique avant activation.
 
 ## Invariants de sécurité
 
-**Cette candidate n'est pas à exécuter sur la production.** Elle crée des objets, même si son calcul n'écrit rien : il s'agit bien d'une migration DDL non appliquée. Les données DEMO/SIM, le registre fiscal réel, les dossiers d'exonération, les règles CNAS `a_confirmer` et les contrôles RLS/GRANT existants restent intacts. Toute mise en service fiscale requiert une vérification externe des textes et du traitement des SKU.
+**Le fichier candidat historique ne doit pas être appliqué une seconde fois.** Son équivalent versionné ERP-044 est déjà exécuté sur le principal. Sa fonction ne crée pas de factures, mais la DDL a réellement été appliquée. Les données DEMO/SIM, le registre fiscal réel, les dossiers d'exonération, les règles CNAS `a_confirmer` et les contrôles RLS/GRANT existants restent intacts. Toute mise en service fiscale requiert une vérification externe des textes et du traitement des SKU.
 
-**État global** : préparation et tests techniques uniquement ; migration active et conformité non terminées.
+**État global actualisé** : migration technique ERP-044 appliquée et contrôlée ; la transaction de facturation active et la conformité fiscale restent non terminées.
