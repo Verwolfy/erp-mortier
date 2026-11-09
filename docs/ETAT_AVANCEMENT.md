@@ -1,3 +1,15 @@
+## 9 novembre 2026 — TAX-V2 : qualification TVA par SKU, SQL PostgreSQL isolé, adaptateur Python lecture seule
+
+- **Dépôt** : `Verwolfy/erp-mortier`, unique branche `main`. **Production Supabase inchangée** ; projet TEST `ffuhbmcfyexsbjwhryvj` toujours inactif.
+- **Candidat de migration NON EXÉCUTÉ** : `sql/supabase_pending/erp_tax_classification_preview_CANDIDAT_NON_EXECUTE.sql` définit des qualifications TVA datées par SKU, statut/source/validation, conservation immuable des versions statuées, RLS et GRANT limités à `service_role`, et la fonction SQL `erp_tax_preview_classified` (calcul sans écriture). Codes `TVA_TAUX_NORMAL/REDUIT` uniquement ; aucun taux légal saisi dans le code, aucune classification générée.
+- **Exécution PostgreSQL 17 isolé (réelle)** : workflow [#42623241192](https://github.com/Verwolfy/erp-mortier/actions/runs/42623241192) `success`. Service PostgreSQL éphémère et valeurs fictives : calcul à deux taux, justification serveur, refus espèces/versions ambiguës/inactifs/faux montants, droits clients fermés et historique non modifiable. **Ce n'est pas Supabase TEST ni la RPC transactionnelle `erp_sale_transaction` réelle**.
+- **Contrat statique** `tests/test_tax_preview_sql_candidate.py` : parseur PostgreSQL/PLpgSQL et contrôles de sécurité. Un test a été corrigé pour reconnaître une fonction précédée de commentaires. CI `d9cedbe` [tests #42623649404](https://github.com/Verwolfy/erp-mortier/actions/runs/42623649404) et [audit #42623649371](https://github.com/Verwolfy/erp-mortier/actions/runs/42623649371) réussis : **3 192 tests**, zéro échec, un avertissement.
+- **Pont Python non branché** : `modules/ventes/fiscal_preview.py` expose `simuler_tva_sql`, refuse l'auto-classification client, appelle la RPC candidate uniquement en lecture et revalide taux, sources, montants et sommes reçus. Tests fictifs `tests/test_fiscal_preview_rpc.py` ; aucune modification du circuit facturation existant.
+- **Blocages** : `erp_sale_transaction` en production et `modules/ventes/service.py` utilisent encore les constantes TVA/timbre historiques, pas de preuve TVA par SKU validée en production, `factures` garde un taux global, `lignes_facture` sans colonnes TVA par ligne, remises globales/avoirs/exonérations non migrés, bac TEST inactif. Homologation fiscale/comptable et tests E2E restent obligatoires avant suppression des constantes.
+- **Dossier technique et plan de suite** : `docs/FISCAL_TAX_V2_ETAPES_TEST_20261109.md`. **Statut global non terminé.** Dernier SHA `main` à confirmer après CI.
+
+---
+
 ## 9 novembre 2026 — calcul TVA daté par ligne, hors transaction de production
 
 - **Action GitHub `main`** : nouvelle API `core.fiscalite_facturation.calculer_tva_lignes_classees`, isolée et sans IO. Elle reçoit des lignes de SKU avec classification TVA explicite, preuve de classification, montants HT en décimaux exacts et une date. Elle sélectionne exclusivement les références datées `TVA_TAUX_NORMAL` ou `TVA_TAUX_REDUIT`, exige statut `en_vigueur` et confiance `CONFIRMEE`, refuse un registre ambigu/incomplet et calcule la TVA par ligne.
