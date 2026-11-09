@@ -20,8 +20,9 @@ def test_candidate_sql_pg17_parser_and_function_body():
         stmt for stmt in pglast.split(SQL)
         if stmt.lstrip().upper().startswith("CREATE OR REPLACE FUNCTION")
     ]
-    assert len(functions) == 1
-    assert pglast.parse_plpgsql(functions[0])
+    assert len(functions) == 2
+    for function in functions:
+        assert pglast.parse_plpgsql(function)
 
 
 def test_candidate_readonly_calculation_and_strict_roles():
@@ -74,3 +75,18 @@ def test_candidate_non_executed_filename_and_transaction():
     assert SQL.lstrip().startswith("-- CANDIDAT NON EXÉCUTÉ")
     assert "BEGIN;" in SQL
     assert SQL.rstrip().endswith("COMMIT;")
+
+
+def test_candidate_qualifications_are_auditable_and_immutable():
+    assert "BEFORE UPDATE OR DELETE ON public.erp_sku_tva_qualifications" in SQL
+    assert "OLD.statut IN ('confirmee', 'rejetee')" in SQL
+    assert "IF TG_OP = 'DELETE'" in SQL
+    assert "EXECUTE FUNCTION public.erp_sku_tva_historique_immuable()" in SQL
+    assert "REVOKE ALL ON FUNCTION public.erp_sku_tva_historique_immuable()" in SQL
+
+
+def test_candidate_refuses_inactive_sku_and_client_tax_self_classification():
+    assert "WHERE sku_id = v_sku AND actif = 'OUI'" in SQL
+    assert "FROM public.erp_sku_tva_qualifications" in SQL
+    assert "v_line->>'code_tva'" not in SQL
+    assert "v_line->>'classification_verifiee'" not in SQL
