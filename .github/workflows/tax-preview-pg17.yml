@@ -8,6 +8,8 @@ on:
       - 'sql/044_tva_sku_qualification_preview_pilote.sql'
       - 'sql/045_tva_preview_reconciliation_registre_sku.sql'
       - 'sql/046_lignes_facture_preuve_tva_additive.sql'
+      - 'sql/047_audit_preparation_tva_sku_lecture_seule.sql'
+      - 'tests/sql/tax_sku_readiness_pg17.sql'
       - 'tests/sql/tax_line_snapshot_fixture_pg17.sql'
       - 'tests/sql/tax_line_snapshot_integration_pg17.sql'
       - 'tests/sql/tax_preview_canonical_fixture_pg17.sql'
@@ -70,3 +72,7 @@ jobs:
         run: psql -X -v ON_ERROR_STOP=1 -f sql/046_lignes_facture_preuve_tva_additive.sql
       - name: Valider les preuves TVA par ligne et les rejets
         run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/tax_line_snapshot_integration_pg17.sql
+      - name: Installer diagnostic disponibilité TVA SKU ERP-047
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/047_audit_preparation_tva_sku_lecture_seule.sql
+      - name: Vérifier états TVA SKU et privilèges sur base jetable
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/tax_sku_readiness_pg17.sql
