@@ -34,6 +34,33 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public.erp_sku_tva_qualifications TO servi
 REVOKE ALL ON SEQUENCE public.erp_sku_tva_qualifications_qualification_id_seq FROM PUBLIC, anon, authenticated;
 GRANT USAGE ON SEQUENCE public.erp_sku_tva_qualifications_qualification_id_seq TO service_role;
 
+-- Préserver l'historique de décision : pas de suppression, et versions
+-- confirmées ou rejetées immuables. Correction = nouvelle version datée.
+CREATE OR REPLACE FUNCTION public.erp_sku_tva_historique_immuable()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path = pg_catalog, public
+AS $tax_history$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'Historique de qualification TVA non supprimable'
+            USING ERRCODE = '23514';
+    END IF;
+    IF OLD.statut IN ('confirmee', 'rejetee') THEN
+        RAISE EXCEPTION 'Qualification TVA statuée immuable : créer une version datée'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$tax_history$;
+REVOKE ALL ON FUNCTION public.erp_sku_tva_historique_immuable()
+    FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.erp_sku_tva_historique_immuable()
+    TO service_role;
+CREATE TRIGGER trg_erp_sku_tva_historique_immuable
+BEFORE UPDATE OR DELETE ON public.erp_sku_tva_qualifications
+FOR EACH ROW EXECUTE FUNCTION public.erp_sku_tva_historique_immuable();
+
 CREATE OR REPLACE FUNCTION public.erp_tax_preview_classified(
     p_lines jsonb, p_date date, p_cash boolean DEFAULT false
 ) RETURNS jsonb
@@ -81,6 +108,12 @@ BEGIN
                 USING ERRCODE = '23514';
         END IF;
         v_seen := array_append(v_seen, v_sku);
+        PERFORM 1 FROM public.sku_conditionnement
+          WHERE sku_id = v_sku AND actif = 'OUI';
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'SKU fiscal inactif ou absent'
+                USING ERRCODE = '23503';
+        END IF;
         v_amount := (v_line->>'montant_ht')::numeric;
         IF v_amount >= 1000000000000000 THEN
             RAISE EXCEPTION 'Assiette fiscale hors limites'
