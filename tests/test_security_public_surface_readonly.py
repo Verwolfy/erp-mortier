@@ -28,6 +28,9 @@ def test_audit_security_01_est_une_seule_requete_select():
     "has_function_privilege('authenticated'",
     "c.relrowsecurity", "c.reloptions", "p.prosecdef", "p.proconfig",
     "p.prorettype", "pg_catalog.trigger", "fonctions_clients_hors_trigger",
+    "has_sequence_privilege('anon'", "has_sequence_privilege('authenticated'",
+    "relations_update_client", "relations_delete_client",
+    "relations_references_client", "sequences_usage_client", "sequences_select_client",
     "pol.polrelid = c.oid",
 ])
 def test_audit_security_01_mesure_les_surfaces_attendues(expression):
