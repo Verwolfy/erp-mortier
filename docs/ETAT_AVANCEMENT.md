@@ -1,3 +1,14 @@
+## 9 novembre 2026 — ERP-052 : correctif de provenance Git, déploiement Streamlit encore non confirmé
+
+- **Code `main` corrigé** : `core/release_provenance.py` ne mémorise plus le SHA de `git HEAD` pendant toute la durée de vie de Streamlit ; un contrôle compare désormais les trois fichiers critiques (entrée ERP, provenance, Ventes) aux blobs réels de `HEAD` sans lire de secrets.
+- **Tests `main`** : 7 scénarios ajoutés dans `tests/test_release_provenance.py`. [GitHub Actions #42665420781](https://github.com/Verwolfy/erp-mortier/actions/runs/42665420781) **3295 tests réussis / zéro échec / un avertissement** et [audit #42665420769](https://github.com/Verwolfy/erp-mortier/actions/runs/42665420769) **success** sur commit `d6229abe9fb285a62c0b9d8c18e6ce6fb1c00fea`. Suivre séparément la CI des commits de documentation ultérieurs.
+- **Retest navigateur réel** [TinyFish ERP-052](https://agent.tinyfish.ai/runs/ecc1ed77-503e-41d6-a737-7effbab6e0ff) : compte ERP ADMIN authentifié, SHA hébergé toujours `15a63bf9`, écran Ventes affiche `SOF-ERP-20261109-TAX-READINESS-01` et nouveau diagnostic `sources critiques` **absent**. Ne pas prétendre que le correctif est déployé.
+- **Administration Streamlit Cloud inaccessible** [contrôle TinyFish](https://agent.tinyfish.ai/runs/1b5e4faf-e8c6-4380-9a64-5f02e8a07c78) : `Manage app` non visible avec le compte ERP. Le propriétaire doit examiner dépôt/branche/entrypoint dans Community Cloud puis effectuer un `Reboot` contrôlé si nécessaire ; cela interrompt l'accès, donc aucune action forcée. **Issue [#78](https://github.com/Verwolfy/erp-mortier/issues/78) encore ouverte**.
+- Aucun changement de base Supabase, de règles TVA, de comptabilité SCF, de rôles ni de secret ; les tickets #76 (facturation sans qualification fiscale) et #77 (achats inactifs) demeurent ouverts.
+- Rapport : `docs/ERP_052_PROVENANCE_STREAMLIT_DIAGNOSTIC_20261109.md`.
+
+---
+
 ## 9 novembre 2026 — ERP-051 : première recette navigateur Streamlit réellement authentifiée
 
 - **TinyFish + coffre Bitwarden connecté** : connexion réussie avec un compte ERP de test habilité `ADMIN` sur `https://nextgent-erp.streamlit.app/`; aucun secret copié dans GitHub ni les rapports.
