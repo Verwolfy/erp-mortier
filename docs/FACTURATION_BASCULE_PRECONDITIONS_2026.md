@@ -1,13 +1,13 @@
 # Bascule de la facturation réglementaire — préconditions opérationnelles
 
-Dernière mise à jour : 2026-10-29. **État : NON ACTIVABLE en production.**
+Dernière mise à jour : 2026-11-09. **État : NON ACTIVABLE en production.**
 
 ## Situation constatée dans `main`
 
 - `modules/ventes/service.py` conserve `TAUX_TVA=Decimal("0.19")`, `TAUX_TIMBRE=Decimal("0.01")`, `MAX_TIMBRE=Decimal("2500.00")`. `_totals` et `calculer_montants_facture` utilisent ces conventions ; `create_facture_brouillon` transmet leurs montants à `erp_sale_transaction`.
 - `core/fiscalite_facturation.py` propose un calcul pur distinct, qui exige des paramètres datés, en vigueur et confirmés. Il ne détermine pas l'assujettissement d'un SKU.
-- `sql/013_facturation_parametree.sql` porte explicitement la mention « BROUILLON : NON APPLICABLE » et remplace une fonction SQL métier. **Ne pas lancer cette migration automatiquement sur la production.**
-- La base production `wenydirqtmkywbxbxfal` contient 2 taux TVA de référence (`en_vigueur`), 3 références CNAS (`a_confirmer`), 25 comptes de nomenclature SCF ; aucune classification dans `erp_sku_fiscalite` lors de la lecture du 29/10/2026.
+- `sql/013_facturation_parametree.sql` porte explicitement la mention « BROUILLON : NON APPLICABLE ». Le brouillon bloque désormais les versions fiscales concurrentes ou non confirmées et refuse les factures en espèces à cause du timbre de quittance. **Il ne classe toujours pas la TVA par SKU et ne doit pas être appliqué en production.**
+- La base production `wenydirqtmkywbxbxfal` contient 2 taux TVA de référence (`en_vigueur`) et 3 références CNAS (`a_confirmer`). Le **9 novembre 2026**, 145 SKU sont actifs : 2 lignes `erp_sku_fiscalite` en `A_VALIDER`, aucune `VALIDEE` applicable, soit 145 SKU non qualifiés. Résultat et code exact de l'audit dans `docs/FISCAL_READINESS_20261109.md`.
 - Une référence TVA générale n'autorise pas l'application indistincte à chaque facture. Les règles de timbre d'encaissement ne doivent pas être déduites de l'ancien 1 % plafonné.
 
 ## Règles non négociables avant activation
@@ -49,4 +49,4 @@ Lecture seule de `pg_get_functiondef(public.erp_sale_transaction)` sur le projet
 
 **Conclusion technique :** la RPC réellement installée applique toujours les trois conventions fiscales historiques. Le calcul Python `core/fiscalite_facturation.py` fondé sur `TVA_VENTE_TAUX` ne peut pas être raccordé à cette RPC sans changement transactionnel coordonné, migrations testées et classification effective des SKU. Une réussite du CI du code ne démontre pas la conformité fiscale de la RPC installée.
 
-La requête complémentaire sur les volumes SKU et paramètres a été bloquée par les contrôles d'accès à l'outil ; ne pas déduire de nouveaux comptes à partir de cette tentative. Aucune mutation SQL effectuée.
+**Mise à jour 9 novembre 2026 :** la requête de diagnostic de volume SKU a été exécutée avec succès en lecture seule, après ce contrôle historique. Résultat : 145 SKU actifs, 145 sans classification fiscale `VALIDEE` applicable, 2 dossiers `A_VALIDER`. Voir `sql/audits/fiscal_sales_readiness_readonly_20261109.sql`. Aucune mutation SQL effectuée.
