@@ -1,7 +1,10 @@
 -- MIGRATION 013 : REGLES FISCALES DE FACTURATION VERSIONNEES.
 -- BROUILLON : NON APPLICABLE AVANT AUDIT ET TESTS SQL SUR TEST.
 -- Prerequis : 012 et valeurs confirmees par sources officielles.
--- Remplace la fonction issue de 005 sans recreer les tables metier.
+-- Proposition de remplacement de 005, non activable sans qualification des SKU.
+-- ATTENTION : le code 013 ne consomme pas encore les classifications
+-- erp_sku_fiscalite par ligne et ne peut PAS remplacer la RPC production.
+-- Ne jamais l'appliquer avant refonte per-SKU, essai TEST et homologation.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.erp_facture_parametre(
@@ -189,12 +192,13 @@ BEGIN
              RAISE EXCEPTION 'Avoir sur ancien taux: calcul dedie requis' USING ERRCODE='23514';
         END IF;
         v_tax := round(v_net_ht * v_taux_tva,2);
-        v_stamp := CASE WHEN p_payload->>'paiement_especes'='true'
-              THEN least(
-                  round((v_net_ht+v_tax) *
-                    public.erp_facture_parametre('TIMBRE_ESPECES_TAUX',v_date_facture,'fraction'),2),
-                    public.erp_facture_parametre('TIMBRE_ESPECES_PLAFOND',v_date_facture,'DZD'))
-              ELSE 0 END;
+        -- Le timbre sur quittance relève d'un autre fait générateur.
+        -- Aucun timbre ne peut être calculé par défaut à l'émission.
+        IF p_payload->>'paiement_especes'='true' THEN
+            RAISE EXCEPTION 'Facture especes: timbre de quittance non homologue'
+                USING ERRCODE='23514';
+        END IF;
+        v_stamp := 0;
         v_ttc := v_net_ht+v_tax+v_stamp;
         IF v_ttc>=1000000000000000 THEN
             RAISE EXCEPTION 'Montant facture trop élevé' USING ERRCODE='22023';
