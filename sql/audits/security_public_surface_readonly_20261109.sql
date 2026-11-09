@@ -14,7 +14,7 @@ WITH relations AS (
   WHERE n.nspname = 'public'
     AND c.relkind IN ('r', 'p', 'v', 'm')
 ), fonctions AS (
-  SELECT p.oid, p.prosecdef, p.proconfig,
+  SELECT p.oid, p.prosecdef, p.proconfig, p.prorettype,
          has_function_privilege('anon', p.oid, 'EXECUTE') AS anon_execute,
          has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth_execute
   FROM pg_proc p
@@ -33,6 +33,9 @@ SELECT
   (SELECT count(*) FROM relations WHERE anon_select OR auth_select) AS relations_select_client,
   (SELECT count(*) FROM relations WHERE anon_insert OR auth_insert) AS relations_insert_client,
   (SELECT count(*) FROM fonctions) AS fonctions_publiques,
+  (SELECT count(*) FROM fonctions WHERE anon_execute OR auth_execute) AS fonctions_executables_client,
+  (SELECT count(*) FROM fonctions WHERE (anon_execute OR auth_execute)
+      AND prorettype <> 'pg_catalog.trigger'::regtype) AS fonctions_clients_hors_trigger,
   (SELECT count(*) FROM fonctions WHERE prosecdef) AS fonctions_security_definer,
   (SELECT count(*) FROM fonctions WHERE prosecdef AND (anon_execute OR auth_execute)) AS definer_executables_client,
   (SELECT count(*) FROM fonctions WHERE prosecdef
