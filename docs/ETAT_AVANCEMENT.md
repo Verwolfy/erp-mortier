@@ -1,3 +1,14 @@
+## 9 novembre 2026 — ERP-046/047 exécutées sur PRINCIPALE, diagnostic fiscal visible dans Ventes
+
+- **ERP-046 réellement appliquée** : migration native `20261109144637`, SQL `sql/046_lignes_facture_preuve_tva_additive.sql`. 12 champs de preuve TVA par ligne, contrainte complète et validée, **4 lignes de facture historiques sans snapshot**. Preuve de rejet d'une TVA falsifiée sur base principale au sein d'un `BEGIN ... ROLLBACK` ; aucun test persistant.
+- **ERP-047 réellement appliquée** : migration native `20261109145442`, SQL `sql/047_audit_preparation_tva_sku_lecture_seule.sql`. RPC `erp_tva_sku_readiness(date)` pour `service_role` seulement, diagnostic daté et sans écriture. Base Supabase principale `erp-mortier` : **37 migrations**. **TEST reste INACTIVE**.
+- **Couverture mesurée sur principale au 09/11/2026** : **145 SKU actifs ; 143 sans fiche, 2 `A_VALIDER`, 0 prêt techniquement**. Aucune validation fiscale automatique, aucune modification des taux existants.
+- **Code `main`** : `modules/ventes/fiscal_repartition.py` ventile la remise globale au centime et prépare le panier pour la simulation SQL ; `modules/ventes/service.py` charge le diagnostic TVA SQL et `modules/ventes/views.py` affiche après autorisation le nombre de SKU prêts dans le panneau « TVA par SKU (contrôle) ». Marqueur de code UI `SOF-ERP-20261109-TAX-READINESS-01`. **Aucune RPC directe dans la vue** ; la CI a identifié puis permis de corriger ce garde-fou.
+- **Preuves CI** : SQL ERP-046 [#42637638708](https://github.com/Verwolfy/erp-mortier/actions/runs/42637638708) et SQL ERP-047 [#42638980492](https://github.com/Verwolfy/erp-mortier/actions/runs/42638980492) réussis ; après correction UI [tests ERP #42640443996](https://github.com/Verwolfy/erp-mortier/actions/runs/42640443996) **3 282 passés**, 0 échec, 1 avertissement et [audit #42640443872](https://github.com/Verwolfy/erp-mortier/actions/runs/42640443872) réussi sur SHA `0dbc96fe`. Documentation ajoutée ensuite : vérifier sa CI au dernier commit `main`.
+- **Détails :** `docs/ERP_046_047_PRINCIPALE_20261109.md`. **Facturation active non modernisée** : `erp_sale_transaction` et Python utilisent encore des constantes TVA/timbre historiques. Pas d'homologation légale ; requalification SKU, réécriture transactionnelle et preuve déploiement Streamlit restent nécessaires.
+
+---
+
 ## 9 novembre 2026 — ERP-045 appliquée sur Supabase PRINCIPAL : TVA SKU unifiée
 
 - **Migration exécutée** : `erp_045_tva_preview_reconciliation_registre_sku`, version native `20261109142511`, source `sql/045_tva_preview_reconciliation_registre_sku.sql`. Supabase `erp-mortier` `wenydirqtmkywbxbxfal` compte **35 migrations** ; GitHub reste à **une branche `main`**. **Supabase TEST `ffuhbmcfyexsbjwhryvj` demeure INACTIVE** conformément à la nouvelle instruction utilisateur.
