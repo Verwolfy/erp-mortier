@@ -3,7 +3,7 @@
 -- Prerequis : 012 et valeurs confirmees par sources officielles.
 -- Proposition de remplacement de 005, non activable sans qualification des SKU.
 -- ATTENTION : le code 013 ne consomme pas encore les classifications
--- erp_sku_fiscalite par ligne et ne peut PAS remplacer la RPC production.
+-- par-SKU par ligne et ne peut PAS remplacer la RPC production.
 -- Ne jamais l'appliquer avant refonte per-SKU, essai TEST et homologation.
 BEGIN;
 
