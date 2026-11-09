@@ -1,3 +1,14 @@
+## 9 novembre 2026 — ERP-051 : première recette navigateur Streamlit réellement authentifiée
+
+- **TinyFish + coffre Bitwarden connecté** : connexion réussie avec un compte ERP de test habilité `ADMIN` sur `https://nextgent-erp.streamlit.app/`; aucun secret copié dans GitHub ni les rapports.
+- **9/9 modules accessibles en lecture seule**, sans erreur visuelle bloquante : Administration, Achats, Stocks, Production, Ventes, CRM, Finance, RH, Dashboards. Run [E2E](https://agent.tinyfish.ai/runs/cb122cc1-beda-404b-8f4c-86c283f28a89) et [contre-vérification](https://agent.tinyfish.ai/runs/2951214e-2ee0-4f00-81da-eb267860224c). Aucune écriture, validation fiscale, règlement, fabrication ni changement de données.
+- **Incohérence confirmée des versions** : barre latérale indique checkout `15a63bf9d77968b4c4d0b9b6ad74b614f68c3984` mais Ventes indique `SOF-ERP-20261109-TAX-READINESS-01` (absent de ce commit GitHub). `main` avait déjà 195 commits de plus. Impossible de certifier le SHA réellement exécuté en l'état. Ticket [#78](https://github.com/Verwolfy/erp-mortier/issues/78).
+- **Données DEMO** : vue Direction signale 33 références `DEMO/SIM` incluses dans les KPI ; les indicateurs ne sont pas homologués à des fins d'exploitation réelle.
+- **Limite de couverture** : seul le profil ADMIN et la navigation en lecture ont été testés. Les sous-vues, refus des autres rôles et actions transactionnelles par le navigateur ne sont pas tous certifiés. Les protections fiscales et comptables restent inchangées. Tickets #76/#77 toujours ouverts.
+- **Rapport détaillé** : `docs/ERP_051_RECETTE_E2E_STREAMLIT_AUTHENTIFIEE_20261109.md`.
+
+---
+
 ## 9 novembre 2026 — ERP-050 : tests parcours métier/UI simulée et RPC SQL sur principale
 
 - **CI UI / suite ERP** : ajout de 5 tests dans `tests/test_erp050_ui_demo_reference_gates.py` ; GitHub Actions [#42649338058](https://github.com/Verwolfy/erp-mortier/actions/runs/42649338058) **3 287 passés, zéro échec, 1 avertissement** et audit [#42649338137](https://github.com/Verwolfy/erp-mortier/actions/runs/42649338137) **success** sur SHA `02d7203116b8e3254a9ff9db2eac76a2c001ed31`. Suite postérieure à recontrôler après derniers commits documentation.
