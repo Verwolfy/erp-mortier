@@ -8,7 +8,7 @@ SELECT 'ACHATS'::text AS parcours, (EXISTS(SELECT 1 FROM public.commandes_achats
 UNION ALL
 SELECT 'VENTES'::text AS parcours, (EXISTS(SELECT 1 FROM public.devis d JOIN public.lignes_devis l USING(devis_id) JOIN public.sku_conditionnement s USING(sku_id) WHERE d.devis_id='SIM-ERP49-DEV-1') AND EXISTS(SELECT 1 FROM public.commandes_ventes c JOIN public.lignes_commande_ventes l USING(commande_vente_id) WHERE c.commande_vente_id='SIM-ERP49-CV-1')) AS test_ok
 UNION ALL
-SELECT 'PRODUCTION'::text AS parcours, (EXISTS(SELECT 1 FROM public.ordres_fabrication o JOIN public.recettes r USING(recette_id) JOIN public.produits p USING(pf_id) WHERE o.of_id='SIM-ERP49-OF-1' AND r.actif='NON' AND p.actif='NON')) AS test_ok
+SELECT 'PRODUCTION'::text AS parcours, (EXISTS(SELECT 1 FROM public.ordres_fabrication o JOIN public.recettes r USING(recette_id) JOIN public.produits p ON p.pf_id=o.pf_id AND p.pf_id=r.pf_id WHERE o.of_id='SIM-ERP49-OF-1' AND r.actif='NON' AND p.actif='NON')) AS test_ok
 UNION ALL
 SELECT 'STOCKS'::text AS parcours, (EXISTS(SELECT 1 FROM public.sku_conditionnement s JOIN public.produits p USING(pf_id) WHERE s.sku_id='SIM-ERP49-SKU-COLLE25' AND s.actif='NON' AND p.actif='NON')) AS test_ok
 UNION ALL
