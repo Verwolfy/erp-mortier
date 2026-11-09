@@ -21,6 +21,17 @@ Aucune valeur juridique, aucun taux fiscal, aucune classification SKU fictive n'
 
 L'existence de cette CI constitue une preuve *technique SQL isolée*, mais **pas une recette complète** de `erp_sale_transaction` sur le vrai schéma ERP.
 
+## Intégration applicative non activée
+
+`modules/ventes/fiscal_preview.py` fournit `simuler_tva_sql` : un adaptateur **lecture seule** exigeant un client interne explicitement injecté, une date fiscale ISO, des montants monétaires sous forme de chaînes et un panier de SKU. Il n'accepte **aucun `code_tva` ni attestation envoyés par le navigateur** : la qualification provient de `erp_sku_tva_qualifications` consultée par la fonction PostgreSQL. Il contrôle à la réception chaque code et taux, les sources, les dates, les arrondis TVA, le détail des lignes et les sommes globales. Toute réponse absente, float, incohérente ou erreur RPC bloque l'aperçu ; aucun appel à la transaction `erp_sale_transaction`.
+
+`tests/test_fiscal_preview_rpc.py` teste ce pont avec des fausses réponses : deux taux fictifs, refus de données forgées, des erreurs réseau, dates invalides, taux ou totaux incohérents et absence d'écriture. **Ce module n'est pas branché à l'écran de création des factures**. Sans déploiement préalable de la candidate en TEST, l'appel RPC est normalement indisponible, ce qui n'affecte pas le circuit existant.
+
+## Contrôles exécutés
+
+- [GitHub Actions PostgreSQL 17 isolé #42623241192](https://github.com/Verwolfy/erp-mortier/actions/runs/42623241192) : **success**, exécution réelle de la candidate sur une base jetable, tous contrôles SQL réussis.
+- [GitHub Actions tests ERP #42623649404](https://github.com/Verwolfy/erp-mortier/actions/runs/42623649404) et [audit #42623649371](https://github.com/Verwolfy/erp-mortier/actions/runs/42623649371) : **success**, 3 192 tests sur le commit `d9cedbe`, avant l'ajout de l'adaptateur Python. Les tests du SHA final de ce lot doivent être vérifiés séparément.
+
 ## Blocages métier et techniques vérifiés dans Supabase
 
 - Production `wenydirqtmkywbxbxfal` : actif.
