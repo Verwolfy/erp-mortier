@@ -1,3 +1,14 @@
+## 9 novembre 2026 — ERP-050 : tests parcours métier/UI simulée et RPC SQL sur principale
+
+- **CI UI / suite ERP** : ajout de 5 tests dans `tests/test_erp050_ui_demo_reference_gates.py` ; GitHub Actions [#42649338058](https://github.com/Verwolfy/erp-mortier/actions/runs/42649338058) **3 287 passés, zéro échec, 1 avertissement** et audit [#42649338137](https://github.com/Verwolfy/erp-mortier/actions/runs/42649338137) **success** sur SHA `02d7203116b8e3254a9ff9db2eac76a2c001ed31`. Suite postérieure à recontrôler après derniers commits documentation.
+- **Supabase principale** : tests en `BEGIN ... ROLLBACK`, sans GRANT/RLS ni nouvelle donnée persistante. 4 parcours RPC positifs et idempotents : commandes/réceptions/stock MP ; fabrication/qualité/stock PF ; commande client/livraison ; finance/virement. 8 refus SQL confirmés + 16 RPC service_role réservées. `tests/sql/erp_050_principale_rpc_rejets_rollback.sql` exécuté : 9/9 lignes correctes, dont garde ACL 16/16. `tests/sql/erp_050_principale_parcours_lecture.sql` : 10/10 domaines validés.
+- **Défauts mis en évidence** : la RPC historique `erp_sale_transaction('DRAFT')` accepte encore un SKU actif sans qualification TVA ; essai fictif annulé par ROLLBACK. **Issue #76**, bloquante avant homologation fiscale. En Achats, RPC privilégiées acceptent des références inactives, même si vue filtre déjà ; **issue #77**. Ne pas modifier des règles fiscales ni remplacer RPC sans compatibilité et preuve.
+- **Intégrité après tests** : 4 factures, 4 lignes, 3 règlements, zéro écriture comptable héritée, 145 SKU actifs, 0 qualification TVA VALIDEE, 0 donnée temporaire `SIM-ERP50-` conservée. Projet TEST `ffuhbmcfyexsbjwhryvj` maintenu INACTIVE.
+- **Documentation détaillée** : `docs/ERP_050_RECETTES_RPC_UI_PRINCIPALE_20261109.md`. L'interface Streamlit **réellement authentifiée** et le SHA externe déployé ne sont pas vérifiables depuis ce canal ; ne pas confondre tests Streamlit simulés et E2E navigateur.
+- **Prochaine phase** : fiabiliser l'invariant achats de façon compatible, construire le moteur fiscal ERP-048 complet avec source datée et validations juridiques, puis recette sur véritable session Streamlit. Expertise comptable algérienne nécessaire avant production réglementaire.
+
+---
+
 ## 9 novembre 2026 — ERP-049 : 42 données SIM ajoutées sur Supabase PRINCIPAL
 
 - **Exécuté sur `erp-mortier`** (`wenydirqtmkywbxbxfal`) : script additif idempotent `seeds/ERP_049_demo_metiers_additif_20261109.sql`. Pré-test `BEGIN ... ROLLBACK` réussi, puis insertion transactionnelle réelle `COMMIT` ; 42 lignes portant l'identifiant `SIM-ERP49-` dans 29 tables liées.
