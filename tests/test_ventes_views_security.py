@@ -39,7 +39,7 @@ def ui(monkeypatch):
 
     sales = types.ModuleType("modules.ventes.service")
     for name in ("annuler_facture", "calculer_montants_facture", "create_facture_brouillon",
-                 "creer_bon_livraison", "creer_commande_client", "get_factures", "get_lignes_facture", "valider_facture"):
+                 "creer_bon_livraison", "creer_commande_client", "get_factures", "get_lignes_facture", "lire_diagnostic_fiscal_sku", "valider_facture"):
         setattr(sales, name, MagicMock())
     sales.get_factures.return_value = pd.DataFrame()
     sales.create_facture_brouillon.return_value = "FAC-1"
@@ -964,16 +964,14 @@ def test_tva_ui_affiche_diagnostic_sql_date_apres_autorisation(ui):
     client = ui.db.get_supabase_client.return_value
     response = client.table.return_value.select.return_value.range.return_value
     response.execute.return_value = types.SimpleNamespace(data=[], count=0)
-    client.rpc.return_value.execute.return_value = types.SimpleNamespace(data=[
+    ui.sales.lire_diagnostic_fiscal_sku.return_value = [
         {"sku_id": "SKU-1", "etat_technique": "SANS_FICHE",
          "fiches_applicables": 0, "code_tva": None}
-    ])
+    ]
 
     ui.mod._controle_tva_sku_tab("USR-1")
 
-    client.rpc.assert_called_once_with(
-        "erp_tva_sku_readiness", {"p_date": "2026-10-29"}
-    )
+    ui.sales.lire_diagnostic_fiscal_sku.assert_called_once_with("2026-10-29")
     ui.st.metric.assert_any_call("Prêts techniquement (SQL)", 0)
     ui.sales.create_facture_brouillon.assert_not_called()
 
@@ -987,7 +985,7 @@ def test_tva_ui_refuse_diagnostic_sql_incomplet(ui):
     client = ui.db.get_supabase_client.return_value
     response = client.table.return_value.select.return_value.range.return_value
     response.execute.return_value = types.SimpleNamespace(data=[], count=0)
-    client.rpc.return_value.execute.return_value = types.SimpleNamespace(data=[])
+    ui.sales.lire_diagnostic_fiscal_sku.return_value = []
 
     ui.mod._controle_tva_sku_tab("USR-1")
 
