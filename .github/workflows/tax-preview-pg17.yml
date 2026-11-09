@@ -1,0 +1,53 @@
+name: ERP - TVA SQL PostgreSQL 17 isolé
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'sql/supabase_pending/erp_tax_classification_preview_CANDIDAT_NON_EXECUTE.sql'
+      - 'tests/sql/tax_preview_fixture_pg17.sql'
+      - 'tests/sql/tax_preview_integration_pg17.sql'
+      - '.github/workflows/tax-preview-pg17.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tax_preview_sql:
+    name: Calcul TVA SQL sur base jetable fictive
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: erp_ephemeral_ci_only
+          POSTGRES_DB: erp_tax_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d erp_tax_ci"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGDATABASE: erp_tax_ci
+      PGPASSWORD: erp_ephemeral_ci_only
+    steps:
+      - name: Télécharger uniquement le code du dépôt
+        uses: actions/checkout@v4
+      - name: Installer client PostgreSQL si absent
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y postgresql-client
+          fi
+      - name: Préparer uniquement les schémas fictifs
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/tax_preview_fixture_pg17.sql
+      - name: Exécuter le candidat non déployé dans la base éphémère
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/supabase_pending/erp_tax_classification_preview_CANDIDAT_NON_EXECUTE.sql
+      - name: Vérifier calculs, accès, rejets et immutabilité
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/tax_preview_integration_pg17.sql
