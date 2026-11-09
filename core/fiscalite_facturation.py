@@ -123,3 +123,95 @@ def calculer_taxes_facture(
         "date_facture": instant.isoformat(),
         "justificatifs": traces,
     }
+
+
+def calculer_tva_lignes_classees(
+    lignes: Iterable[Mapping[str, Any]],
+    date_facture: date | str,
+    parametres: Iterable[Mapping[str, Any]],
+    *,
+    paiement_especes: bool = False,
+) -> dict[str, Any]:
+    """Préparation isolée, hors RPC, d'une facture à TVA classée par ligne.
+
+    Chaque ligne doit être explicitement classée et justifiée par le métier.
+    Le registre porte seulement les taux de référence datés :
+    TVA_TAUX_NORMAL et TVA_TAUX_REDUIT. La présence d'une référence ne
+    prouve pas que tel SKU relève de ce taux. Aucune exonération n'est
+    déduite et aucune écriture n'est réalisée.
+    """
+    if not isinstance(paiement_especes, bool) or paiement_especes:
+        raise FiscaliteNonDisponible(
+            "Timbre espèces : quittance et règle spécifique requises"
+        )
+    instant = _date(date_facture)
+    if isinstance(lignes, (str, bytes, Mapping)):
+        raise FiscaliteNonDisponible("Lignes fiscales structurées requises")
+    try:
+        items = list(lignes)
+        registre = list(parametres)
+    except (TypeError, ValueError) as exc:
+        raise FiscaliteNonDisponible("Lignes ou registre indisponibles") from exc
+    if not 1 <= len(items) <= 500:
+        raise FiscaliteNonDisponible("Nombre de lignes non autorisé")
+
+    taux: dict[str, tuple[Decimal, dict[str, str]]] = {}
+    calculs: list[dict[str, Any]] = []
+    total_ht = Decimal("0.00")
+    total_tva = Decimal("0.00")
+    skus: set[str] = set()
+    quantum = Decimal("0.01")
+    for item in items:
+        if not isinstance(item, Mapping):
+            raise FiscaliteNonDisponible("Ligne fiscale invalide")
+        sku = item.get("sku_id")
+        if not isinstance(sku, str) or not sku.strip() or len(sku) > 200:
+            raise FiscaliteNonDisponible("SKU fiscal invalide")
+        sku = sku.strip()
+        if sku in skus:
+            raise FiscaliteNonDisponible("SKU fiscal dupliqué")
+        skus.add(sku)
+        code = item.get("code_tva")
+        if code not in ("TVA_TAUX_NORMAL", "TVA_TAUX_REDUIT"):
+            raise FiscaliteNonDisponible(
+                "Classification TVA par SKU absente ou non prise en charge"
+            )
+        if item.get("classification_verifiee") is not True:
+            raise FiscaliteNonDisponible("Classification TVA non vérifiée")
+        preuve = item.get("source_classification")
+        if not isinstance(preuve, str) or not preuve.strip():
+            raise FiscaliteNonDisponible("Justificatif de classification manquant")
+        montant = _decimal(item.get("montant_ht"), "Montant HT ligne")
+        if montant < 0 or montant >= Decimal("1e15"):
+            raise FiscaliteNonDisponible("Montant de ligne non autorisé")
+        if montant != montant.quantize(quantum):
+            raise FiscaliteNonDisponible("Montant HT ligne hors précision monétaire")
+        if code not in taux:
+            t, trace = _parametre(registre, code, instant, "fraction")
+            if not Decimal("0") <= t <= Decimal("1"):
+                raise FiscaliteNonDisponible("Taux TVA hors bornes")
+            taux[code] = (t, trace)
+        t, trace = taux[code]
+        taxe = (montant * t).quantize(quantum, rounding=ROUND_HALF_UP)
+        total_ht += montant
+        total_tva += taxe
+        if total_ht + total_tva >= Decimal("1e15"):
+            raise FiscaliteNonDisponible("Facture hors plafond technique")
+        calculs.append({
+            "sku_id": sku,
+            "montant_ht": montant,
+            "code_tva": code,
+            "taux_tva": t,
+            "montant_tva": taxe,
+            "source_classification": preuve.strip(),
+            "justificatif_taux": trace,
+        })
+    return {
+        "date_facture": instant.isoformat(),
+        "montant_ht": total_ht,
+        "montant_tva": total_tva,
+        "montant_timbre": Decimal("0.00"),
+        "montant_ttc": total_ht + total_tva,
+        "lignes": calculs,
+        "statut": "CALCUL_ISOLE_NON_COMPTABILISE",
+    }
