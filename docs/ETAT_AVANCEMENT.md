@@ -1,3 +1,15 @@
+## 9 novembre 2026 — ERP-049 : 42 données SIM ajoutées sur Supabase PRINCIPAL
+
+- **Exécuté sur `erp-mortier`** (`wenydirqtmkywbxbxfal`) : script additif idempotent `seeds/ERP_049_demo_metiers_additif_20261109.sql`. Pré-test `BEGIN ... ROLLBACK` réussi, puis insertion transactionnelle réelle `COMMIT` ; 42 lignes portant l'identifiant `SIM-ERP49-` dans 29 tables liées.
+- **Inventaire des 97 tables** : 78 → **81 tables remplies**, 19 → **16 volontairement vides**. Exclusions documentées pour journaux techniques, sécurité, fiscalité, SCF/paie, consentements clients web, documents comptables et mouvements physiques.
+- **Contrôle SQL** `tests/sql/erp_049_demo_verification.sql` : **15/15 indicateurs vrais**, test d'idempotence sous ROLLBACK passé. Un contrôle a été adapté au type UUID de `scf_pieces.piece_id`.
+- **Invariants** : 4 factures, 4 lignes historiques, 3 règlements, aucune nouvelle écriture comptable, 145 SKU actifs, **0 SKU TVA `VALIDEE`**. Les 2 nouveaux SKU et les 2 recettes sont **INACTIFS**, coûts en `SIMULATION` sans preuve SCF fictive.
+- **Documentation exhaustive :** `docs/ERP_049_INVENTAIRE_PEUPlEMENT_PRINCIPALE_20261109.md`.
+- **Pas de migration**, pas de changement de RLS/GRANT, Supabase TEST maintenu INACTIVE. **CI complète et déploiement Streamlit pas encore revérifiés sur ce dernier SHA.**
+- **Suite prioritaire :** recettes UI authentifiées et transactions par RPC uniquement ; ne pas injecter des données synthétiques dans les pièces légales, flux physiques, journaux d'événements ou la fiscalité. ERP-048 moteur TVA encore non activé. Expertise comptable algérienne requise avant production réglementaire réelle.
+
+---
+
 ## 9 novembre 2026 — ERP-046/047 exécutées sur PRINCIPALE, diagnostic fiscal visible dans Ventes
 
 - **ERP-046 réellement appliquée** : migration native `20261109144637`, SQL `sql/046_lignes_facture_preuve_tva_additive.sql`. 12 champs de preuve TVA par ligne, contrainte complète et validée, **4 lignes de facture historiques sans snapshot**. Preuve de rejet d'une TVA falsifiée sur base principale au sein d'un `BEGIN ... ROLLBACK` ; aucun test persistant.
