@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'sql/supabase_pending/erp_tax_classification_preview_CANDIDAT_NON_EXECUTE.sql'
+      - 'sql/044_tva_sku_qualification_preview_pilote.sql'
       - 'tests/sql/tax_preview_fixture_pg17.sql'
       - 'tests/sql/tax_preview_integration_pg17.sql'
       - '.github/workflows/tax-preview-pg17.yml'
@@ -47,7 +48,7 @@ jobs:
           fi
       - name: Préparer uniquement les schémas fictifs
         run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/tax_preview_fixture_pg17.sql
-      - name: Exécuter le candidat non déployé dans la base éphémère
-        run: psql -X -v ON_ERROR_STOP=1 -f sql/supabase_pending/erp_tax_classification_preview_CANDIDAT_NON_EXECUTE.sql
+      - name: Exécuter exactement la migration ERP 044 sur base éphémère
+        run: psql -X -v ON_ERROR_STOP=1 -f sql/044_tva_sku_qualification_preview_pilote.sql
       - name: Vérifier calculs, accès, rejets et immutabilité
         run: psql -X -v ON_ERROR_STOP=1 -f tests/sql/tax_preview_integration_pg17.sql
