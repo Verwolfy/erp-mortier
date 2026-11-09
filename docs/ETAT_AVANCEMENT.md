@@ -1,3 +1,15 @@
+## 9 novembre 2026 — décision utilisateur : Supabase TEST INACTIVE, mutations sur PRINCIPALE et GitHub main
+
+- **Exécution réelle sur production en phase essais** : SQL `sql/044_tva_sku_qualification_preview_pilote.sql` appliqué à Supabase principal `wenydirqtmkywbxbxfal` via migration native **`20261109141222` / `erp_044_tva_sku_qualification_preview_pilote`** (`success:true`). Historique passé de 33 à 34 migrations. **Projet TEST `ffuhbmcfyexsbjwhryvj` conservé INACTIVE**, sans restauration.
+- **Objets présents** : `public.erp_sku_tva_qualifications` (table actuellement vide, RLS actif, `anon`/`authenticated` refusés), `public.erp_tax_preview_classified(jsonb,date,boolean)` (`service_role` autorisé, clients refusés), garde d'historique et déclencheur. Aucune altération de `erp_sale_transaction` ni de ses constantes de TVA/timbre.
+- **Preuve avant livraison** : GitHub `main` SHA `3134b0e2fd0bafd030bce097901bf73a8c83f8a7`, workflows [PostgreSQL 17 éphémère #42632053570](https://github.com/Verwolfy/erp-mortier/actions/runs/42632053570), [tests #42632053592](https://github.com/Verwolfy/erp-mortier/actions/runs/42632053592) et [audit #42632053565](https://github.com/Verwolfy/erp-mortier/actions/runs/42632053565) : **tous success**. Une branche distante `main` seulement.
+- **Essai sur la base principale sous `service_role`** : calcul TVA sur SKU DEMO en transaction `BEGIN ... ROLLBACK`, taux lu dans le registre réel ; aucun enregistrement de qualification test conservé (`0` ligne après rollback). Pas de facture, pas d'écriture comptable, pas de données juridiques inventées.
+- **Nouvelle divergence importante identifiée** : `public.erp_sku_fiscalite` existait déjà avec 2 `A_VALIDER`, aucune `VALIDEE`. ERP-044 ajoute un **deuxième** registre fiscal (encore vide) pour l'aperçu. **À réconcilier avant usage fonctionnel**, de préférence en conservant le référentiel déjà présent et ses justificatifs, sans transformer un dossier à valider en homologation.
+- **Documentation de preuve** : `docs/ERP_044_DEPLOIEMENT_PRINCIPAL_20261109.md` et `docs/FISCAL_TAX_V2_ETAPES_TEST_20261109.md`.
+- **Suite** : unifier le référentiel TVA par SKU, vérifier la classification/les exemptions/les remises et adapter la facturation atomique Python/SQL avant retrait des constantes historiques. Statut global **NON TERMINÉ** ; la migration pilote, elle, est bien en base principale.
+
+---
+
 ## 9 novembre 2026 — TAX-V2 : qualification TVA par SKU, SQL PostgreSQL isolé, adaptateur Python lecture seule
 
 - **Dépôt** : `Verwolfy/erp-mortier`, unique branche `main`. **Production Supabase inchangée** ; projet TEST `ffuhbmcfyexsbjwhryvj` toujours inactif.
