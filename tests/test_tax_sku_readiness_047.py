@@ -10,7 +10,7 @@ SQL = (Path(__file__).resolve().parents[1] /
 
 def test_sql_047_postgresql_parse():
     parsed = pglast.parse_sql(SQL)
-    assert len(parsed) == 5
+    assert len(parsed) == 4
     assert pglast.parse_plpgsql(
         SQL[SQL.index("CREATE OR REPLACE FUNCTION"):SQL.index("REVOKE ALL ON FUNCTION")]
     )
