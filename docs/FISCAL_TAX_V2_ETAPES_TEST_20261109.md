@@ -1,10 +1,16 @@
 # TAX-V2 — Passage de la simulation à la facturation réglementaire (9 novembre 2026)
 
+## Mise à jour finale — ERP-045 effectivement appliquée à la base principale
+
+La migration native **`20261109142511`**, fichier `sql/045_tva_preview_reconciliation_registre_sku.sql`, est exécutée avec succès sur Supabase principal. La RPC `erp_tax_preview_classified` lit désormais **uniquement `erp_sku_fiscalite`**, table préexistante ; les dossiers `A_VALIDER` continuent de bloquer le calcul. La table expérimentale ERP-044 est vide, neutralisée (droits `service_role` retirés) et non consultée. Les deux qualifications en attente ont été conservées ; aucune donnée fiscale inventée ni aucune ligne d'essai persistante. Le registre natif comporte maintenant **35 migrations**. Essai avec `service_role` réussi sous `BEGIN ... ROLLBACK` sur la principale.
+
+Preuves et suites : `docs/ERP_045_RECONCILIATION_TVA_PRINCIPALE_20261109.md`. **Supabase TEST reste INACTIVE**. La refonte active de `erp_sale_transaction` et de `modules/ventes/service.py` est toujours à réaliser ; ni l'ERP-044 ni l'ERP-045 ne constituent une homologation juridique.
+
 ## Mise à jour — essais sur base principale, ERP-044 appliquée
 
 Selon décision explicite du propriétaire, **Supabase TEST reste INACTIVE** ; les étapes SQL se font désormais directement sur `erp-mortier` principal et le code sur `main`. **ERP-044 est effectivement appliquée sur Supabase principal**, migration native `20261109141222`, SQL dans `sql/044_tva_sku_qualification_preview_pilote.sql`. Les objets `erp_sku_tva_qualifications` et `erp_tax_preview_classified` existent, permissions contrôlées ; test de calcul sur un SKU DEMO réussi dans une transaction totalement annulée (0 ligne fictive conservée). Détail : `docs/ERP_044_DEPLOIEMENT_PRINCIPAL_20261109.md`.
 
-**Attention — double référentiel à résoudre** : `erp_sku_fiscalite` préexistante porte 2 lignes `A_VALIDER`, aucune `VALIDEE` ; la nouvelle table pilote ERP-044 est vide. Ni l'une ni l'autre n'autorise pour l'instant une facturation réelle par SKU. L'ancienne transaction `erp_sale_transaction` conserve ses constantes historiques et n'a pas été modifiée. La suite devra réconcilier le modèle fiscal préexistant, sans inventer de validation.
+**Historique avant ERP-045 (divergence désormais neutralisée)** : `erp_sku_fiscalite` préexistante porte 2 lignes `A_VALIDER`, aucune `VALIDEE` ; la nouvelle table pilote ERP-044 est vide. Ni l'une ni l'autre n'autorise pour l'instant une facturation réelle par SKU. L'ancienne transaction `erp_sale_transaction` conserve ses constantes historiques et n'a pas été modifiée. La suite devra réconcilier le modèle fiscal préexistant, sans inventer de validation.
 
 ## Historique de préparation (état antérieur au déploiement ERP-044)
 
