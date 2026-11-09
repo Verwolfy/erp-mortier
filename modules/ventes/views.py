@@ -26,6 +26,7 @@ from modules.ventes.service import (
     creer_commande_client,
     get_factures,
     get_lignes_facture,
+    lire_diagnostic_fiscal_sku,
     valider_facture,
 )
 
@@ -777,10 +778,7 @@ def _controle_tva_sku_tab(user_id: str) -> None:
     # réglementaires et les conflits de versions. Aucun calcul ni écriture
     # de TVA en facture n'est effectué par cet affichage.
     try:
-        sql_response = get_supabase_client().rpc(
-            "erp_tva_sku_readiness", {"p_date": reference_date}
-        ).execute()
-        sql_rows = sql_response.data
+        sql_rows = lire_diagnostic_fiscal_sku(reference_date)
         etats_autorises = frozenset({
             "SANS_FICHE", "A_VALIDER", "CONFLIT_VERSIONS",
             "HORS_MOTEUR_PILOTE", "TAUX_A_VERIFIER",
