@@ -71,7 +71,7 @@ BEGIN
         IF jsonb_typeof(v_line) <> 'object'
            OR jsonb_typeof(v_line->'sku_id') <> 'string'
            OR jsonb_typeof(v_line->'montant_ht') <> 'string'
-           OR (v_line->>'montant_ht') !~ '^[0-9]{1,15}(\\.[0-9]{1,2})?$' THEN
+           OR (v_line->>'montant_ht') !~ '^[0-9]{1,15}(\.[0-9]{1,2})?$' THEN
             RAISE EXCEPTION 'Ligne fiscale ou montant décimal invalide'
                 USING ERRCODE = '22023';
         END IF;
