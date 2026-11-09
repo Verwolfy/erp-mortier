@@ -15,6 +15,11 @@
 | Vues non lisibles par `service_role` | 0 |
 | Relations accessibles en SELECT par `anon` ou `authenticated` | 0 |
 | Relations accessibles en INSERT par `anon` ou `authenticated` | 0 |
+| Relations accessibles en UPDATE par `anon` ou `authenticated` | 0 |
+| Relations accessibles en DELETE par `anon` ou `authenticated` | 0 |
+| Relations autorisées en REFERENCES à `anon` ou `authenticated` | 0 |
+| Séquences du schéma `public` | 11 |
+| Séquences accessibles en USAGE/SELECT par `anon` ou `authenticated` | 0 |
 | Fonctions publiques | 39 |
 | Fonctions exécutables par `anon` ou `authenticated` | 8 |
 | Parmi elles, fonctions ordinaires hors `RETURNS trigger` | 0 |
@@ -31,7 +36,7 @@
 ## Mesures et suites nécessaires
 
 - Rejouer le SQL en lecture seule après chaque migration affectant `public` ou les privilèges, et comparer les compteurs à une référence auditable.
-- Pour un audit complet, étendre le périmètre à `UPDATE`, `DELETE`, droits de schéma, séquences, privilèges hérités, fonctions et vues dans d'autres schémas exposés, rôles personnalisés et configurations REST.
+- Pour un audit complet, étendre le périmètre aux droits de schéma, privilèges hérités, fonctions et vues dans d'autres schémas exposés, rôles personnalisés et configurations REST. Le présent audit couvre déjà `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `REFERENCES` et les séquences `USAGE`/`SELECT` du schéma `public`.
 - Examiner les 18 fonctions `SECURITY DEFINER` individuellement : vérification d'identité, paramétrage du `search_path`, schémas d'exécution et logique métier ; **ne jamais ouvrir automatiquement les droits**.
 - Conserver les données `DEMO/SIM`. Ne faire aucune migration d'index ou de facturation en production avant des tests intégrés sur une base isolée.
 - Tests statiques `tests/test_security_public_surface_readonly.py` : analyse du SQL avec `pglast` et contrôle des primitives auditées.
