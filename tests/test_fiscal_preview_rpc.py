@@ -50,8 +50,8 @@ def test_preview_lecture_seule_sans_classes_client():
         "p_date": DATE, "p_cash": False,
     })
     db.rpc.return_value.execute.assert_called_once_with()
-    assert "insert" not in db.method_calls
-    assert "update" not in db.method_calls
+    db.table.assert_not_called()
+    db.postgrest.assert_not_called()
 
 
 @pytest.mark.parametrize("corrupted", [
@@ -142,3 +142,33 @@ def test_preview_error_rpc_refuse_sans_second_appel():
 def test_preview_refuse_client_absent():
     with pytest.raises(ApercuFiscalIndisponible, match="Client serveur"):
         simuler_tva_sql(db_client=None, lignes=INPUT, date_facture=DATE)
+
+
+def test_preview_deux_taux_fictifs_et_sommes_atomiques():
+    response = payload()
+    response["lignes"].append({
+        "sku_id": "SKU-FICTIF-R",
+        "montant_ht": "50.00",
+        "montant_tva": "3.50",
+        "code_tva": "TVA_TAUX_REDUIT",
+        "taux_tva": "0.07",
+        "source_classification": "QUALIFICATION-TEST",
+        "source_taux": "TAUX-TEST",
+        "date_verification_classification": "2026-01-02",
+        "date_verification_taux": "2026-01-03",
+    })
+    response.update(montant_ht="150.00", montant_tva="23.50",
+                    montant_ttc="173.50")
+    lines = INPUT + [{"sku_id": "SKU-FICTIF-R", "montant_ht": "50.00"}]
+    db = client(response)
+    assert simuler_tva_sql(
+        db_client=db, lignes=lines, date_facture=DATE
+    )["montant_tva"] == "23.50"
+    assert db.rpc.call_args.args[1]["p_lines"] == lines
+
+
+def test_preview_rejette_resultats_desordonnes():
+    response = payload()
+    response["lignes"][0]["sku_id"] = "SKU-FICTIF-R"
+    with pytest.raises(ApercuFiscalIndisponible, match="SKU retourné"):
+        simuler_tva_sql(db_client=client(response), lignes=INPUT, date_facture=DATE)
