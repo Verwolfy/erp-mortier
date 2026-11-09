@@ -29,7 +29,9 @@ def test_parametres_non_confirmes_refuses():
     assert "statut_juridique = 'en_vigueur'" in SQL
     assert "niveau_confiance = 'CONFIRMEE'" in SQL
     assert "v_nombre <> 1 OR v_valeur IS NULL" in SQL
-    assert "public.erp_facture_parametre('TIMBRE_ESPECES_PLAFOND'" in SQL
+    assert "public.erp_facture_parametre('TIMBRE_ESPECES_PLAFOND'" not in SQL
+    assert "v_stamp := 0;" in SQL
+    assert "Facture especes: timbre de quittance non homologue" in SQL
 
 
 def test_rpc_service_role_seulement():
