@@ -1,3 +1,14 @@
+## 9 novembre 2026 — ERP-045 appliquée sur Supabase PRINCIPAL : TVA SKU unifiée
+
+- **Migration exécutée** : `erp_045_tva_preview_reconciliation_registre_sku`, version native `20261109142511`, source `sql/045_tva_preview_reconciliation_registre_sku.sql`. Supabase `erp-mortier` `wenydirqtmkywbxbxfal` compte **35 migrations** ; GitHub reste à **une branche `main`**. **Supabase TEST `ffuhbmcfyexsbjwhryvj` demeure INACTIVE** conformément à la nouvelle instruction utilisateur.
+- **Réconciliation des référentiels** : la RPC de simulation `erp_tax_preview_classified(jsonb,date,boolean)` consulte maintenant exclusivement la table existante `public.erp_sku_fiscalite` ; elle exige `VALIDEE`, la paire catégorie/code NORMAL ou REDUIT, les justificatifs, le validateur, les dates applicables et un taux réglementaire unique confirmé. Les `2` entrées existantes `A_VALIDER` ne sont **pas activées**. La table pilote créée par ERP-044 reste vide, est commentée comme obsolète et n'est plus accessible en écriture ni en lecture à `service_role`.
+- **Preuves avant application** : [PostgreSQL 17 jetable ERP-044/045 #42633745922](https://github.com/Verwolfy/erp-mortier/actions/runs/42633745922) `success` ; [tests ERP #42633801815](https://github.com/Verwolfy/erp-mortier/actions/runs/42633801815) `success`, **3 236 passed** et 1 avertissement ; [audit #42633801706](https://github.com/Verwolfy/erp-mortier/actions/runs/42633801706) `success` en tentative 2 après un échec intermittent sur le test PDF NextGen sans rapport avec TAX-V2.
+- **Preuve après application sur PRINCIPALE** : `apply_migration` retourne `success:true`. Lecture SQL confirme 35 migrations, RPC lisant exclusivement `erp_sku_fiscalite`, droits refusés à `anon`/`authenticated` et maintenus pour la RPC sous `service_role`, table pilote à 0 ligne. Un test transactionnel avec classification fictive a réussi sous `service_role`, suivi d'un `ROLLBACK`. Relecture : **2 qualifications à valider, 0 validée, 0 trace de test conservée**.
+- **Limite** : `erp_sale_transaction` et `modules/ventes/service.py` utilisent toujours les constantes TVA/timbre héritées. Les factures mixtes, avoirs, remises globales et exonérations nécessitent une nouvelle transaction atomique et qualification métier ; ne pas déclarer l'ERP juridiquement homologué. Données de simulation autorisées mais validation juridique non inventée.
+- **Dossier complet** : `docs/ERP_045_RECONCILIATION_TVA_PRINCIPALE_20261109.md`.
+
+---
+
 ## 9 novembre 2026 — décision utilisateur : Supabase TEST INACTIVE, mutations sur PRINCIPALE et GitHub main
 
 - **Exécution réelle sur production en phase essais** : SQL `sql/044_tva_sku_qualification_preview_pilote.sql` appliqué à Supabase principal `wenydirqtmkywbxbxfal` via migration native **`20261109141222` / `erp_044_tva_sku_qualification_preview_pilote`** (`success:true`). Historique passé de 33 à 34 migrations. **Projet TEST `ffuhbmcfyexsbjwhryvj` conservé INACTIVE**, sans restauration.
