@@ -22,6 +22,6 @@ SELECT
       WHERE period_id='SIM-ERP49-COST-P1' AND of_id='SIM-ERP49-OF-1' AND valeur=8) AS inducteur_ok,
     (SELECT count(*)=0 FROM public.factures WHERE facture_id LIKE 'SIM-ERP49-%') AS pas_de_facture_factice_ok,
     (SELECT count(*)=0 FROM public.reglements WHERE reglement_id LIKE 'SIM-ERP49-%') AS pas_de_reglement_factice_ok,
-    (SELECT count(*)=0 FROM public.scf_pieces WHERE piece_id LIKE 'SIM-ERP49-%') AS pas_de_piece_scf_factice_ok,
+    (SELECT count(*)=0 FROM public.scf_pieces WHERE piece_id::text LIKE 'SIM-ERP49-%') AS pas_de_piece_scf_factice_ok,
     (SELECT count(*)=0 FROM public.erp_sku_fiscalite
       WHERE sku_id LIKE 'SIM-ERP49-%') AS pas_de_qualification_fiscale_inventee_ok;
