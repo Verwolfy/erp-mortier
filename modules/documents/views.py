@@ -210,7 +210,6 @@ def show_documents_page():
                     "Télécharger le PDF de consultation", pdf_bytes,
                     file_name=f"copie_erp_{snapshot['id'].replace('/', '_')}.pdf",
                     mime="application/pdf", key="ng_operation_print_download",
-                    on_click="ignore",
                 )
     kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind", help=field_help("Type de document", module="documents"))
     doc_key = "nextgen_doc_draft"
