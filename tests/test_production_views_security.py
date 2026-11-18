@@ -558,6 +558,40 @@ def test_product_unit_incompatible_with_package_fails(ui):
                                _prod_case('PF-005','KG'), _material_case('MP-011'))
 
 
+def test_missing_product_unit_is_explicit_and_blocks_of(ui):
+    """Un SKU en sac ne doit jamais transformer une unité NULL en KG implicite."""
+    products = _prod_case('BOND-C1T', 'KG')
+    products.loc[0, 'unite_production'] = None
+    sku = _sku_case('NG-SKU-BOND-C1T-SAC-5KG', 'BOND-C1T', 'SAC', 5, 'NG-EMB-SAC-5KG')
+    materials = _material_case('NG-EMB-SAC-5KG')
+    with pytest.raises(ValueError, match='Unité de production non renseignée pour BOND-C1T'):
+        ui.mod._sku_pack_spec(sku, products, materials)
+    ui.prod.get_recettes.return_value = pd.DataFrame([{
+        'recette_id': 'REC-TEST', 'pf_id': 'BOND-C1T',
+        'version': 'v1', 'actif': 'OUI', 'rendement_unite': 100,
+    }])
+    ui.mod._of_tab('USR-1', True, products, pd.DataFrame([sku]), materials)
+    ui.st.error.assert_called()
+    ui.prod.create_ordre_fabrication.assert_not_called()
+
+
+def test_bond_c1t_5kg_unit_kg_is_compatible_but_not_a_recipe(ui):
+    sku = _sku_case('NG-SKU-BOND-C1T-SAC-5KG', 'BOND-C1T', 'SAC', 5, 'NG-EMB-SAC-5KG')
+    spec = ui.mod._sku_pack_spec(
+        sku, _prod_case('BOND-C1T', 'KG'), _material_case('NG-EMB-SAC-5KG'),
+    )
+    assert spec['pf_unit'] == 'KG'
+    assert ui.mod._sku_base_quantity(10, spec) == 50
+    ui.prod.get_recettes.return_value = pd.DataFrame([{
+        'recette_id': 'REC-AUTRE', 'pf_id': 'PF-AUTRE',
+        'version': 'v1', 'actif': 'OUI', 'rendement_unite': 100,
+    }])
+    ui.mod._of_tab('USR-1', True, _prod_case('BOND-C1T', 'KG'),
+                   pd.DataFrame([sku]), _material_case('NG-EMB-SAC-5KG'))
+    ui.st.warning.assert_called_with('Aucune recette active pour ce produit.')
+    ui.prod.create_ordre_fabrication.assert_not_called()
+
+
 def test_old_cart_with_packaging_cannot_create_recipe(ui):
     cart_key = ui.mod._cart_key('USR-1')
     ui.st.session_state[cart_key] = {'pf_id': 'PF-1', 'yield': '10.0', 'lines': [
