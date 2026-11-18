@@ -7,6 +7,8 @@ même operation_id (idempotence de sql/002_atomic_stock_movement.sql).
 from __future__ import annotations
 
 import logging
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 import pandas as pd
@@ -163,6 +165,86 @@ def _mark_stocks_activity() -> None:
     st.session_state["_erp_stocks_interacted"] = True
 
 
+def _display_value(qty: object, cost: object) -> str | None:
+    """Montant en DZD affiché uniquement lorsque le PMP est connu."""
+    if cost is None or pd.isna(cost):
+        return None
+    try:
+        q, p = Decimal(str(qty)), Decimal(str(cost))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError("Stock ou PMP invalide") from exc
+    if not q.is_finite() or not p.is_finite() or q < 0 or p < 0:
+        raise ValueError("Stock ou PMP invalide")
+    return format((q * p).quantize(Decimal("0.01")), "f")
+
+
+def _statement_tab() -> None:
+    """État périodique, lecture exhaustive bornée et sans écriture SQL."""
+    st.subheader("État des mouvements MP / PF")
+    st.caption("Quantités et valorisation DZD sur période. Aucun retour client, rebut ou perte n'est "
+               "identifiable de façon fiable dans le journal actuel : ces colonnes restent non renseignées.")
+    start = st.date_input("Du (inclus)", value=date.today().replace(day=1),
+                          key="stocks_statement_start")
+    end = st.date_input("Au (inclus)", value=date.today(), key="stocks_statement_end")
+    mode = st.radio("Présentation", ["Non valorisé (quantités)", "Valorisé (DZD)"],
+                    key="stocks_statement_mode", horizontal=True)
+    if not st.button("Calculer l'état des mouvements", key="stocks_statement_load",
+                     on_click=_mark_stocks_activity):
+        return
+    from core.strict_reads import fetch_data_strict, DataReadError
+    from modules.stocks.stock_statement import build_stock_statement, StockStatementError
+    try:
+        # Historique intégral exigé : une pagination partielle fausserait le stock initial.
+        stocks_mp = fetch_data_strict("stock_actuel", max_rows=10000)
+        stocks_pf = fetch_data_strict("stock_actuel_pf", max_rows=10000)
+        movements_mp = fetch_data_strict("mouvements", max_rows=10000)
+        movements_pf = fetch_data_strict("mouvements_pf", max_rows=10000)
+        materials = fetch_data_strict("matieres_premieres", max_rows=10000)
+        skus = fetch_data_strict("sku_conditionnement", max_rows=10000)
+        products = fetch_data_strict("produits", max_rows=10000)
+        names = {p["pf_id"]: p.get("nom") or p["pf_id"] for p in products}
+        labels_mp = {m["mp_id"]: (m.get("nom") or m["mp_id"], m.get("unite_stock") or "")
+                     for m in materials}
+        labels_pf = {s["sku_id"]: (
+            f"{names.get(s['pf_id'], s['pf_id'])} — {s.get('format') or ''}",
+            s.get("unite_vente") or "") for s in skus}
+        report_mp = build_stock_statement(
+            stocks_mp, movements_mp, item_type="MP",
+            start_date=start.isoformat(), end_date=end.isoformat(), labels=labels_mp)
+        report_pf = build_stock_statement(
+            stocks_pf, movements_pf, item_type="PF",
+            start_date=start.isoformat(), end_date=end.isoformat(), labels=labels_pf)
+    except (PermissionError, DataReadError, StockStatementError, ValueError, KeyError,
+            TypeError, AttributeError) as exc:
+        _LOG.warning("État des stocks non vérifiable (%s)", type(exc).__name__)
+        st.error("État non disponible : droits, historique, période ou données incohérents. "
+                 "Aucun état partiel n'est présenté.")
+        return
+    columns_qty = ["article", "designation", "unite", "stock_initial", "entrees",
+                   "sorties", "retours_clients", "pertes", "stock_final", "tracabilite"]
+    columns_value = columns_qty + [
+        "pmp_actuel_dzd", "valeur_stock_actuel_dzd",
+        "valeur_initiale_dzd", "valeur_entrees_dzd", "valeur_sorties_dzd",
+        "valeur_finale_historique_dzd", "valorisation"]
+    selected = columns_value if mode == "Valorisé (DZD)" else columns_qty
+    for title, rows in (("Matières premières et emballages", report_mp),
+                        ("Produits finis (unités SKU)", report_pf)):
+        st.subheader(title)
+        df = pd.DataFrame(rows, columns=selected)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.download_button(
+            f"Exporter CSV — {title}", data=df.to_csv(index=False, sep=";").encode("utf-8-sig"),
+            file_name=("etat_mp" if rows is report_mp else "etat_pf") +
+                      f"_{start.isoformat()}_{end.isoformat()}.csv",
+            mime="text/csv", key="stocks_statement_export_" +
+            ("mp" if rows is report_mp else "pf"),
+        )
+    st.caption("Stock initial/final reconstitué depuis le stock courant et TOUS les mouvements "
+               "historiques. Les coûts historiques proviennent des mouvements enregistrés, "
+               "pas du PMP actuel. Un historique sans prix ou un stock antérieur non tracé "
+               "rend la valorisation historique indisponible. Rapport de gestion non certifié SCF.")
+
+
 def show_stocks_page():
     st.title("📦 Gestion des Stocks")
 
@@ -176,7 +258,7 @@ def show_stocks_page():
     # st.tabs exécute les trois panneaux, même lorsqu'un seul est visible.
     # Une sélection explicite évite les lectures et formulaires hors écran.
     panels = ("📊 État des Stocks", "🔄 Entrée Manuelle (hors BR)",
-              "📋 Historique des Mouvements")
+              "📋 Historique des Mouvements", "📈 État périodique MP / PF")
     active_panel = st.selectbox(
         "Vue Stocks", panels, key="_erp_stocks_active_panel",
         on_change=_mark_stocks_activity,
@@ -187,6 +269,9 @@ def show_stocks_page():
     df_mp_global = (get_mp_actives()
                     if active_panel == panels[1] and can_write
                     else pd.DataFrame())
+
+    if active_panel == panels[3]:
+        _statement_tab()
 
     # --- ONGLET 1 : ÉTAT DES STOCKS ---
     if active_panel == panels[0]:
@@ -221,8 +306,15 @@ def show_stocks_page():
 
             show_context_help(st, "stocks.vrac")
             if not df_vrac.empty:
+                df_vrac = df_vrac.copy()
+                df_vrac["valeur_stock_dzd"] = df_vrac.apply(
+                    lambda r: _display_value(r["quantite_disponible"], r["cmp_actuel"]), axis=1)
+                st.caption("PMP = coût moyen pondéré unitaire actuel. Valeur = quantité × PMP (DZD).")
                 st.dataframe(
-                    df_vrac[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
+                    df_vrac[["mp_id", "nom", "quantite_disponible", "unite_stock",
+                             "cmp_actuel", "valeur_stock_dzd", "stock_mini", "derniere_maj"]].rename(
+                        columns={"cmp_actuel": "PMP (DZD/unité)",
+                                 "valeur_stock_dzd": "Valeur stock (DZD)"}),
                     use_container_width=True, hide_index=True
                 )
             else:
@@ -232,8 +324,15 @@ def show_stocks_page():
 
             show_context_help(st, "stocks.emballages")
             if not df_emb.empty:
+                df_emb = df_emb.copy()
+                df_emb["valeur_stock_dzd"] = df_emb.apply(
+                    lambda r: _display_value(r["quantite_disponible"], r["cmp_actuel"]), axis=1)
+                st.caption("PMP = coût moyen pondéré unitaire actuel. Valeur = quantité × PMP (DZD).")
                 st.dataframe(
-                    df_emb[["mp_id", "nom", "quantite_disponible", "unite_stock", "cmp_actuel", "stock_mini", "derniere_maj"]],
+                    df_emb[["mp_id", "nom", "quantite_disponible", "unite_stock",
+                            "cmp_actuel", "valeur_stock_dzd", "stock_mini", "derniere_maj"]].rename(
+                        columns={"cmp_actuel": "PMP (DZD/unité)",
+                                 "valeur_stock_dzd": "Valeur stock (DZD)"}),
                     use_container_width=True, hide_index=True
                 )
             else:
@@ -250,8 +349,16 @@ def show_stocks_page():
                 df_skus_prods = pd.merge(df_skus, df_prods[['pf_id', 'nom']], on='pf_id', how='left')
                 df_skus_prods['nom_complet'] = df_skus_prods['nom'] + " - " + df_skus_prods['format'].fillna("")
                 df_display_pf = pd.merge(df_stock_pf, df_skus_prods[['sku_id', 'nom_complet', 'unite_vente']], on='sku_id', how='left')
+                df_display_pf["valeur_stock_dzd"] = df_display_pf.apply(
+                    lambda r: _display_value(r["quantite_disponible"], r["cout_revient"]), axis=1)
+                st.caption("PMP PF = coût moyen pondéré par unité SKU, pas le coût par kg/L. "
+                           "Valeur = quantité SKU × PMP (DZD).")
                 st.dataframe(
-                    df_display_pf[["sku_id", "nom_complet", "quantite_disponible", "unite_vente", "cout_revient", "derniere_maj"]],
+                    df_display_pf[["sku_id", "nom_complet", "quantite_disponible",
+                                   "unite_vente", "cout_revient", "valeur_stock_dzd",
+                                   "derniere_maj"]].rename(
+                        columns={"cout_revient": "PMP PF (DZD/SKU)",
+                                 "valeur_stock_dzd": "Valeur stock (DZD)"}),
                     use_container_width=True, hide_index=True
                 )
             else:
