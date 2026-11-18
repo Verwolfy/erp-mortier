@@ -140,7 +140,10 @@ def build_stock_statement(
         # L'absence de coûts dans une partie du journal ne doit pas être masquée
         # par une valeur de stock reconstituée ou par un PMP courant.
         val_entry = valuation(entry_lines)
-        val_exit = valuation(exit_lines)
+        # Les sorties sont présentées comme un montant positif dans le tableau ;
+        # leur signe négatif n'est appliqué qu'au solde de valorisation.
+        raw_exit = valuation(exit_lines)
+        val_exit = -raw_exit if raw_exit is not None else None
         if final_value is not None and final_value < Decimal("-0.01"):
             raise StockStatementError(f"Valeur historique négative : {article}")
         name, unit = (labels or {}).get(article, (article, ""))
