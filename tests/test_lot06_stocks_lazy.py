@@ -87,7 +87,8 @@ def test_navigation_tracks_activity_without_renewing_session(ui):
     calls = [call for call in ui.st.selectbox.call_args_list
              if call.args and call.args[0] in {"Vue Stocks", "Catégorie de stock"}]
     assert [call.args[0] for call in calls] == ["Vue Stocks", "Catégorie de stock"]
-    assert all(len(call.args[1]) == 3 for call in calls)
+    assert len(calls[0].args[1]) == 4  # nouvelle vue État périodique MP/PF
+    assert len(calls[1].args[1]) == 3  # catégories de stock inchangées
     assert all(call.kwargs["on_change"] is ui.mod._mark_stocks_activity
                for call in calls)
     ui.mod._mark_stocks_activity()
