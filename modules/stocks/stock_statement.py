@@ -162,3 +162,10 @@ def build_stock_statement(
                               else "Historique non valorisable intégralement"),
         })
     return result
+
+
+def current_stock_value(quantity: object, pmp: object) -> str | None:
+    """Valorisation actuelle affichable, jamais estimée si PMP absent."""
+    qty = _num(quantity, "Stock actuel")
+    cost = _num(pmp, "PMP actuel", nullable=True)
+    return _money(qty * cost) if cost is not None else None
