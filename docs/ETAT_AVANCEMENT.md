@@ -1,3 +1,14 @@
+## 18 novembre 2026 — ERP-054 : remarques testeur, PMP, états stock et impressions internes
+
+- **PMP MP/PF** : calcul moyen pondéré déjà en place dans la RPC de stock ; nouvel affichage explicite PMP DZD/unité et valeur du stock courant `quantité × PMP`, sans supposer un prix pour les stocks non valorisés. FIFO concerne le prélèvement physique des lots, pas la valeur des sorties.
+- **État périodique** : quatrième vue Stocks, quantités et valorisation historique aux prix enregistrés, dates inclusives, CSV. Lecture stricte de l'intégralité des journaux (borne 10 000) et refus des données incomplètes ; stock initial reconstitué, non certifié comme inventaire. Retours clients et pertes restent non renseignés, faute de type d'opération distinct. [Issue #80](https://github.com/Verwolfy/erp-mortier/issues/80).
+- **Documents** : depuis Documents administratifs, génération en lecture seule de copies PDF par référence exacte pour OF, BL, BR, commandes client/fournisseur et aperçu de facture. Documents non signés/non émis ; **facture NON VALABLE fiscalement** tant que TVA SKU et registre d'émission ne sont pas homologués. [Issue #81](https://github.com/Verwolfy/erp-mortier/issues/81), fiscal #76.
+- **OF du testeur** : erreur unité BOND déjà corrigée en ERP-053 (16 produits KG, 48 SKU conformes) ; recettes BOND toujours non validées, donc pas d'OF réel. [Issue #79](https://github.com/Verwolfy/erp-mortier/issues/79).
+- **Production Supabase** : audit en lecture seule uniquement ; aucune écriture SQL ERP-054. Projet TEST inactif. Tests ajoutés pour état stock et PDF, tests UI navigation adaptés. CI du dernier commit à confirmer, test navigateur hébergé non effectué.
+- Rapport complet : `docs/ERP_054_RETOUR_TESTEUR_STOCKS_DOCUMENTS_20261118.md`.
+
+---
+
 ## 18 novembre 2026 — ERP-053 : erreur OF BOND-C1T 5 kg diagnostiquée et unité KG rétablie
 
 - **Cause confirmée sur Supabase principal** : `BOND-C1T` avait `unite_production=NULL`, malgré SKU `NG-SKU-BOND-C1T-SAC-5KG` cohérent (`SAC`, poids/facteur 5, emballage actif en U). Même défaut pour **16 produits FENEK-BOND** ; aucun n'avait de recette active.
