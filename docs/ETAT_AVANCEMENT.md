@@ -1,3 +1,15 @@
+## 18 novembre 2026 — ERP-053 : erreur OF BOND-C1T 5 kg diagnostiquée et unité KG rétablie
+
+- **Cause confirmée sur Supabase principal** : `BOND-C1T` avait `unite_production=NULL`, malgré SKU `NG-SKU-BOND-C1T-SAC-5KG` cohérent (`SAC`, poids/facteur 5, emballage actif en U). Même défaut pour **16 produits FENEK-BOND** ; aucun n'avait de recette active.
+- **Correction atomique exécutée** : `unite_production='KG'` sur les 16 produits BOND uniquement, après contrôle strict des SKU et de l'absence de recettes actives. Post-contrôle : **16 BOND KG, 0 NULL, 0 recette active, 0 OF BOND**. Les autres familles (notamment FLOW) restent non qualifiées.
+- **Code `main`** : message spécifique quand l'unité de production manque ; aucune conversion KG/L implicite. Deux tests de non-régression (refus NULL et conversion BOND 5 kg sans recette fictive).
+- **Suite métier non résolue** : l'écran doit ensuite afficher `Aucune recette active pour ce produit.` ; aucune formulation technique commerciale ne sera inventée. Qualification laboratoire requise avant création d'une recette et d'un OF. [Issue #79](https://github.com/Verwolfy/erp-mortier/issues/79).
+- **Vérification hébergée non effectuée** : TinyFish n'a pas démarré le navigateur faute de solde ; l'écart de version Streamlit [#78](https://github.com/Verwolfy/erp-mortier/issues/78) subsiste. Ne pas confondre correction DB confirmée et validation E2E non réalisée.
+- **Invariants** : 0 fiscalité SKU VALIDEE, 0 écriture comptable, aucune création OF/recette/stock ni modification TVA/SCF.
+- Rapport : `docs/ERP_053_BOND_UNITES_ET_OF_20261118.md`. Vérifier le résultat de la CI lancée sur `30761a06c736695fe61441854995f712e10df6fc`.
+
+---
+
 ## 9 novembre 2026 — ERP-052 : correctif de provenance Git, déploiement Streamlit encore non confirmé
 
 - **Code `main` corrigé** : `core/release_provenance.py` ne mémorise plus le SHA de `git HEAD` pendant toute la durée de vie de Streamlit ; un contrôle compare désormais les trois fichiers critiques (entrée ERP, provenance, Ventes) aux blobs réels de `HEAD` sans lire de secrets.
