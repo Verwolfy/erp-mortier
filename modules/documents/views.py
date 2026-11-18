@@ -186,6 +186,32 @@ def show_documents_page():
         from modules.documents.product_sheets import show_product_sheets_page
         show_product_sheets_page()
         return
+    with st.expander("Imprimer une opération ERP enregistrée (copie interne)", expanded=False):
+        st.caption("OF, BL, BR, factures et commandes : consultation par référence exacte. "
+                   "Aucune écriture en base ; les factures restent NON VALABLES fiscalement.")
+        from modules.documents.erp_print import (
+            KINDS, OperationPrintError, load_operation_snapshot, render_operation_pdf,
+        )
+        operation_kind = st.selectbox("Opération enregistrée", list(KINDS),
+                                      key="ng_operation_print_kind")
+        operation_id = st.text_input("Référence exacte de l'opération",
+                                     key="ng_operation_print_id", max_chars=128)
+        if st.button("Préparer la copie PDF", key="ng_operation_print_load"):
+            try:
+                snapshot = load_operation_snapshot(operation_kind, operation_id.strip())
+                pdf_bytes = render_operation_pdf(snapshot)
+            except (OperationPrintError, PermissionError, ValueError, RuntimeError,
+                    ImportError, TypeError, KeyError) as exc:
+                st.error("Impression indisponible : référence, droits ou dossier incomplet.")
+            else:
+                st.caption(f"Source ERP vérifiée : {snapshot['source']} / {snapshot['id']}. "
+                           "Copie de consultation non émise et non signée.")
+                st.download_button(
+                    "Télécharger le PDF de consultation", pdf_bytes,
+                    file_name=f"copie_erp_{snapshot['id'].replace('/', '_')}.pdf",
+                    mime="application/pdf", key="ng_operation_print_download",
+                    on_click="ignore",
+                )
     kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind", help=field_help("Type de document", module="documents"))
     doc_key = "nextgen_doc_draft"
     if st.session_state.get("nextgen_doc_type") != kind:
