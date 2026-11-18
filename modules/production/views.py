@@ -358,7 +358,13 @@ def _sku_pack_spec(sku_row: pd.Series, products: pd.DataFrame,
     product = products[products["pf_id"] == sku_row.get("pf_id")]
     if len(product) != 1:
         raise ValueError("Produit associé au SKU absent ou ambigu")
-    unit = str(product.iloc[0].get("unite_production") or "").strip().upper()
+    raw_unit = product.iloc[0].get("unite_production")
+    unit = "" if pd.isna(raw_unit) else str(raw_unit).strip().upper()
+    if not unit:
+        raise ValueError(
+            f"Unité de production non renseignée pour {sku_row.get('pf_id')} "
+            "(KG ou L à qualifier avant fabrication)"
+        )
     sale_unit = str(sku_row.get("unite_vente") or "").strip().upper()
     if unit not in {"KG", "L"} or (unit, sale_unit) not in {
         ("KG", "SAC"), ("KG", "SEAU"), ("L", "FUT"), ("L", "IBC")
