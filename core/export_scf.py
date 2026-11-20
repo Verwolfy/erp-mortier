@@ -66,3 +66,26 @@ def exporter_journal_scf_csv(ecritures: Iterable[Mapping[str, Any]], *, droit_ex
                 ligne["debit"], ligne["credit"], _safe(piece["libelle"]),
             ])
     return out.getvalue()
+
+
+def exporter_journal_scf_multiformat(
+    ecritures: Iterable[Mapping[str, Any]], *, droit_export: bool, fmt: str,
+) -> tuple[bytes, str, str]:
+    """Excel/CSV/PDF du journal déjà filtré par les gardes SCF existantes.
+
+    Aucune pièce BROUILLON, fictive, déséquilibrée ou sans droit ne doit passer
+    par le nouveau moteur tabulaire. Ne vaut pas FEC officiel.
+    """
+    if fmt not in {"xlsx", "csv", "pdf"}:
+        raise ExportRefuse("Format de journal SCF non autorisé")
+    csv_checked = exporter_journal_scf_csv(ecritures, droit_export=droit_export)
+    checked_rows = list(csv.DictReader(io.StringIO(csv_checked), delimiter=";"))
+    fields = ["date_ecriture", "journal", "reference", "compte",
+              "debit_dzd", "credit_dzd", "libelle"]
+    if fmt == "csv":
+        return ("\ufeff" + csv_checked).encode("utf-8"), "text/csv", "csv"
+    from core.export_formats import build_export
+    return build_export(
+        checked_rows, fields, fmt=fmt, title="Journal SCF — pièces VALIDÉES",
+        warning="COPIE INTERNE - ne vaut pas FEC officiel algérien",
+    )
