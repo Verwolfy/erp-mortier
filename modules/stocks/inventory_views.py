@@ -116,6 +116,44 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
         })
     df = pd.DataFrame(export_rows)
     st.dataframe(df, use_container_width=True, hide_index=True)
+    with st.expander("Projet de régularisation — NON EXÉCUTABLE", expanded=False):
+        from modules.stocks.inventory_adjustment import build_adjustment_preparation
+        from core.export_formats import build_export, export_filename, ExportError
+        try:
+            plan = build_adjustment_preparation(campaign, lines, lots)
+        except (InventoryError, ValueError, TypeError, InvalidOperation):
+            st.error("Projet indisponible : photographie ou quantités incohérentes.")
+        else:
+            st.warning("Document de préparation uniquement : ni mouvement physique, "
+                       "ni régularisation de lots, ni écriture comptable.")
+            for reason in plan["blocages"][:12]:
+                st.caption("Blocage : " + reason)
+            if plan["lignes"]:
+                st.dataframe(pd.DataFrame(plan["lignes"]),
+                             use_container_width=True, hide_index=True)
+                plan_fmt = st.selectbox(
+                    "Format du projet",
+                    ("Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"),
+                    key="erp57_adjustment_format",
+                )
+                if st.button("Préparer le projet à télécharger",
+                             key="erp57_adjustment_export"):
+                    try:
+                        ext = plan_fmt.split("(")[1].split(")")[0].lstrip(".")
+                        data, mime, ext = build_export(
+                            plan["lignes"], list(plan["lignes"][0]), fmt=ext,
+                            title=f"Projet de régularisation {selected}",
+                            warning="NON EXECUTABLE - preuves et approbations nécessaires",
+                        )
+                    except (ExportError, ValueError, TypeError):
+                        st.error("Export du projet impossible.")
+                    else:
+                        st.download_button(
+                            f"Télécharger le projet {plan_fmt}", data=data, mime=mime,
+                            file_name=export_filename(
+                                f"Projet_regul_{selected}", ext),
+                            key="erp57_adjustment_download",
+                        )
     st.subheader("Traçabilité et comptage par lot")
     st.caption("Lots figés à la création de la campagne. La nomenclature des dépôts "
                "n'existe pas encore ; aucune ventilation géographique théorique n'est inventée.")
