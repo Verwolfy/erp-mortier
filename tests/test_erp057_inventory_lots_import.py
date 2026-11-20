@@ -201,7 +201,7 @@ def test_classify_difference_checks_role_and_reason(monkeypatch):
         )
     with pytest.raises(ValueError):
         service.classify_inventory_difference(
-            "INV-TEST-ABCDEFGH", "MP", "MP-001", "PERTE", "trop court"
+            "INV-TEST-ABCDEFGH", "MP", "MP-001", "PERTE", "court"
         )
     service.classify_inventory_difference(
         "INV-TEST-ABCDEFGH", "MP", "MP-001", "PERTE",
