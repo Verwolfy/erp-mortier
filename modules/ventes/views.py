@@ -228,6 +228,108 @@ def _start_operation(kind: str, user_id: str, payload: dict) -> None:
     _execute_operation(kind, user_id)
 
 
+def _shipment_payload_quantities(items: object, *, stored: bool) -> dict[str, Decimal]:
+    """Sommes SKU strictes pour identifier une reprise sans changer la charge."""
+    if not isinstance(items, list) or not items:
+        raise ValueError("Lignes de livraison non vérifiables")
+    values: dict[str, Decimal] = {}
+    for line in items:
+        if not isinstance(line, dict):
+            raise ValueError("Ligne de livraison non vérifiable")
+        sku = line.get("sku_id")
+        if not isinstance(sku, str) or not sku.strip():
+            raise ValueError("SKU non vérifiable")
+        qty = _decimal(line.get("quantite_livree"), "Quantité de livraison", positive=True)
+        if qty != qty.to_integral_value():
+            raise ValueError("Quantité conditionnée non entière")
+        values[sku] = values.get(sku, Decimal(0)) + qty
+    return values
+
+
+def _verify_uncertain_shipment(record: dict, user_id: str) -> tuple[str, str | None]:
+    """Lecture seule, droits frais, journal idempotent puis historique des BL.
+
+    'confirmed' : transaction trouvée et BL concordant.
+    'blocked' : tentative absente ET commande/lots devenus non réexpédiables.
+    'retry' : tentative absente, quantité encore disponible (même ID seulement).
+    Tout doute interdit de conclure ou de réessayer.
+    """
+    current = _sale_access()
+    if current is None or current[0] != user_id or current[1] is not True:
+        raise PermissionError("Permission Ventes écriture non vérifiable")
+    operation_id, payload = record.get("operation_id"), record.get("payload")
+    if (not isinstance(operation_id, str) or not operation_id.startswith("SALE-UI-")
+            or not isinstance(payload, dict)):
+        raise ValueError("Dossier de livraison non vérifiable")
+    order_id = payload.get("commande_vente_id")
+    if not isinstance(order_id, str) or not order_id.strip():
+        raise ValueError("Commande de la tentative manquante")
+    requested = _shipment_payload_quantities(payload.get("items_livraison"), stored=False)
+    query = (get_supabase_client().table("erp_sales_operations")
+             .select("operation_id,action,request_payload,result_payload")
+             .eq("operation_id", operation_id).limit(2).execute())
+    ops = getattr(query, "data", None)
+    if not isinstance(ops, list) or len(ops) > 1:
+        raise RuntimeError("Journal idempotent incomplet ou ambigu")
+    if ops:
+        op = ops[0]
+        if (not isinstance(op, dict) or op.get("operation_id") != operation_id
+                or op.get("action") != "SHIP"
+                or not isinstance(op.get("request_payload"), dict)
+                or op["request_payload"].get("commande_vente_id") != order_id
+                or _shipment_payload_quantities(
+                    op["request_payload"].get("lignes"), stored=True
+                ) != requested):
+            raise RuntimeError("Opération SQL différente de la tentative")
+        result = op.get("result_payload")
+        if (not isinstance(result, dict)
+                or result.get("operation_id") != operation_id
+                or result.get("action") != "SHIP"
+                or not isinstance(result.get("bl_id"), str)
+                or not result["bl_id"]):
+            raise RuntimeError("Réponse de livraison non confirmée")
+        bl_id = result["bl_id"]
+        bl = (get_supabase_client().table("bons_livraison")
+              .select("bl_id,commande_vente_id").eq("bl_id", bl_id)
+              .limit(2).execute())
+        found = getattr(bl, "data", None)
+        if (not isinstance(found, list) or len(found) != 1
+                or not isinstance(found[0], dict)
+                or found[0].get("bl_id") != bl_id
+                or found[0].get("commande_vente_id") != order_id):
+            raise RuntimeError("BL de l'opération SQL non identifiable")
+        return ("confirmed", bl_id)
+
+    orders = _read_required("commandes_ventes")
+    matching = orders[orders["commande_vente_id"] == order_id] if (
+        not orders.empty and {"commande_vente_id", "statut"}.issubset(orders.columns)
+    ) else pd.DataFrame()
+    if len(matching) != 1:
+        raise RuntimeError("Commande non vérifiable")
+    history_remaining = _remaining_for_order(
+        order_id, _read_required("lignes_commande_ventes"),
+        _read_required("bons_livraison"), _read_required("lignes_bons_livraison"),
+    )
+    if matching.iloc[0]["statut"] not in _EXPEDIABLE_STATES:
+        return ("blocked", None)
+    if any(history_remaining.get(sku, Decimal(0)) < qty
+           for sku, qty in requested.items()):
+        return ("blocked", None)
+
+    stock_pf = _read_required("stock_actuel_pf")
+    if stock_pf.empty or not {"sku_id", "quantite_disponible"}.issubset(stock_pf.columns):
+        raise RuntimeError("Stock PF non vérifiable")
+    stocks = {
+        row["sku_id"]: _decimal(row["quantite_disponible"], "Stock PF")
+        for row in stock_pf.to_dict("records")
+    }
+    lots = _read_required("lots")
+    for sku, qty in requested.items():
+        if stocks.get(sku, Decimal(0)) < qty or _eligible_fifo_pf(lots, sku) < qty:
+            return ("blocked", None)
+    return ("retry", None)
+
+
 def _operation_panel(kind: str, user_id: str) -> bool:
     key = _operation_key(kind, user_id)
     if key not in st.session_state:
@@ -246,9 +348,59 @@ def _operation_panel(kind: str, user_id: str) -> bool:
     st.code(record["operation_id"])
     if record["status"] == "uncertain":
         st.warning("Opération en attente de confirmation : ne modifiez pas les quantités.")
-        st.info("Après vérification de la base, la reprise réutilise le même contenu et le même identifiant.")
-        if st.button("Réessayer exactement la même opération", key=f"retry_{kind}_{user_id}", on_click=_mark_ventes_activity, help=field_help("Réessayer exactement la même opération", module="ventes")):
-            _execute_operation(kind, user_id)
+        if kind == "ship":
+            st.info("Vérifier le journal SQL et les BL historiques AVANT de relancer "
+                    "la sortie FIFO. Un ancien BL LIVRE compte comme livré.")
+            if st.button("Vérifier cette livraison dans Supabase (lecture seule)",
+                         key=f"verify_ship_{user_id}"):
+                record.pop("verification", None)
+                try:
+                    state, bl_id = _verify_uncertain_shipment(record, user_id)
+                except (PermissionError, ValueError, RuntimeError, KeyError, TypeError):
+                    st.error("Vérification impossible : aucune nouvelle expédition autorisée.")
+                else:
+                    if state == "confirmed" and bl_id:
+                        record["status"] = "confirmed"
+                        record["document_id"] = bl_id
+                        st.success(f"BL {bl_id} retrouvé et confirmé sans réémettre.")
+                    else:
+                        record["verification"] = state
+            if record.get("verification") == "blocked":
+                st.error("Tentative absente du journal, mais commande déjà livrée, "
+                         "stock FIFO indisponible ou commande non expédiable. "
+                         "NE PAS réessayer.")
+                if st.button("Clore uniquement cette tentative non enregistrée",
+                             key=f"close_ship_{user_id}"):
+                    try:
+                        state, _ = _verify_uncertain_shipment(record, user_id)
+                    except (PermissionError, ValueError, RuntimeError, KeyError, TypeError):
+                        st.error("Clôture refusée : contrôle SQL non vérifiable.")
+                    else:
+                        if state == "blocked":
+                            del st.session_state[key]
+                            st.rerun()
+                        else:
+                            st.error("État modifié : vérifier à nouveau avant de clore.")
+            elif record.get("verification") == "retry":
+                st.info("Opération non trouvée et quantité encore expédiable. "
+                        "La reprise gardera exactement le même identifiant.")
+                if st.button("Réessayer exactement la même opération",
+                             key=f"retry_{kind}_{user_id}",
+                             on_click=_mark_ventes_activity):
+                    try:
+                        state, _ = _verify_uncertain_shipment(record, user_id)
+                    except (PermissionError, ValueError, RuntimeError, KeyError, TypeError):
+                        st.error("Reprise refusée : contrôle SQL non vérifiable.")
+                    else:
+                        if state == "retry":
+                            record.pop("verification", None)
+                            _execute_operation(kind, user_id)
+                        else:
+                            st.error("État modifié : vérifier à nouveau avant de réessayer.")
+        else:
+            st.info("Après vérification de la base, la reprise réutilise le même contenu et le même identifiant.")
+            if st.button("Réessayer exactement la même opération", key=f"retry_{kind}_{user_id}", on_click=_mark_ventes_activity, help=field_help("Réessayer exactement la même opération", module="ventes")):
+                _execute_operation(kind, user_id)
     else:
         st.success(f"Document {record['document_id']} confirmé.")
         if st.button("Préparer une nouvelle opération", key=f"new_{kind}_{user_id}", on_click=_mark_ventes_activity, help=field_help("Préparer une nouvelle opération", module="ventes")):
