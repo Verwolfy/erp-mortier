@@ -618,6 +618,39 @@ def _revue_nextgen_preparation() -> None:
                 mime="text/csv; charset=utf-8",
                 key="export_nextgen_sku_readonly",
             )
+            # Reprendre le CSV contrôlé par SECURITY_MANAGER, pas les lignes
+            # brutes : le statut NON_VERIFIE et les preuves vides sont conservés.
+            import csv
+            from io import StringIO
+            from core.export_formats import build_export, ExportError
+            try:
+                text_csv = (registre_csv.decode("utf-8-sig")
+                            if isinstance(registre_csv, bytes) else
+                            str(registre_csv).lstrip("\ufeff"))
+                reader = csv.DictReader(StringIO(text_csv), delimiter=";")
+                export_columns = list(reader.fieldnames or [])
+                export_rows = list(reader)
+                exports = {
+                    fmt: build_export(
+                        export_rows, export_columns, fmt=fmt,
+                        title="Qualification SKU NextGen — À vérifier",
+                        warning="NON VERIFIÉ - aucune qualification TVA ou produit accordée",
+                    ) for fmt in ("xlsx", "pdf")
+                }
+            except (ExportError, ValueError, TypeError, KeyError):
+                st.warning("Excel/PDF indisponibles : registre contrôlé incomplet.")
+            else:
+                c1, c2 = st.columns(2)
+                for col, fmt, title in (
+                    (c1, "xlsx", "Excel"), (c2, "pdf", "PDF"),
+                ):
+                    data, mime, _ = exports[fmt]
+                    col.download_button(
+                        f"Exporter le suivi NextGen {title} (à vérifier)",
+                        data=data, mime=mime,
+                        file_name=f"nextgen_sku_qualification_a_verifier.{fmt}",
+                        key=f"export_nextgen_sku_{fmt}",
+                    )
 
 
 def show_admin_page():
