@@ -107,7 +107,7 @@ SET search_path=pg_catalog,public AS $body$
 DECLARE v_header public.erp_inventaires%ROWTYPE;
         v_item jsonb; v_kind text; v_id text; v_raw text; v_motif text;
         v_qty numeric; v_theoretical numeric; v_row_count integer;
-        v_updated integer:=0; v_key text; v_keys text[]:='{}';
+        v_updated integer:=0; v_delta integer; v_key text; v_keys text[]:='{}';
 BEGIN
  IF NOT public.erp_inventory_permission(p_acteur_id,true) THEN
    RAISE EXCEPTION 'Droit Stocks écriture non confirmé' USING ERRCODE='42501';
@@ -171,7 +171,8 @@ BEGIN
    WHERE inventaire_id=p_inventaire_id
      AND type_article=v_item->>'type_article'
      AND article_id=v_item->>'article_id';
-   GET DIAGNOSTICS v_updated=v_updated+ROW_COUNT;
+   GET DIAGNOSTICS v_delta=ROW_COUNT;
+   v_updated:=v_updated+v_delta;
  END LOOP;
  IF v_updated<>v_row_count THEN
    RAISE EXCEPTION 'Import partiel interdit' USING ERRCODE='23514';
