@@ -841,6 +841,34 @@ def _controle_tva_sku_tab(user_id: str) -> None:
                 mime="text/markdown",
                 key="ventes_export_revue_tva",
             )
+            # Aucun taux n'est calculé ni déduit ; chaque ligne est À QUALIFIER.
+            from core.export_formats import build_export, export_filename, ExportError
+            fmt = st.selectbox(
+                "Autre format du registre TVA à qualifier",
+                ["Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"],
+                key="ventes_revue_tva_format",
+            )
+            try:
+                records = [
+                    {**{field: line[field] for field in champs_export},
+                     "statut_qualification": "A_VERIFIER"}
+                    for line in actifs
+                ]
+                extension = fmt.split("(")[1].split(")")[0].lstrip(".")
+                blob, mime, extension = build_export(
+                    records, list(champs_export) + ["statut_qualification"],
+                    fmt=extension, title="Registre SKU TVA — À qualifier",
+                    warning="AUCUN TAUX VALIDÉ - revue juridique obligatoire",
+                )
+            except (ExportError, ValueError, TypeError, KeyError):
+                st.warning("Format demandé non disponible pour ce registre.")
+            else:
+                st.download_button(
+                    f"Télécharger le registre {fmt} (à qualifier)",
+                    data=blob, mime=mime,
+                    file_name=export_filename("Registre_TVA_a_qualifier", extension),
+                    key="ventes_export_revue_tva_multiformat",
+                )
     elif actifs:
         st.info("Export non disponible : détails SKU incomplets.")
     st.warning(
