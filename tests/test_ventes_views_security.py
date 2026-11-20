@@ -271,11 +271,16 @@ def test_pending_tampering_blocks_retry(ui):
     ui.sales.creer_bon_livraison.assert_not_called()
 
 
-def test_pending_retry_on_button(ui):
+def test_pending_retry_requires_fresh_read_only_verification(ui):
     key = ui.mod._operation_key("ship", "USR-1")
-    ui.st.session_state[key] = {"status": "uncertain", "operation_id": "SALE-UI-test", "payload": _ship()}
+    ui.st.session_state[key] = {
+        "status": "uncertain", "operation_id": "SALE-UI-test",
+        "payload": _ship(), "verification": "retry",
+    }
+    ui.mod._verify_uncertain_shipment = MagicMock(return_value=("retry", None))
     ui.st.button.side_effect = lambda label, **kw: label.startswith("Réessayer")
     assert ui.mod._operation_panel("ship", "USR-1") is True
+    ui.mod._verify_uncertain_shipment.assert_called_once()
     ui.sales.creer_bon_livraison.assert_called_once()
     assert ui.sales.creer_bon_livraison.call_args.kwargs["operation_id"] == "SALE-UI-test"
 
@@ -1057,3 +1062,114 @@ def test_ui_blocks_delivery_without_fifo_active_lots(ui):
     ui.mod._ship_tab("USR-1", True)
     ui.sales.creer_bon_livraison.assert_not_called()
     assert any("FIFO ACTIF" in str(call.args[0]) for call in ui.st.error.call_args_list)
+
+
+def _mock_verification_client(ui, *, operation=None, bl=None):
+    """Client readonly fake, leaves caller's user identity intact."""
+    def table(name):
+        query = MagicMock()
+        if name == "users":
+            rows = [{"user_id": "USR-1", "role": "VENDEUR", "actif": "OUI"}]
+        elif name == "erp_sales_operations":
+            rows = [operation] if operation else []
+        elif name == "bons_livraison":
+            rows = [bl] if bl else []
+        else:
+            raise AssertionError(f"unexpected table {name}")
+        query.select.return_value.eq.return_value.limit.return_value.execute.return_value = (
+            types.SimpleNamespace(data=rows)
+        )
+        return query
+    ui.db.get_supabase_client.return_value.table.side_effect = table
+
+
+def test_uncertain_shipment_already_livre_is_blocked_before_retry(ui):
+    _mock_verification_client(ui)
+    rows = {
+        "commandes_ventes": [{
+            "commande_vente_id": "DEMO26_CV1", "statut": "EN_COURS"}],
+        "lignes_commande_ventes": [{
+            "commande_vente_id": "DEMO26_CV1",
+            "sku_id": "DEMO26_SKU1", "quantite": 10}],
+        "bons_livraison": [{
+            "bl_id": "DEMO26_BL1", "commande_vente_id": "DEMO26_CV1",
+            "statut": "LIVRE"}],
+        "lignes_bons_livraison": [{
+            "bl_id": "DEMO26_BL1", "sku_id": "DEMO26_SKU1",
+            "quantite_livree": 10}],
+    }
+    ui.mod._read_required = MagicMock(side_effect=lambda name: pd.DataFrame(rows[name]))
+    record = {"operation_id": "SALE-UI-test", "payload": {
+        "commande_vente_id": "DEMO26_CV1",
+        "items_livraison": [{"sku_id": "DEMO26_SKU1", "quantite_livree": 1}],
+    }}
+    assert ui.mod._verify_uncertain_shipment(record, "USR-1") == ("blocked", None)
+    assert ui.mod._read_required.call_count == 4
+    ui.sales.creer_bon_livraison.assert_not_called()
+
+
+def test_uncertain_shipment_confirmed_in_sql_never_resent(ui):
+    operation_id = "SALE-UI-test"
+    _mock_verification_client(
+        ui,
+        operation={
+            "operation_id": operation_id, "action": "SHIP",
+            "request_payload": {
+                "commande_vente_id": "CDV-1",
+                "lignes": [{"sku_id": "SKU-1", "quantite_livree": "2"}],
+            },
+            "result_payload": {
+                "operation_id": operation_id, "action": "SHIP",
+                "bl_id": "BL-CONFIRME",
+            },
+        },
+        bl={"bl_id": "BL-CONFIRME", "commande_vente_id": "CDV-1"},
+    )
+    record = {"operation_id": operation_id, "payload": _ship()}
+    assert ui.mod._verify_uncertain_shipment(record, "USR-1") == (
+        "confirmed", "BL-CONFIRME",
+    )
+    ui.sales.creer_bon_livraison.assert_not_called()
+
+
+def test_retry_blocked_without_fifo_active_lots(ui):
+    _mock_verification_client(ui)
+    rows = {
+        "commandes_ventes": [{
+            "commande_vente_id": "CDV-1", "statut": "EN_COURS"}],
+        "lignes_commande_ventes": [{
+            "commande_vente_id": "CDV-1", "sku_id": "SKU-1", "quantite": 10}],
+        "bons_livraison": [],
+        "lignes_bons_livraison": [],
+        "stock_actuel_pf": [{"sku_id": "SKU-1", "quantite_disponible": 180}],
+        "lots": [{"type_item": "PF", "item_id": "SKU-1",
+                  "statut": "DISPONIBLE", "quantite_restante": 180}],
+    }
+    ui.mod._read_required = MagicMock(side_effect=lambda name: pd.DataFrame(rows[name]))
+    assert ui.mod._verify_uncertain_shipment(
+        {"operation_id": "SALE-UI-test", "payload": _ship()}, "USR-1",
+    ) == ("blocked", None)
+    ui.sales.creer_bon_livraison.assert_not_called()
+
+
+def test_uncertain_shipment_no_verification_cannot_retry(ui):
+    key = ui.mod._operation_key("ship", "USR-1")
+    ui.st.session_state[key] = {
+        "status": "uncertain", "operation_id": "SALE-UI-test", "payload": _ship(),
+    }
+    ui.st.button.side_effect = lambda label, **kw: label.startswith("Réessayer")
+    ui.mod._operation_panel("ship", "USR-1")
+    ui.sales.creer_bon_livraison.assert_not_called()
+
+
+def test_unknown_sql_shipment_result_not_confirmation(ui):
+    _mock_verification_client(ui, operation={
+        "operation_id": "SALE-UI-test", "action": "SHIP",
+        "request_payload": {"commande_vente_id": "CDV-1",
+                            "lignes": [{"sku_id": "SKU-1", "quantite_livree": "2"}]},
+        "result_payload": None,
+    })
+    with pytest.raises(RuntimeError, match="non confirmée"):
+        ui.mod._verify_uncertain_shipment(
+            {"operation_id": "SALE-UI-test", "payload": _ship()}, "USR-1",
+        )
