@@ -188,6 +188,10 @@ def _statement_tab() -> None:
     end = st.date_input("Au (inclus)", value=date.today(), key="stocks_statement_end")
     mode = st.radio("Présentation", ["Non valorisé (quantités)", "Valorisé (DZD)"],
                     key="stocks_statement_mode", horizontal=True)
+    export_format = st.selectbox(
+        "Format de l'état", ["Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"],
+        key="stocks_statement_export_format",
+    )
     if not st.button("Calculer l'état des mouvements", key="stocks_statement_load",
                      on_click=_mark_stocks_activity):
         return
@@ -232,13 +236,23 @@ def _statement_tab() -> None:
         st.subheader(title)
         df = pd.DataFrame(rows, columns=selected)
         st.dataframe(df, use_container_width=True, hide_index=True)
-        st.download_button(
-            f"Exporter CSV — {title}", data=df.to_csv(index=False, sep=";").encode("utf-8-sig"),
-            file_name=("etat_mp" if rows is report_mp else "etat_pf") +
-                      f"_{start.isoformat()}_{end.isoformat()}.csv",
-            mime="text/csv", key="stocks_statement_export_" +
-            ("mp" if rows is report_mp else "pf"),
-        )
+        from core.export_formats import build_export, export_filename, ExportError
+        fmt = export_format.split("(")[1].split(")")[0].lstrip(".")
+        try:
+            payload, mime, ext = build_export(
+                df.to_dict("records"), selected, fmt=fmt,
+                title=f"État périodique — {title} — {start} au {end}",
+                warning="état de gestion NON CERTIFIÉ SCF, stock initial reconstitué",
+            )
+        except ExportError:
+            st.warning("Format sélectionné indisponible pour ce volume : choisir Excel ou CSV.")
+        else:
+            st.download_button(
+                f"Télécharger {export_format} — {title}", data=payload,
+                file_name=export_filename(f"Etat_{title}_{start}_{end}", ext),
+                mime=mime, key="stocks_statement_export_" +
+                ("mp" if rows is report_mp else "pf"),
+            )
     st.caption("Stock initial/final reconstitué depuis le stock courant et TOUS les mouvements "
                "historiques. Les coûts historiques proviennent des mouvements enregistrés, "
                "pas du PMP actuel. Un historique sans prix ou un stock antérieur non tracé "
