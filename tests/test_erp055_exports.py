@@ -136,3 +136,50 @@ def test_catalogue_rejects_incomplete_projection():
         return [{"mp_id": "MP-1"}]
     with pytest.raises(ValueError, match="Projection ERP incomplète"):
         read_report("stock_mp", reader=incomplete)
+
+
+def test_date_filter_includes_final_day_with_timestamp():
+    calls = []
+    from core.export_catalogue import REPORTS
+    spec = REPORTS["mouvements_mp"]
+    def reader(table, **kwargs):
+        calls.append((table, kwargs))
+        return [
+            {**{field: "" for field in spec.columns},
+             "mouvement_id": "M1", "date": "2026-11-19 00:00:00"},
+            {**{field: "" for field in spec.columns},
+             "mouvement_id": "M2", "date": "2026-11-20 19:30:00"},
+        ]
+    _, rows = read_report(
+        "mouvements_mp", start_date="2026-11-20",
+        end_date="2026-11-20", reader=reader,
+    )
+    assert [row["mouvement_id"] for row in rows] == ["M2"]
+    assert calls == [("mouvements", {"page_size": 500, "max_rows": 10000})]
+
+
+def test_scf_exports_three_formats_preserve_validation_gate():
+    from core.export_scf import exporter_journal_scf_multiformat, ExportRefuse
+    entry = {
+        "statut": "VALIDEE", "date_ecriture": "2026-11-20",
+        "journal": "VE", "reference": "PIECE-001",
+        "libelle": "Pièce validée pour test",
+        "lignes": [
+            {"compte": "411001", "debit": "10.00", "credit": "0"},
+            {"compte": "701001", "debit": "0", "credit": "10.00"},
+        ],
+    }
+    for fmt in ("xlsx", "csv", "pdf"):
+        blob, mime, ext = exporter_journal_scf_multiformat(
+            [entry], droit_export=True, fmt=fmt,
+        )
+        assert blob and ext == fmt
+    with pytest.raises(PermissionError):
+        exporter_journal_scf_multiformat(
+            [entry], droit_export=False, fmt="xlsx",
+        )
+    with pytest.raises(ExportRefuse):
+        exporter_journal_scf_multiformat(
+            [{**entry, "statut": "BROUILLON"}],
+            droit_export=True, fmt="pdf",
+        )
