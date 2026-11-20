@@ -18,7 +18,7 @@ L'écran `Ventes → Expédition / Bons de livraison` présentait :
 - Les autres BL en base étaient `EXPEDIE`; `LIVRE` est un statut historique réel.
 
 ## Reproduction sous transaction annulée
-Simulation `erp_sale_transaction('SHIP', ..., DE MO26_CV1 / SKU / 1)` dans `BEGIN...ROLLBACK` :
+Simulation `erp_sale_transaction('SHIP', ..., DEMO26_CV1 / SKU / 1)` dans `BEGIN...ROLLBACK` :
 `SQLSTATE 23514 — Incohérence globale / somme des lots : opération annulée`.
 **Aucun BL, lot, mouvement ni stock persisté par la simulation.**
 
