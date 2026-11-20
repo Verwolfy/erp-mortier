@@ -106,6 +106,11 @@ def _page(table: str, *, campaign_id: str | None = None, max_rows: int = 5000) -
         query = client.table(table).select("*", count="exact")
         if campaign_id is not None:
             query = query.eq("inventaire_id", campaign_id)
+        # Ordre total stable obligatoire : une pagination sans ORDER BY
+        # peut perdre ou dupliquer des lignes lors d'une réorganisation SQL.
+        query = query.order("inventaire_id")
+        if table == "erp_inventaire_lignes":
+            query = query.order("type_article").order("article_id")
         query = query.range(index, index + 499)
         response = query.execute()
         batch = getattr(response, "data", None)
