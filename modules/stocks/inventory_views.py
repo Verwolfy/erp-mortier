@@ -189,7 +189,7 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
             st.caption("Classeur XLSX vierge, 500 quantités par import maximum, "
                        "aucune formule autorisée. Les lignes non renseignées sont ignorées.")
             try:
-                model = export_count_template(lines)
+                model = export_count_template(lines, campaign_id=selected)
             except InventoryImportError:
                 st.error("Modèle indisponible : photographie invalide.")
             else:
@@ -205,7 +205,7 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
             )
             if uploaded is not None:
                 try:
-                    proposed = parse_count_workbook(uploaded.getvalue(), lines)
+                    proposed = parse_count_workbook(uploaded.getvalue(), lines, campaign_id=selected)
                 except InventoryImportError as exc:
                     st.error(f"Fichier refusé : {exc}")
                 else:
