@@ -364,4 +364,39 @@ def show_product_sheets_page() -> None:
     st.download_button("Exporter JSON (brouillon)",
                        json.dumps(sheet, ensure_ascii=False, indent=2),
                        file_name=fname + ".json", mime="application/json")
+    # Export tabulaire des rubriques vérifiées/saisies, sans approbation FDS/FT.
+    from core.export_formats import build_export, ExportError
+    try:
+        validate_product_sheet(sheet)
+        fields = [
+            ("Type", sheet["type"]), ("Référence", sheet["reference"]),
+            ("Révision", sheet["version"]), ("Date", sheet["date"]),
+            ("Produit", sheet["produit"]), ("SKU", sheet["code_produit"]),
+            ("Conditionnement", sheet["conditionnement"]),
+            ("Responsable", sheet["responsable"]),
+        ]
+        fields += [(heading, sheet["sections"][key])
+                   for key, heading in sections_for(kind)]
+        tabular = [{"rubrique": title, "contenu_non_valide": value}
+                   for title, value in fields]
+        export_excel, excel_mime, _ = build_export(
+            tabular, ["rubrique", "contenu_non_valide"],
+            fmt="xlsx", title=f"{kind} — brouillon",
+            warning="FICHE NON VALIDÉE, performances et sécurité à vérifier",
+        )
+        export_csv, csv_mime, _ = build_export(
+            tabular, ["rubrique", "contenu_non_valide"],
+            fmt="csv", title=f"{kind} — brouillon",
+            warning="FICHE NON VALIDÉE, performances et sécurité à vérifier",
+        )
+    except (ExportError, ValueError, KeyError, TypeError):
+        st.warning("Export des rubriques impossible : fiche incomplète.")
+    else:
+        a, b = st.columns(2)
+        a.download_button("Exporter les rubriques Excel (brouillon)",
+                          export_excel, file_name=fname + ".xlsx",
+                          mime=excel_mime, key="ng_sheet_excel")
+        b.download_button("Exporter les rubriques CSV (brouillon)",
+                          export_csv, file_name=fname + ".csv",
+                          mime=csv_mime, key="ng_sheet_csv")
     st.caption("Identifiant QR local : " + sheet["trace_id"] + " (aucun suivi en ligne).")
