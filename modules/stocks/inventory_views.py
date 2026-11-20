@@ -9,8 +9,9 @@ import streamlit as st
 
 from modules.stocks.inventory_service import (
     InventoryError, approve_inventory, count_article, create_inventory,
-    inventory_lines, list_inventories, new_inventory_id, submit_inventory,
-    summarize_inventory,
+    inventory_lines, inventory_lots, count_inventory_lot,
+    import_inventory_counts, lot_reconciliation, list_inventories,
+    new_inventory_id, submit_inventory, summarize_inventory,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -74,6 +75,8 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
                             key="erp56_campaign_selected")
     try:
         campaign, lines = inventory_lines(selected)
+        lots = inventory_lots(selected)
+        reconciliation = lot_reconciliation(lines, lots)
         summary = summarize_inventory(lines)
     except (PermissionError, InventoryError, RuntimeError, ValueError,
             TypeError, KeyError, InvalidOperation) as exc:
@@ -111,6 +114,50 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
         })
     df = pd.DataFrame(export_rows)
     st.dataframe(df, use_container_width=True, hide_index=True)
+    st.subheader("Traçabilité et comptage par lot")
+    st.caption("Lots figés à la création de la campagne. La nomenclature des dépôts "
+               "n'existe pas encore ; aucune ventilation géographique théorique n'est inventée.")
+    if reconciliation["articles_non_reconcilies"]:
+        st.warning(
+            f"{reconciliation['articles_non_reconcilies']} article(s) sans rapprochement "
+            "complet stock / lots. La validation finale est bloquée jusqu'à résolution "
+            "des écarts de traçabilité."
+        )
+    lot_cols = ["lot_id", "type_article", "article_id", "quantite_theorique",
+                "quantite_comptee", "statut_snapshot", "date_peremption_snapshot",
+                "motif_ecart"]
+    if lots:
+        st.dataframe(pd.DataFrame(lots)[lot_cols],
+                     use_container_width=True, hide_index=True)
+    else:
+        st.info("Aucun lot physique photographié pour ce périmètre.")
+    if st.checkbox("Afficher le rapprochement stock / lots", value=False,
+                   key="erp57_lot_reconciliation_show"):
+        st.dataframe(pd.DataFrame(reconciliation["lignes"]),
+                     use_container_width=True, hide_index=True)
+    if lots:
+        lot_fmt = st.selectbox(
+            "Exporter les lots",
+            ("Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"),
+            key="erp57_lot_export_format",
+        )
+        if st.button("Préparer l'état des lots", key="erp57_lot_export_prepare"):
+            from core.export_formats import build_export, export_filename, ExportError
+            try:
+                ext = lot_fmt.split("(")[1].split(")")[0].lstrip(".")
+                data, mime, ext = build_export(
+                    [{key: lot.get(key) for key in lot_cols} for lot in lots],
+                    lot_cols, fmt=ext, title=f"Lots de l'inventaire {selected}",
+                    warning="PHOTOGRAPHIE ET COMPTAGES - NON CERTIFIÉS SCF",
+                )
+            except (ExportError, ValueError, TypeError):
+                st.error("État de lots trop volumineux ou non vérifiable.")
+            else:
+                st.download_button(
+                    f"Télécharger les lots {lot_fmt}", data=data, mime=mime,
+                    file_name=export_filename(f"Lots_{selected}", ext),
+                    key="erp57_lot_export_download",
+                )
     fmt = st.selectbox("Exporter cet inventaire",
                        ("Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"),
                        key="erp56_export_format")
@@ -135,7 +182,80 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
         st.info("Profil Stocks en lecture seule : comptages et validations interdits.")
         return
     if campaign["statut"] == "OUVERT":
+        with st.expander("Importer les comptages depuis Excel — prévisualisation", expanded=False):
+            from modules.stocks.inventory_excel import (
+                InventoryImportError, export_count_template, parse_count_workbook,
+            )
+            st.caption("Classeur XLSX vierge, 500 quantités par import maximum, "
+                       "aucune formule autorisée. Les lignes non renseignées sont ignorées.")
+            try:
+                model = export_count_template(lines)
+            except InventoryImportError:
+                st.error("Modèle indisponible : photographie invalide.")
+            else:
+                st.download_button(
+                    "Télécharger le modèle Excel de comptage", data=model,
+                    file_name=f"NEXTGEN_Comptage_{selected}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="erp57_import_template",
+                )
+            uploaded = st.file_uploader(
+                "Choisir le fichier de comptages complété (.xlsx)",
+                type=["xlsx"], key=f"erp57_import_upload_{selected}",
+            )
+            if uploaded is not None:
+                try:
+                    proposed = parse_count_workbook(uploaded.getvalue(), lines)
+                except InventoryImportError as exc:
+                    st.error(f"Fichier refusé : {exc}")
+                else:
+                    st.info(f"{len(proposed)} ligne(s) validée(s) en prévisualisation. "
+                            "Aucune donnée n'est encore enregistrée.")
+                    st.dataframe(pd.DataFrame(proposed), use_container_width=True,
+                                 hide_index=True)
+                    if st.button("Importer atomiquement ces comptages", type="primary",
+                                 key="erp57_import_confirm"):
+                        try:
+                            result = import_inventory_counts(selected, proposed)
+                        except (ValueError, PermissionError, InventoryError, RuntimeError,
+                                TypeError):
+                            st.error("Import non confirmé : consulter le dossier et "
+                                     "réutiliser exactement le même fichier pour reprendre.")
+                        else:
+                            st.success(
+                                f"{result['lignes_mises_a_jour']} comptages enregistrés. "
+                                "Aucun stock modifié."
+                            )
+        if lots:
+            with st.form("erp57_lot_count_form"):
+                choices = {r["lot_id"]: r for r in lots}
+                lot_id = st.selectbox(
+                    "Lot physique à compter", list(choices),
+                    format_func=lambda x: (
+                        f"{x} — {choices[x]['type_article']}/"
+                        f"{choices[x]['article_id']} : {choices[x]['quantite_theorique']}"
+                    ),
+                )
+                counted_lot = st.text_input(
+                    "Quantité constatée pour ce lot",
+                    value=(str(choices[lot_id]["quantite_comptee"])
+                           if choices[lot_id].get("quantite_comptee") is not None else ""),
+                    max_chars=45,
+                )
+                lot_motif = st.text_area(
+                    "Justification de l'écart de lot", max_chars=600,
+                )
+                submit_lot = st.form_submit_button("Enregistrer le comptage du lot")
+            if submit_lot:
+                try:
+                    count_inventory_lot(selected, lot_id, counted_lot, lot_motif)
+                except (ValueError, PermissionError, InventoryError, RuntimeError,
+                        TypeError):
+                    st.error("Comptage de lot refusé : quantité, justification ou droits invalides.")
+                else:
+                    st.success("Lot compté ; recharger l'inventaire pour actualiser les écarts.")
         remaining = [x for x in lines if x.get("quantite_comptee") is None]
+        lots_remaining = reconciliation["lots_non_comptes"]
         with st.form("erp56_count_form"):
             label_map = {
                 f"{row['type_article']}|{row['article_id']}": row
@@ -178,11 +298,15 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
                 st.error("Comptage non enregistré : quantité, justification ou droits invalides.")
             else:
                 st.success("Comptage enregistré. Recharger l'écran pour voir les écarts actualisés.")
-        if remaining:
-            st.warning(f"{len(remaining)} articles non comptés : soumission impossible.")
+        if remaining or lots_remaining:
+            st.warning(
+                f"Soumission impossible : {len(remaining)} article(s) et "
+                f"{lots_remaining} lot(s) non comptés."
+            )
         else:
-            st.info("Tous les articles possèdent un comptage.")
-        if st.button("Soumettre pour double validation", disabled=bool(remaining),
+            st.info("Tous les articles et lots photographiés possèdent un comptage.")
+        if st.button("Soumettre pour double validation",
+                     disabled=bool(remaining or lots_remaining),
                      key="erp56_submit"):
             try:
                 submit_inventory(selected)
@@ -191,7 +315,8 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
             else:
                 st.success("Campagne soumise à un valideur différent.")
     elif campaign["statut"] == "SOUMIS":
-        st.warning("Campagne figée ; double validation réservée à un administrateur distinct.")
+        st.warning("Campagne figée ; double validation réservée à un administrateur distinct. "
+                   "Tout manque de traçabilité des lots bloque aussi l'approbation.")
         if user_id in {campaign.get("createur_id"), campaign.get("soumis_par")}:
             st.info("Séparation des tâches : vous ne pouvez pas approuver votre propre campagne.")
             return
