@@ -134,6 +134,10 @@ def _allowed_menu(role: str) -> dict[str, str]:
         if name.casefold() not in modules:
             continue
         menu[name] = label
+    # Centre d'exports disponible seulement si au moins un module métier est
+    # visible. Les données restent ensuite contrôlées table par table (RBAC).
+    if menu:
+        menu["Exports"] = "📥 Centre d'exports"
     # Habilitation nominative et fraîche, jamais déduite de ADMIN/ecriture.
     from core.security_service import is_security_manager
     if is_security_manager():
@@ -179,6 +183,9 @@ def _render_menu_page(choice: str | None, role: str) -> None:
     elif choice == "Dashboards":
         from modules.dashboards.views import show_dashboards_page
         show_dashboards_page()
+    elif choice == "Exports":
+        from modules.exports.views import show_exports_page
+        show_exports_page()
     elif choice == "Help":
         from modules.help.views import show_help_page
         show_help_page()
