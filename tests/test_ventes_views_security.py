@@ -438,6 +438,8 @@ def _configure_ship_ui(ui, *, shipped=0, stock=6):
                 {"bl_id": "BL-1", "sku_id": "SKU-1", "quantite_livree": shipped}]
             if shipped else [],
             "stock_actuel_pf": [{"sku_id": "SKU-1", "quantite_disponible": stock}],
+            "lots": [{"type_item": "PF", "item_id": "SKU-1",
+                      "statut": "ACTIF", "quantite_restante": stock}],
         }
         return tables[table]
     ui.db.fetch_data_paginated.side_effect = read
@@ -998,3 +1000,60 @@ def test_tva_ui_refuse_diagnostic_sql_incomplet(ui):
     assert any("Diagnostic réglementaire SQL indisponible"
                in call.args[0] for call in ui.st.warning.call_args_list)
     ui.sales.create_facture_brouillon.assert_not_called()
+
+
+def test_historical_livre_bl_prevents_duplicate_delivery(ui):
+    orders = pd.DataFrame([
+        {"commande_vente_id": "DEMO26_CV1", "sku_id": "DEMO26_SKU1", "quantite": 10},
+    ])
+    previous = pd.DataFrame([
+        {"bl_id": "DEMO26_BL1", "commande_vente_id": "DEMO26_CV1", "statut": "LIVRE"},
+    ])
+    lines = pd.DataFrame([
+        {"bl_id": "DEMO26_BL1", "sku_id": "DEMO26_SKU1", "quantite_livree": 10},
+    ])
+    assert ui.mod._remaining_for_order("DEMO26_CV1", orders, previous, lines) == {
+        "DEMO26_SKU1": Decimal(0),
+    }
+
+
+def test_completed_historical_bl_families_count_as_delivered(ui):
+    for status in ("EXPEDIE", "LIVRE", "LIVREE", "TERMINE"):
+        shipped = _bls()
+        shipped.loc[shipped["bl_id"] == "BL-1", "statut"] = status
+        assert ui.mod._remaining_for_order(
+            "CDV-1", _order_lines(), shipped, _bl_lines()
+        ) == {"SKU-1": Decimal(10), "SKU-2": Decimal(3)}
+
+
+def test_unknown_historical_bl_status_blocks_shipping(ui):
+    previous = _bls()
+    previous.loc[previous["bl_id"] == "BL-1", "statut"] = "EN_COURS"
+    with pytest.raises(ValueError, match="Statut de BL historique"):
+        ui.mod._remaining_for_order("CDV-1", _order_lines(), previous, _bl_lines())
+
+
+def test_fifo_eligibility_matches_stock_rpc_active_lot_only(ui):
+    lots = pd.DataFrame([
+        {"type_item": "PF", "item_id": "DEMO26_SKU1",
+         "statut": "DISPONIBLE", "quantite_restante": 180},
+    ])
+    assert ui.mod._eligible_fifo_pf(lots, "DEMO26_SKU1") == Decimal(0)
+    lots.loc[0, "statut"] = "ACTIF"
+    assert ui.mod._eligible_fifo_pf(lots, "DEMO26_SKU1") == Decimal(180)
+
+
+def test_ui_blocks_delivery_without_fifo_active_lots(ui):
+    _configure_ship_ui(ui, stock=180)
+    old_read = ui.db.fetch_data_paginated.side_effect
+    def read(table, **kwargs):
+        if table == "lots":
+            return [{"type_item": "PF", "item_id": "SKU-1",
+                     "statut": "DISPONIBLE", "quantite_restante": 180}]
+        return old_read(table, **kwargs)
+    ui.db.fetch_data_paginated.side_effect = read
+    ui.st.form_submit_button.return_value = True
+    ui.st.number_input.return_value = 1
+    ui.mod._ship_tab("USR-1", True)
+    ui.sales.creer_bon_livraison.assert_not_called()
+    assert any("FIFO ACTIF" in str(call.args[0]) for call in ui.st.error.call_args_list)
