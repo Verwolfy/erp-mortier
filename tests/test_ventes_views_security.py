@@ -641,9 +641,12 @@ def test_tva_ui_export_registre_non_homologue_apres_lecture_autorisee(ui):
 
     ui.mod._controle_tva_sku_tab("USR-1")
 
-    ui.st.download_button.assert_called_once()
-    data = ui.st.download_button.call_args.kwargs["data"]
+    assert ui.st.download_button.call_count == 2
+    data = ui.st.download_button.call_args_list[0].kwargs["data"]
     assert "SKU-001" in data
+    tabular = ui.st.download_button.call_args_list[1].kwargs
+    assert tabular["data"].startswith(b"PK")
+    assert tabular["mime"].startswith("application/vnd.openxmlformats-officedocument")
     assert "À qualifier" in data
     assert "Document de travail non homologué" in data
     ui.sales.create_facture_brouillon.assert_not_called()
@@ -690,9 +693,10 @@ def test_tva_ui_compte_et_exporte_uniquement_sku_actifs(ui):
 
     ui.st.metric.assert_any_call("SKU contrôlés", 1)
     ui.st.metric.assert_any_call("SKU non classés", 1)
-    ui.st.download_button.assert_called_once()
-    exported = ui.st.download_button.call_args.kwargs["data"]
+    assert ui.st.download_button.call_count == 2
+    exported = ui.st.download_button.call_args_list[0].kwargs["data"]
     assert "SKU-A" in exported
+    assert ui.st.download_button.call_args_list[1].kwargs["data"].startswith(b"PK")
     assert "SKU-I" not in exported
     ui.sales.create_facture_brouillon.assert_not_called()
 
