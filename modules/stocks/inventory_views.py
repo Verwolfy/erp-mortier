@@ -9,7 +9,7 @@ import streamlit as st
 
 from modules.stocks.inventory_service import (
     InventoryError, approve_inventory, count_article, create_inventory,
-    inventory_lines, inventory_lots, count_inventory_lot,
+    classify_inventory_difference, inventory_lines, inventory_lots, count_inventory_lot,
     import_inventory_counts, lot_reconciliation, list_inventories,
     new_inventory_id, submit_inventory, summarize_inventory,
 )
@@ -110,6 +110,8 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
             "pmp_snapshot_dzd": str(cost) if cost is not None else None,
             "ecart_valorise_dzd": str(value) if value is not None else None,
             "motif_ecart": row.get("motif_ecart"),
+            "nature_ecart": row.get("nature_ecart") or "NON_QUALIFIE",
+            "qualification_note": row.get("qualification_note"),
             "date_comptage": row.get("compte_le"),
         })
     df = pd.DataFrame(export_rows)
@@ -254,6 +256,48 @@ def show_inventory_panel(user_id: str, can_write: bool) -> None:
                     st.error("Comptage de lot refusé : quantité, justification ou droits invalides.")
                 else:
                     st.success("Lot compté ; recharger l'inventaire pour actualiser les écarts.")
+        observed_differences = [
+            row for row in lines
+            if row.get("quantite_comptee") is not None
+            and Decimal(str(row["quantite_comptee"])) !=
+                Decimal(str(row["quantite_theorique"]))
+        ]
+        if observed_differences:
+            with st.form("erp57_qualify_difference"):
+                choices = {
+                    f"{row['type_article']}|{row['article_id']}": row
+                    for row in observed_differences
+                }
+                article_choice = st.selectbox(
+                    "Écart à qualifier (sans mouvement de stock)",
+                    list(choices), key="erp57_difference_choice",
+                )
+                chosen = choices[article_choice]
+                difference = (Decimal(str(chosen["quantite_comptee"])) -
+                              Decimal(str(chosen["quantite_theorique"])))
+                options = (
+                    ["PERTE", "CASSE", "PERIME", "ERREUR_COMPTAGE", "AUTRE"]
+                    if difference < 0 else
+                    ["RETOUR_CLIENT", "ERREUR_COMPTAGE", "AUTRE"]
+                )
+                nature = st.selectbox("Nature constatée", options,
+                                      key="erp57_nature_select")
+                justification = st.text_area(
+                    "Justification documentaire (minimum 10 caractères)",
+                    max_chars=600, key="erp57_nature_justification",
+                )
+                qualify = st.form_submit_button("Qualifier cet écart (sans régulariser)")
+            if qualify:
+                try:
+                    classify_inventory_difference(
+                        selected, chosen["type_article"], chosen["article_id"],
+                        nature, justification,
+                    )
+                except (PermissionError, ValueError, InventoryError,
+                        RuntimeError, TypeError):
+                    st.error("Qualification refusée : vérifier la cause, la justification et les droits.")
+                else:
+                    st.success("Nature d'écart enregistrée ; stock et comptabilité inchangés.")
         remaining = [x for x in lines if x.get("quantite_comptee") is None]
         lots_remaining = reconciliation["lots_non_comptes"]
         with st.form("erp56_count_form"):
