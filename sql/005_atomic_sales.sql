@@ -263,6 +263,18 @@ BEGIN
            ('EN_ATTENTE','CONFIRMEE','VALIDEE','EN_COURS','PARTIELLEMENT_LIVREE') THEN
             RAISE EXCEPTION 'Statut de commande non expédiable' USING ERRCODE='23514';
         END IF;
+        -- Les anciens BL LIVRE sont des livraisons effectives.
+        -- Un statut inconnu peut masquer des quantités déjà sorties.
+        IF EXISTS (
+            SELECT 1 FROM public.bons_livraison b
+            WHERE b.commande_vente_id=v_order.commande_vente_id
+              AND (b.statut IS NULL OR b.statut NOT IN
+                   ('EXPEDIE','LIVRE','LIVREE','TERMINE',
+                    'ANNULE','ANNULEE','BROUILLON','DRAFT'))
+        ) THEN
+            RAISE EXCEPTION 'Statut historique de BL non réconcilié : revue requise'
+              USING ERRCODE='23514';
+        END IF;
         FOR v_line IN SELECT * FROM jsonb_to_recordset(p_payload->'lignes')
           AS x(sku_id text,quantite_livree numeric)
         LOOP
@@ -288,7 +300,7 @@ BEGIN
             SELECT coalesce(sum(l.quantite_livree),0) INTO v_delivered
               FROM public.lignes_bons_livraison l JOIN public.bons_livraison b ON l.bl_id=b.bl_id
               WHERE b.commande_vente_id=v_order.commande_vente_id
-                AND b.statut='EXPEDIE' AND l.sku_id=v_sku.sku_id;
+                AND b.statut IN ('EXPEDIE','LIVRE','LIVREE','TERMINE') AND l.sku_id=v_sku.sku_id;
             IF v_ordered<=0 OR v_delivered+v_sku.qty>v_ordered THEN
                 RAISE EXCEPTION 'Quantité expédiée supérieure à la commande pour %',v_sku.sku_id
                   USING ERRCODE='23514';
