@@ -36,7 +36,7 @@ def _number(raw: object) -> str:
     return format(n, "f")
 
 
-def export_count_template(snapshot: Sequence[Mapping]) -> bytes:
+def export_count_template(snapshot: Sequence[Mapping], *, campaign_id: str | None = None) -> bytes:
     """Modèle neutre : aucune quantité physique n'est préremplie."""
     if not isinstance(snapshot, (list, tuple)) or len(snapshot) > 5000:
         raise InventoryImportError("Photographie incomplète")
@@ -55,6 +55,7 @@ def export_count_template(snapshot: Sequence[Mapping]) -> bytes:
     ws["A2"] = "Ne renseigner que les quantités réellement comptées. Colonnes et identifiants inchangés."
     ws.merge_cells("A3:D3")
     ws["A3"] = "Aucune entrée/sortie ni validation comptable produite par ce fichier."
+    ws["A4"] = "CAMPAGNE:" + (campaign_id or "MODELE")
     for index, key in enumerate(FIELDS, 1):
         cell = ws.cell(5, index, key)
         cell.fill = PatternFill("solid", fgColor="048B5B")
@@ -80,7 +81,7 @@ def export_count_template(snapshot: Sequence[Mapping]) -> bytes:
     return out.getvalue()
 
 
-def parse_count_workbook(data: bytes, snapshot: Sequence[Mapping]) -> list[dict]:
+def parse_count_workbook(data: bytes, snapshot: Sequence[Mapping], *, campaign_id: str | None = None) -> list[dict]:
     if not isinstance(data, bytes) or not 0 < len(data) <= MAX_IMPORT_BYTES:
         raise InventoryImportError("Fichier Excel absent ou trop volumineux (2 Mo max)")
     if not isinstance(snapshot, (list, tuple)) or len(snapshot) > 5000:
@@ -95,6 +96,10 @@ def parse_count_workbook(data: bytes, snapshot: Sequence[Mapping]) -> list[dict]
         if len(workbook.sheetnames) != 1:
             raise InventoryImportError("Un seul onglet de comptage est autorisé")
         sheet = workbook.active
+        if sheet.max_column != 4:
+            raise InventoryImportError("Colonnes supplémentaires interdites")
+        if campaign_id is not None and sheet["A4"].value != "CAMPAGNE:" + campaign_id:
+            raise InventoryImportError("Ce fichier appartient à une autre campagne")
         header = None
         for n, row in enumerate(sheet.iter_rows(min_row=1, max_row=5, max_col=4), 1):
             cells = tuple(v.value for v in row)
