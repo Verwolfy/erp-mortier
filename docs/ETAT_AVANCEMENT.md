@@ -1,3 +1,14 @@
+## 20 novembre 2026 — ERP-059 : correctif BL, reprise sûre et disponibilité FIFO
+
+- **Incident BL utilisateur** `DEMO26_CV1` : le BL historique `DEMO26_BL1` est déjà `LIVRE` pour **10/10 unités**, mais l'écran et la RPC ne comptaient que `EXPEDIE`. Le stock PF affichait 180 alors que le seul lot `DEMO26_LOT2` est `DISPONIBLE`, non éligible à la FIFO qui exige `ACTIF`. L'opération `SALE-UI-7b11a0b925a74262b72ddf3616083d5e` **n'est pas enregistrée** en base. Reproduction transactionnelle `ROLLBACK` : erreur `23514 Incohérence globale / somme des lots`.
+- **Correctif appliqué sur Supabase principal** : la RPC `erp_sale_transaction(SHIP)` cumule `EXPEDIE/LIVRE/LIVREE/TERMINE`, bloque les BL d'état inconnu et refuse la surlivraison avant toute sortie FIFO ; migration `sql/ERP_059_bons_livraison_statuts_historiques_20261120.sql`, sans toucher ni TVA, ni timbre, ni SCF. ACL confirmé : anon/authenticated sans EXECUTE, service_role autorisé. Test SQL en `ROLLBACK` : **0 nouveau BL, 0 nouveau mouvement, stock/lot inchangés**.
+- **Écran Ventes** : reste à livrer corrigé, stock réellement éligible FIFO ACTIF affiché et contrôlé, plus de nouvelle livraison si la commande est couverte par les BL historiques. Nouvelle **vérification en lecture seule du dossier `SALE-UI` incertain** avant retry/clôture ; charge et ID inchangés, confirmation SQL/BL recoupée.
+- **Suivi anomalies historiques** : le BL `DEMO26_BL1` ne possède pas de sortie PF équivalente dans le journal ; aucune mutation rétroactive, aucun lot fictif ou activation arbitraire de `DISPONIBLE`. [Issue #84](https://github.com/Verwolfy/erp-mortier/issues/84). Le déploiement Streamlit doit être vérifié (issue #78), repère `SOF-ERP-20261120-BL-RECONCILIATION-01`.
+- **Tests** : regressions historiques BL/FIFO et sécurisation de la reprise dans `tests/test_ventes_views_security.py`, callbacks adaptés ; vérifier la CI du dernier commit avant homologation.
+- Rapport : `docs/ERP_059_DIAGNOSTIC_BL_FIABILISATION_20261120.md`.
+
+---
+
 ## 20 novembre 2026 — ERP-057 : inventaire par lots, import Excel et écarts documentés
 
 - **Supabase principal** : quatre migrations additives ERP-057a/b/c/d appliquées : snapshot lot atomique par campagne, saisie des quantités réelles par lot, import Excel idempotent dans une RPC (max 500 lignes), validation du rapprochement lot/article, qualification documentaire des écarts et justification exigée aussi en RPC unitaire.
