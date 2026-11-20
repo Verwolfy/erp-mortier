@@ -577,6 +577,34 @@ def _revue_qualification_fiscale_sku() -> None:
                 data=registre, file_name="registre_qualification_sku.md",
                 mime="text/markdown", key="export_qualification_sku",
             )
+            from core.export_formats import build_export, export_filename, ExportError
+            fmt = st.selectbox(
+                "Format de la revue TVA (non validée)",
+                ["Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"],
+                key="admin_tva_export_format",
+            )
+            try:
+                champs = ("sku_id", "pf_id", "format", "unite_vente")
+                rows = [
+                    {**{field: row[field] for field in champs},
+                     "statut_qualification": "NON_VERIFIE"}
+                    for row in resultat["rows"]
+                ]
+                extension = fmt.split("(")[1].split(")")[0].lstrip(".")
+                payload, mime, ext = build_export(
+                    rows, list(champs) + ["statut_qualification"],
+                    fmt=extension, title="Revue fiscale des SKU",
+                    warning="REVUE INTERNE - aucune qualification TVA validée",
+                )
+            except (ExportError, ValueError, KeyError, TypeError):
+                st.warning("Export fiscal tabulaire indisponible : registre non vérifiable.")
+            else:
+                st.download_button(
+                    f"Télécharger la revue {fmt} non validée",
+                    data=payload, mime=mime,
+                    file_name=export_filename("Revue_TVA_Sku", ext),
+                    key="admin_tva_export_multiformat",
+                )
     else:
         st.info("Des dossiers fiscaux existent : vérifier leur portée et leurs preuves hors de ce registre.")
 
