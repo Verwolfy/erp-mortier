@@ -6,6 +6,8 @@ modifie jamais lots, PMP, stock, mouvements ni pièces SCF.
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+import hashlib
+import json
 from uuid import uuid4
 from typing import Any
 
@@ -96,7 +98,7 @@ def new_inventory_id() -> str:
 
 def _page(table: str, *, campaign_id: str | None = None, max_rows: int = 5000) -> list[dict]:
     """Lecture serveur bornée, pagination complète ; aucune table générique ouverte."""
-    if table not in {"erp_inventaires", "erp_inventaire_lignes"}:
+    if table not in {"erp_inventaires", "erp_inventaire_lignes", "erp_inventaire_lots"}:
         raise ValueError("Source inventaire inconnue")
     client = get_supabase_client()
     out: list[dict] = []
@@ -111,6 +113,8 @@ def _page(table: str, *, campaign_id: str | None = None, max_rows: int = 5000) -
         query = query.order("inventaire_id")
         if table == "erp_inventaire_lignes":
             query = query.order("type_article").order("article_id")
+        elif table == "erp_inventaire_lots":
+            query = query.order("lot_id")
         query = query.range(index, index + 499)
         response = query.execute()
         batch = getattr(response, "data", None)
@@ -208,3 +212,103 @@ def summarize_inventory(lines: list[dict]) -> dict:
     return {"lignes": total, "comptees": counted, "ecarts": delta_count,
             "ecarts_sans_pmp": missing_cost,
             "valeur_ecart_dzd": str(value) if not missing_cost else None}
+
+
+def inventory_lots(campaign_id: str) -> list[dict]:
+    """Lots effectivement photographiés à la création de la campagne."""
+    _identity()
+    if not isinstance(campaign_id, str) or not campaign_id.startswith("INV-"):
+        raise ValueError("Campagne invalide")
+    return _page("erp_inventaire_lots", campaign_id=campaign_id)
+
+
+def count_inventory_lot(campaign_id: str, lot_id: str,
+                        quantity: Any, motive: str = "") -> dict:
+    user_id, _ = _identity(writing=True)
+    if not isinstance(lot_id, str) or not lot_id or len(lot_id) > 200:
+        raise ValueError("Lot invalide")
+    if not isinstance(motive, str) or len(motive) > 600:
+        raise ValueError("Motif de lot invalide")
+    return _rpc("erp_inventory_count_lot", {
+        "p_inventaire_id": campaign_id, "p_lot_id": lot_id,
+        "p_quantite": _valid_quantity(quantity),
+        "p_motif": motive.strip(), "p_acteur_id": user_id,
+    }, campaign_id)
+
+
+def import_inventory_counts(campaign_id: str, rows: list[dict]) -> dict:
+    """Import tout-ou-rien avec clé stable de rejeu (même charge, même acteur)."""
+    user_id, _ = _identity(writing=True)
+    if not isinstance(campaign_id, str) or not campaign_id.startswith("INV-"):
+        raise ValueError("Campagne invalide")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 500:
+        raise ValueError("Nombre de comptages invalide")
+    canonical = json.dumps(rows, sort_keys=True, separators=(",", ":"),
+                           ensure_ascii=False, allow_nan=False)
+    # Ne pas utiliser un UUID à chaque essai : après un timeout réseau, il
+    # faudrait re-soumettre exactement le même identifiant d'opération.
+    digest = hashlib.sha256(
+        (user_id + ":" + campaign_id + ":" + canonical).encode("utf-8")
+    ).hexdigest().upper()[:40]
+    operation_id = "INVIMP-" + digest
+    return _rpc("erp_inventory_bulk_count", {
+        "p_inventaire_id": campaign_id, "p_acteur_id": user_id,
+        "p_rows": rows, "p_operation_id": operation_id,
+    }, campaign_id)
+
+
+def lot_reconciliation(article_lines: list[dict],
+                       lots: list[dict]) -> dict:
+    """Distinguer lacunes du registre de lots et écarts de comptage."""
+    grouped: dict[tuple[str,str], dict] = {}
+    for lot in lots:
+        key = (lot["type_article"], lot["article_id"])
+        entry = grouped.setdefault(key, {
+            "stock_lots": Decimal("0"), "comptage_lots": Decimal("0"),
+            "lot_non_compte": 0, "nombre_lots": 0,
+        })
+        qty = Decimal(str(lot["quantite_theorique"]))
+        if not qty.is_finite() or qty < 0:
+            raise InventoryError("Quantité de lot incohérente")
+        entry["stock_lots"] += qty
+        entry["nombre_lots"] += 1
+        physical = lot.get("quantite_comptee")
+        if physical is None:
+            entry["lot_non_compte"] += 1
+        else:
+            value = Decimal(str(physical))
+            if not value.is_finite() or value < 0:
+                raise InventoryError("Quantité de lot comptée incohérente")
+            entry["comptage_lots"] += value
+    rows, anomalies = [], 0
+    for article in article_lines:
+        key = (article["type_article"], article["article_id"])
+        total = Decimal(str(article["quantite_theorique"]))
+        if not total.is_finite() or total < 0:
+            raise InventoryError("Stock théorique incohérent")
+        info = grouped.get(key, {
+            "stock_lots": Decimal(0), "comptage_lots": Decimal(0),
+            "lot_non_compte": 0, "nombre_lots": 0,
+        })
+        gap = total - info["stock_lots"]
+        counted = article.get("quantite_comptee")
+        physical_gap = (
+            Decimal(str(counted)) - info["comptage_lots"]
+            if counted is not None and info["nombre_lots"] and not info["lot_non_compte"]
+            else None
+        )
+        is_anomaly = gap != 0 or (physical_gap is not None and physical_gap != 0)
+        if is_anomaly:
+            anomalies += 1
+        rows.append({
+            "type_article": key[0], "article_id": key[1],
+            "stock_theorique": str(total),
+            "stock_lots": str(info["stock_lots"]),
+            "ecart_tracabilite": str(gap),
+            "lots": info["nombre_lots"],
+            "lots_non_comptes": info["lot_non_compte"],
+            "ecart_comptage_lots": str(physical_gap) if physical_gap is not None else None,
+            "anomalie": "A_RECONCILIER" if is_anomaly else "",
+        })
+    return {"lignes": rows, "articles_non_reconcilies": anomalies,
+            "lots_non_comptes": sum(1 for lot in lots if lot.get("quantite_comptee") is None)}
