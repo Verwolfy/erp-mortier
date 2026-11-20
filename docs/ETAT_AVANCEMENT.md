@@ -1,3 +1,15 @@
+## 20 novembre 2026 — ERP-057 : inventaire par lots, import Excel et écarts documentés
+
+- **Supabase principal** : quatre migrations additives ERP-057a/b/c/d appliquées : snapshot lot atomique par campagne, saisie des quantités réelles par lot, import Excel idempotent dans une RPC (max 500 lignes), validation du rapprochement lot/article, qualification documentaire des écarts et justification exigée aussi en RPC unitaire.
+- **UI Stocks** : modèle .xlsx lié à la campagne, prévisualisation stricte sans formule, import tout-ou-rien et clé de reprise après timeout ; comptages et état des lots, anomalies de traçabilité, exports Excel/CSV/PDF ; qualification `PERTE`/`CASSE`/`PERIME`/`RETOUR_CLIENT`/`ERREUR_COMPTAGE`/`AUTRE`, avec contrôles de signe et justification. **Projets de régularisation seulement NON EXÉCUTABLES**, aucune modification physique/SCF.
+- **Tests SQL annulés** : campagne PF de 146 articles et 3 lots, import et rejeu idempotents, rejet de doublon, blocage de validation lorsque lots non réconciliés ; qualification MP et remise à `NON_QUALIFIE` après recomptage, refus des écarts sans motif. **0 campagne / 0 import restés en base**.
+- **Anomalies conservées** : `DEMO26_MP2` = 220 unités sans lot ; `DEMO26_SKU2` = 60 unités sans lot. Aucun lot fictif. Aucun référentiel de dépôt, donc pas d'affectation géographique supposée.
+- **Sécurité** : RLS sur les nouvelles tables, anon/authenticated sans SELECT ni EXECUTE sur les RPC ; service_role serveur et contrôle de l'acteur/droits Stocks en base. Aucune facture, aucun stock, lot actif ou écriture SCF modifiés. Un seul ADMIN actif ; double approbation réelle non encore praticable.
+- **Suite bloquée** : mise en production E2E non confirmée (issue #78), création légitime d'un second valideur, dépôts et RPC de régularisation atomique à homologuer avant activation ([issue #83](https://github.com/Verwolfy/erp-mortier/issues/83)).
+- **Documents** : `docs/ERP_057_INVENTAIRE_LOTS_IMPORT_20261120.md`, tests `tests/test_erp057_inventory_lots_import.py`. Vérifier CI et audit sur dernier SHA après publication de ce statut.
+
+---
+
 ## 20 novembre 2026 — ERP-056 : module Inventaire physique MP/PF
 
 - **Supabase principal migré** : tables `erp_inventaires`, `erp_inventaire_lignes`, RLS activée, aucun SELECT direct pour anon/authenticated, RPC de création, comptage, soumission et approbation réservées au `service_role` serveur + contrôle frais de l'acteur et des droits Stocks en base. Migration complémentaire pour refuser de valider des références apparues après le snapshot.
