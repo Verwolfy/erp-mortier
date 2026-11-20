@@ -312,3 +312,23 @@ def lot_reconciliation(article_lines: list[dict],
         })
     return {"lignes": rows, "articles_non_reconcilies": anomalies,
             "lots_non_comptes": sum(1 for lot in lots if lot.get("quantite_comptee") is None)}
+
+
+def classify_inventory_difference(
+    campaign_id: str, kind: str, article_id: str,
+    nature: str, comment: str,
+) -> dict:
+    """Qualification de preuve seulement : aucun stock, lot ou avoir modifié."""
+    user_id, _ = _identity(writing=True)
+    allowed = {"PERTE", "CASSE", "PERIME", "RETOUR_CLIENT", "ERREUR_COMPTAGE", "AUTRE"}
+    if nature not in allowed or kind not in {"MP", "PF"}:
+        raise ValueError("Nature d'écart non autorisée")
+    if not isinstance(comment, str) or not 10 <= len(comment.strip()) <= 600:
+        raise ValueError("Justification obligatoire (10..600 caractères)")
+    if not isinstance(article_id, str) or not article_id or len(article_id) > 200:
+        raise ValueError("Référence article invalide")
+    return _rpc("erp_inventory_classify_difference", {
+        "p_inventaire_id": campaign_id, "p_type_article": kind,
+        "p_article_id": article_id, "p_nature": nature,
+        "p_commentaire": comment.strip(), "p_acteur_id": user_id,
+    }, campaign_id)
