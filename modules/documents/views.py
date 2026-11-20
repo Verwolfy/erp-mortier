@@ -196,20 +196,46 @@ def show_documents_page():
                                       key="ng_operation_print_kind")
         operation_id = st.text_input("Référence exacte de l'opération",
                                      key="ng_operation_print_id", max_chars=128)
-        if st.button("Préparer la copie PDF", key="ng_operation_print_load"):
+        operation_format = st.selectbox(
+            "Format de la copie", ["PDF", "Excel", "CSV"],
+            key="ng_operation_print_format",
+        )
+        if st.button("Préparer l'export de l'opération", key="ng_operation_print_load"):
             try:
                 snapshot = load_operation_snapshot(operation_kind, operation_id.strip())
-                pdf_bytes = render_operation_pdf(snapshot)
+                from core.export_formats import build_export, export_filename
+                if operation_format == "PDF":
+                    payload, mime, ext = render_operation_pdf(snapshot), "application/pdf", "pdf"
+                else:
+                    # Les lignes sont exportées telles qu'enregistrées, sans reconstitution
+                    # fiscale ; identité et totaux de la pièce conservés dans le fichier.
+                    total_text = " | ".join(
+                        f"{key}: {value}" for key, value in snapshot["totals"])
+                    rows = [
+                        {"document_erp": snapshot["id"], "date": snapshot["date"],
+                         "tiers": snapshot["partner"], **line,
+                         "totaux_enregistres": total_text}
+                        for line in snapshot["lines"]
+                    ]
+                    fields = ["document_erp", "date", "tiers", "reference",
+                              "designation", "unite", "quantite", "prix_unitaire",
+                              "total_ht", "lot", "totaux_enregistres"]
+                    payload, mime, ext = build_export(
+                        rows, fields,
+                        fmt="xlsx" if operation_format == "Excel" else "csv",
+                        title=f"Copie {snapshot['kind']} — {snapshot['id']}",
+                        warning=snapshot["warning"],
+                    )
             except (OperationPrintError, PermissionError, ValueError, RuntimeError,
                     ImportError, TypeError, KeyError) as exc:
-                st.error("Impression indisponible : référence, droits ou dossier incomplet.")
+                st.error("Export indisponible : référence, droits ou dossier incomplet.")
             else:
                 st.caption(f"Source ERP vérifiée : {snapshot['source']} / {snapshot['id']}. "
                            "Copie de consultation non émise et non signée.")
                 st.download_button(
-                    "Télécharger le PDF de consultation", pdf_bytes,
-                    file_name=f"copie_erp_{snapshot['id'].replace('/', '_')}.pdf",
-                    mime="application/pdf", key="ng_operation_print_download",
+                    f"Télécharger {operation_format} — copie interne", payload,
+                    file_name=export_filename(f"Copie_{snapshot['id']}", ext),
+                    mime=mime, key="ng_operation_print_download",
                 )
     kind = st.selectbox("Type de document", DOCUMENTS[group], key="doc_kind", help=field_help("Type de document", module="documents"))
     doc_key = "nextgen_doc_draft"
