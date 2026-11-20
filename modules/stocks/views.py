@@ -272,7 +272,8 @@ def show_stocks_page():
     # st.tabs exécute les trois panneaux, même lorsqu'un seul est visible.
     # Une sélection explicite évite les lectures et formulaires hors écran.
     panels = ("📊 État des Stocks", "🔄 Entrée Manuelle (hors BR)",
-              "📋 Historique des Mouvements", "📈 État périodique MP / PF")
+              "📋 Historique des Mouvements", "📈 État périodique MP / PF",
+              "📋 Inventaire & Régularisation")
     active_panel = st.selectbox(
         "Vue Stocks", panels, key="_erp_stocks_active_panel",
         on_change=_mark_stocks_activity,
@@ -286,6 +287,9 @@ def show_stocks_page():
 
     if active_panel == panels[3]:
         _statement_tab()
+    if active_panel == panels[4]:
+        from modules.stocks.inventory_views import show_inventory_panel
+        show_inventory_panel(user_id, can_write)
 
     # --- ONGLET 1 : ÉTAT DES STOCKS ---
     if active_panel == panels[0]:
