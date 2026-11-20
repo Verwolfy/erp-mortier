@@ -1,3 +1,15 @@
+## 20 novembre 2026 — ERP-056 : module Inventaire physique MP/PF
+
+- **Supabase principal migré** : tables `erp_inventaires`, `erp_inventaire_lignes`, RLS activée, aucun SELECT direct pour anon/authenticated, RPC de création, comptage, soumission et approbation réservées au `service_role` serveur + contrôle frais de l'acteur et des droits Stocks en base. Migration complémentaire pour refuser de valider des références apparues après le snapshot.
+- **Nouvel écran Stocks → Inventaire & Régularisation** : photographie des quantités/PMP théoriques, saisie de quantité physique par article (zéro autorisé), écart et valorisation conditionnelle, justification, soumission complète, approbation indépendante et export PDF/CSV/Excel. Une campagne approbée avec écarts reste `ECARTS_A_QUALIFIER` et **ne modifie jamais le stock ni le SCF**.
+- **Test SQL réel en transaction ROLLBACK** : 115 lignes MP comptées, création idempotente, soumission, campagne figée et auto-approbation refusée. Après rollback : **0 campagne** conservée. Aucun mouvement / ajustement / comptabilité / fiscalité.
+- **Séparation des tâches bloquante en réel** : **un seul compte ERP ADMIN actif** constaté ; deuxième approbateur humain habilité nécessaire. Aucun faux utilisateur créé.
+- **Tests Python** : `tests/test_erp056_inventory.py`, contrôle des 5 panneaux Stocks et de la session. La suite complète code sur commit `2906bda9` a réussi ; vérifier la CI du dernier commit de documentation.
+- **Phase suivante** : comptage par dépôt/lot, upload Excel contrôlé, classification perte/retour client et RPC d'ajustement atomique fondée sur prix/lots/qualité justifiés ; aucune régularisation directe aujourd'hui.
+- Documentation : `docs/ERP_056_INVENTAIRE_PHYSIQUE_MP_PF_20261120.md` ; issue [#80](https://github.com/Verwolfy/erp-mortier/issues/80).
+
+---
+
 ## 20 novembre 2026 — ERP-055 : exports NEXTGEN Excel, CSV et PDF
 
 - **Inventaire** de tous les téléchargements préexistants (Stocks CSV, documents PDF/DOCX/JSON, registres TVA Markdown/CSV, coûts analytiques JSON, SCF CSV) et des principaux tableaux sans exports.
