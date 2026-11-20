@@ -33,7 +33,7 @@ from modules.ventes.service import (
 _LOG = logging.getLogger(__name__)
 # Repère public de la livraison de l'écran, sans revendication d'un SHA
 # déployé. Permet une vérification visuelle de Streamlit après mise à jour.
-_UI_REVISION = "SOF-ERP-20261109-TAX-READINESS-01"
+_UI_REVISION = "SOF-ERP-20261120-BL-RECONCILIATION-01"
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
@@ -46,6 +46,10 @@ _REQUIRED = {
 }
 _LIMIT = Decimal("1e15")
 _EXPEDIABLE_STATES = frozenset({"EN_ATTENTE", "CONFIRMEE", "VALIDEE", "EN_COURS", "PARTIELLEMENT_LIVREE"})
+# Statuts historiques signifiant une remise/expédition réellement enregistrée.
+_DELIVERED_BL_STATES = frozenset({"EXPEDIE", "LIVRE", "LIVREE", "TERMINE"})
+# Les autres statuts ne sont pas réputés livrés ; tout statut inconnu bloque.
+_EXCLUDED_BL_STATES = frozenset({"ANNULE", "ANNULEE", "BROUILLON", "DRAFT"})
 
 
 def _mark_ventes_activity() -> None:
@@ -290,8 +294,18 @@ def _remaining_for_order(order_id: str, order_lines: pd.DataFrame,
         return ordered
     if not {"bl_id", "commande_vente_id", "statut"}.issubset(shipments.columns):
         raise ValueError("Colonnes BL manquantes")
-    shipped_bls = set(shipments.loc[(shipments["commande_vente_id"] == order_id)
-                                        & (shipments["statut"] == "EXPEDIE"), "bl_id"])
+    for_order = shipments[shipments["commande_vente_id"] == order_id]
+    states = set(for_order["statut"].map(
+        lambda v: str(v).strip().upper() if isinstance(v, str) else ""
+    ))
+    unknown = states - _DELIVERED_BL_STATES - _EXCLUDED_BL_STATES
+    if unknown:
+        raise ValueError("Statut de BL historique non reconnu : revue préalable obligatoire")
+    delivered = for_order[for_order["statut"].map(
+        lambda v: str(v).strip().upper() in _DELIVERED_BL_STATES
+        if isinstance(v, str) else False
+    )]
+    shipped_bls = set(delivered["bl_id"])
     if not shipped_bls:
         return ordered
     if shipment_lines.empty or not {"bl_id", "sku_id", "quantite_livree"}.issubset(shipment_lines.columns):
@@ -306,6 +320,24 @@ def _remaining_for_order(order_id: str, order_lines: pd.DataFrame,
     if any(qty < 0 for qty in remaining.values()):
         raise ValueError("Commande historiquement sur-livrée : vérification requise")
     return remaining
+
+
+def _eligible_fifo_pf(lots: pd.DataFrame, sku_id: str) -> Decimal:
+    """Stock réellement prélevable par la RPC : uniquement lots PF ACTIF."""
+    if lots.empty:
+        return Decimal("0")
+    needed = {"type_item", "item_id", "statut", "quantite_restante"}
+    if not needed.issubset(lots.columns):
+        raise ValueError("Registre des lots incomplet")
+    selected = lots[(lots["type_item"] == "PF") & (lots["item_id"] == sku_id)]
+    available = Decimal("0")
+    for row in selected.to_dict("records"):
+        qty = _decimal(row["quantite_restante"], "Quantité de lot")
+        if row["statut"] == "ACTIF":
+            available += qty
+    if not available.is_finite() or available >= _LIMIT:
+        raise ValueError("Stock FIFO hors limites")
+    return available
 
 
 def _dossier_client_exoneration_a_revoir(client_id: str) -> bool:
@@ -596,11 +628,24 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
         return
     remaining = {sku: qty for sku, qty in remaining.items() if qty > 0}
     if not remaining:
-        st.info("Commande intégralement livrée.")
+        st.info("Commande intégralement livrée selon les BL existants, y compris "
+                "les statuts historiques LIVRE. Aucune nouvelle sortie de stock autorisée.")
         return
     stock_pf = _read_required("stock_actuel_pf")
     stock_map = {r["sku_id"]: _decimal(r["quantite_disponible"], "Stock PF")
                  for _, r in stock_pf.iterrows()} if not stock_pf.empty else {}
+    lots_pf = _read_required("lots")
+    try:
+        fifo_map = {sku: _eligible_fifo_pf(lots_pf, sku) for sku in remaining}
+    except ValueError:
+        st.error("Expédition bloquée : registre des lots non vérifiable.")
+        return
+    for sku in remaining:
+        stock = stock_map.get(sku, Decimal(0))
+        if stock > 0 and fifo_map[sku] <= 0:
+            st.error(f"{sku} : stock ERP {stock}, mais aucun lot FIFO ACTIF "
+                     "n'est disponible. Contrôler les statuts des lots avant toute livraison.")
+            return
     items = []
     with st.form(f"vente_ship_{order_id}"):
         transporteur = st.text_input("Transporteur", value="Transport Interne", help=field_help("Transporteur", module="ventes"))
@@ -613,8 +658,9 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
             if stock < 0:
                 st.error("Stock PF incohérent.")
                 return
-            maximum = min(stock, to_deliver)
-            st.write(f"{sku} : reste {to_deliver} | stock PF {stock}")
+            maximum = min(stock, to_deliver, fifo_map[sku])
+            st.write(f"{sku} : reste {to_deliver} | stock PF {stock} "
+                     f"| lots FIFO ACTIF {fifo_map[sku]}")
             amount = st.number_input(f"Quantité à livrer — {sku}", min_value=0,
                                      max_value=int(maximum), value=0, step=1,
                                      key=f"ship_{order_id}_{sku}_{i}")
