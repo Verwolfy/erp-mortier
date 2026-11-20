@@ -1,3 +1,15 @@
+## 20 novembre 2026 — ERP-055 : exports NEXTGEN Excel, CSV et PDF
+
+- **Inventaire** de tous les téléchargements préexistants (Stocks CSV, documents PDF/DOCX/JSON, registres TVA Markdown/CSV, coûts analytiques JSON, SCF CSV) et des principaux tableaux sans exports.
+- **Centre d'exports dans la navigation authentifiée**, `app.py → Centre d'exports` : **42 registres métier** à colonnes explicitement limitées, familles Référentiels/Achats/Stocks/Production/Ventes/Finance/CRM/RH ; filtre de dates inclusives et formats XLSX/CSV/PDF. Autorisation de lecture revalidée sur chaque table avec `fetch_data_strict`, sans contourner les droits ni exporter les tables de sécurité, paie ou fiscalité SCF non qualifiée.
+- **Charte NEXTGEN** : PDF A4 corporate (images d'en-tête/pied), Excel bleu marine/vert avec titre, filtres et paramètres d'impression, CSV UTF-8 BOM / délimiteur point-virgule. Protections contre l'injection de formules ; refus d'export tronqué ou trop volumineux (10 000 lignes XLSX/CSV, 250 PDF).
+- **Exports spécialisés** : copies d'OF/BL/BR/commandes/factures PDF+XLSX+CSV, 20 modèles brouillons et FT/FDS ajoutant Excel/CSV, état stock périodique XLSX/CSV/PDF, revues TVA SKU à vérifier, instantané de coûts analytiques VALIDE XLSX/CSV/PDF. Fonction SCF multiformat réutilisant obligatoirement les vérifications VALIDEE/équilibre/non-fictif/droit d'export ; aucun bouton d'émission officielle SCF.
+- **Invariants** : Supabase principal non modifié, Supabase TEST inactif, aucune TVA SKU validée, facture légale émise ou écriture SCF créée. Les documents restent des **copies de consultation ou brouillons non signés/non émis**.
+- **Tests** : `tests/test_erp055_exports.py` + adaptations navigation/Ventes. [CI code #44764381109](https://github.com/Verwolfy/erp-mortier/actions/runs/44764381109) et [audit code #44764380871](https://github.com/Verwolfy/erp-mortier/actions/runs/44764380871) **success** sur `db01bf256b1a`. Vérifier séparément la CI sur les commits de documentation.
+- **Hébergement** : écran Streamlit authentifié non vérifié ; ne pas affirmer le déploiement (issue #78). Rapport `docs/ERP_055_AUDIT_EXPORTS_NEXTGEN_20261120.md`.
+
+---
+
 ## 18 novembre 2026 — ERP-054 : remarques testeur, PMP, états stock et impressions internes
 
 - **PMP MP/PF** : calcul moyen pondéré déjà en place dans la RPC de stock ; nouvel affichage explicite PMP DZD/unité et valeur du stock courant `quantité × PMP`, sans supposer un prix pour les stocks non valorisés. FIFO concerne le prélèvement physique des lots, pas la valeur des sorties.
