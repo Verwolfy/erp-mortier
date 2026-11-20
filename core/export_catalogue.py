@@ -162,16 +162,28 @@ def read_report(
     if reader is None:
         from core.strict_reads import fetch_data_strict
         reader = fetch_data_strict
-    rows = reader(
-        spec.table, page_size=500, max_rows=10000,
-        **({"date_column": spec.date_column,
-            "start_date": start_date, "end_date": end_date}
-           if start_date is not None else {}),
-    )
+    # Les dates ERP historiques sont au format TEXT et peuvent contenir une
+    # heure. Un filtre SQL <= YYYY-MM-DD exclurait les lignes de la dernière
+    # journée. Lire tout le périmètre borné puis filtrer par jour civil ici :
+    # pas de troncature silencieuse ni d'erreur au dernier jour.
+    rows = reader(spec.table, page_size=500, max_rows=10000)
     if not isinstance(rows, list):
         raise ValueError("Lecture de registre incomplète")
     for row in rows:
         if not isinstance(row, dict) or any(col not in row for col in spec.columns):
             raise ValueError("Projection ERP incomplète")
+    if start_date is not None:
+        filtered = []
+        for row in rows:
+            raw = row.get(spec.date_column)
+            if not isinstance(raw, str) or len(raw) < 10:
+                raise ValueError("Date du registre manquante")
+            try:
+                current = date.fromisoformat(raw[:10])
+            except ValueError as exc:
+                raise ValueError("Date du registre incorrecte") from exc
+            if a <= current <= b:
+                filtered.append(row)
+        rows = filtered
     # Colonnes explicitement listées, même si la table contient plus de données.
     return spec, [{col: row[col] for col in spec.columns} for row in rows]
