@@ -482,3 +482,39 @@ def show_documents_page():
                           mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     st.download_button("Exporter JSON (brouillon)", json.dumps(doc, ensure_ascii=False, indent=2),
                        file_name=doc["trace_id"] + ".json", mime="application/json")
+    # Les feuilles Excel/CSV exportent les lignes du même brouillon normalisé
+    # que le PDF/DOCX : aucun total, prix ou taux ne peut être recalculé librement.
+    from core.export_formats import build_export, ExportError
+    try:
+        from modules.documents.calculations import normalize_financial_export
+        from modules.documents.layout_nextgen import columns_for
+        prepared = normalize_financial_export(doc)
+        fields = [name for name, _ in columns_for(doc["type"])]
+        draft_rows = [
+            {"numero_brouillon": doc["numero"], "trace_id": doc["trace_id"],
+             **{field: row.get(field, "") for field in fields}}
+            for row in prepared["items"]
+        ]
+        columns = ["numero_brouillon", "trace_id"] + fields
+        xlsx, xlsx_mime, _ = build_export(
+            draft_rows, columns, fmt="xlsx", title=f"Brouillon {doc['type']}",
+            warning="BROUILLON NON ÉMIS / NON VALABLE FISCALEMENT",
+        )
+        csv_bytes, csv_mime, _ = build_export(
+            draft_rows, columns, fmt="csv", title=f"Brouillon {doc['type']}",
+            warning="BROUILLON NON ÉMIS / NON VALABLE FISCALEMENT",
+        )
+    except (ExportError, ValueError, KeyError, TypeError) as exc:
+        st.warning("Lignes non exportables en Excel/CSV : données de brouillon incomplètes.")
+    else:
+        c1, c2 = st.columns(2)
+        c1.download_button(
+            "Exporter les lignes Excel (brouillon)", xlsx,
+            file_name=doc["trace_id"] + ".xlsx", mime=xlsx_mime,
+            key="ng_doc_draft_xlsx",
+        )
+        c2.download_button(
+            "Exporter les lignes CSV (brouillon)", csv_bytes,
+            file_name=doc["trace_id"] + ".csv", mime=csv_mime,
+            key="ng_doc_draft_csv",
+        )
