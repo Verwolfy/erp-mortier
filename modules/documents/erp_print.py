@@ -205,9 +205,27 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         raise OperationPrintError("Dossier d'impression invalide")
     if not isinstance(snapshot.get("lines"), list) or not 1 <= len(snapshot["lines"]) <= 200:
         raise OperationPrintError("Lignes d'impression invalides")
-    pdf = FPDF(format="A4", unit="mm")
-    pdf.set_auto_page_break(auto=True, margin=18)
+    from pathlib import Path
+    from modules.documents.branding_images import branded_images
+    logo = Path("assets/nextgen_logo_hd.jpg")
+    header_png, footer_png = branded_images(str(logo) if logo.is_file() else None)
+
+    class OperationPDF(FPDF):
+        def header(self):
+            self.image(BytesIO(header_png), x=0, y=0, w=210, h=46.2)
+
+        def footer(self):
+            self.image(BytesIO(footer_png), x=0, y=268, w=210, h=24.36)
+            self.set_y(-8)
+            self.set_font("Helvetica", "", 7)
+            self.set_text_color(14, 43, 79)
+            self.cell(190, 5, f"Page {self.page_no()}/{{nb}}", align="R")
+
+    pdf = OperationPDF(format="A4", unit="mm")
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=36)
     pdf.add_page()
+    pdf.set_y(49)
     pdf.set_font("Helvetica", "B", 15)
     pdf.set_text_color(14, 43, 79)
     pdf.cell(190, 10, "NEXTGEN - " + latin(snapshot["kind"]).upper(),
@@ -238,8 +256,9 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         values = [row.get("reference", ""), row.get("designation", ""),
                   row.get("unite", ""), row.get("quantite", ""),
                   row.get("prix_unitaire", ""), row.get("total_ht", "")]
-        if pdf.get_y() > 250:
+        if pdf.get_y() > 249:
             pdf.add_page()
+            pdf.set_y(49)
             pdf.set_font("Helvetica", "", 7.5)
         for width, value in zip(widths, values):
             pdf.cell(width, 9, latin(value, 40), border=1)
