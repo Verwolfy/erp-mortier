@@ -202,9 +202,9 @@ def test_menu_read_only_admin_no_security(env):
 def test_menu_with_security_and_deduped(env):
     env.roles.get_allowed_modules.return_value = ["  Administration ", "Stocks", "stocks", "UNKNOWN", "  rH  "]
     # Le role ADMIN seul n'accorde jamais l'habilitation nominative.
-    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Stocks", "RH", "Help"]
+    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Stocks", "RH", "Exports", "Help"]
     env.security.is_security_manager.return_value = True
-    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Stocks", "RH", "Securite", "Help"]
+    assert list(env.app._allowed_menu("Admin")) == ["Administration", "Stocks", "RH", "Exports", "Securite", "Help"]
 
 
 def test_help_menu_for_no_business_permissions(env):
