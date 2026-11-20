@@ -9,7 +9,7 @@ import pytest
     ("module", "expected"),
     [
         ("ventes", {
-            "button": 10,
+            "button": 11,
             "selectbox": 10,
             "form_submit_button": 2,
         }),
