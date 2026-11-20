@@ -162,6 +162,49 @@ def show_cost_reference(can_write: bool) -> None:
                 )
             except Exception:
                 st.error("Export refusé : période non validée, preuves ou droits insuffisants.")
+        with st.expander("Excel / CSV / PDF des coûts analytiques VALIDÉS", expanded=False):
+            st.caption("Une section du même instantané validé, jamais un calcul SCF légal.")
+            export_section = st.selectbox(
+                "Données de l'instantané",
+                ("of_snapshots", "pools", "drivers"),
+                key="cost_export_tabular_section",
+            )
+            export_format = st.selectbox(
+                "Format analytique",
+                ("Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"),
+                key="cost_export_tabular_format",
+            )
+            if st.button("Préparer le fichier analytique", key="cost_export_tabular_prepare"):
+                try:
+                    from core.export_formats import build_export, export_filename
+                    payload = export_validated_period(selected)
+                    section_rows = payload[export_section]
+                    if (not isinstance(section_rows, list) or not section_rows
+                            or any(not isinstance(row, dict) for row in section_rows)):
+                        raise ValueError("Section validée non tabulaire ou vide")
+                    fields = list(dict.fromkeys(
+                        key for row in section_rows for key in row
+                    ))
+                    rows = [
+                        {"period_id": selected, **row}
+                        for row in section_rows
+                    ]
+                    columns = ["period_id"] + [key for key in fields if key != "period_id"]
+                    fmt = export_format.split("(")[1].split(")")[0].lstrip(".")
+                    data, mime, ext = build_export(
+                        rows, columns, fmt=fmt,
+                        title=f"Coûts analytiques validés — {export_section} — {selected}",
+                        warning="ANALYTIQUE UNIQUEMENT - hors journal SCF légal",
+                    )
+                except Exception as exc:
+                    _LOG.warning("Export analytique tabulaire refusé (%s)", type(exc).__name__)
+                    st.error("Export indisponible : instantané, droits, section ou taille non vérifiés.")
+                else:
+                    st.download_button(
+                        f"Télécharger {export_format} analytique", data=data, mime=mime,
+                        file_name=export_filename(f"Couts_{export_section}_{selected}", ext),
+                        key="cost_export_tabular_download",
+                    )
 
     if not can_write or not can_manage_costs():
         st.caption("Consultation uniquement. Écriture réservée aux profils habilités en Production et Finance.")
