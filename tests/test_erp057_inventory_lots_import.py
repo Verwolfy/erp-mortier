@@ -172,3 +172,84 @@ def test_sql_never_mutates_live_stock_or_scf_and_denies_public_calls():
         assert "UPDATE public.stock_actuel_pf " not in content
         assert "INSERT INTO public.mouvements " not in content
         assert "INSERT INTO public.ecritures_comptables" not in content
+
+
+
+def test_template_cannot_be_reused_for_a_different_inventory():
+    wb, ws = _workbook()
+    wb.close()
+    original = export_count_template(SNAPSHOT, campaign_id="INV-CAMPAIGN-A")
+    with pytest.raises(InventoryImportError, match="autre campagne"):
+        parse_count_workbook(original, SNAPSHOT, campaign_id="INV-CAMPAIGN-B")
+
+
+def test_extra_columns_are_not_silently_ignored():
+    wb, ws = _workbook()
+    ws["E5"] = "source_externe"
+    ws["C6"] = 10
+    with pytest.raises(InventoryImportError, match="supplémentaires"):
+        parse_count_workbook(_bytes(wb), SNAPSHOT)
+
+
+def test_classify_difference_checks_role_and_reason(monkeypatch):
+    monkeypatch.setattr(service, "_identity", lambda **kw: ("USR-TEST", "MAGASINIER"))
+    rpc = MagicMock(return_value={"inventaire_id": "INV-TEST-ABCDEFGH"})
+    monkeypatch.setattr(service, "_rpc", rpc)
+    with pytest.raises(ValueError):
+        service.classify_inventory_difference(
+            "INV-TEST-ABCDEFGH", "MP", "MP-001", "TVA", "texte de justification"
+        )
+    with pytest.raises(ValueError):
+        service.classify_inventory_difference(
+            "INV-TEST-ABCDEFGH", "MP", "MP-001", "PERTE", "trop court"
+        )
+    service.classify_inventory_difference(
+        "INV-TEST-ABCDEFGH", "MP", "MP-001", "PERTE",
+        "Détérioration vérifiée et documentée",
+    )
+    assert rpc.call_args.args[0] == "erp_inventory_classify_difference"
+    assert rpc.call_args.args[1]["p_acteur_id"] == "USR-TEST"
+
+
+def test_adjustment_proposal_never_authorizes_execution():
+    from modules.stocks.inventory_adjustment import build_adjustment_preparation
+    dossier = build_adjustment_preparation(
+        {"inventaire_id": "INV-TEST", "statut": "ECARTS_A_QUALIFIER",
+         "valide_par": "VALIDATEUR"},
+        [{"type_article": "MP", "article_id": "MP-01",
+          "quantite_theorique": "10", "quantite_comptee": "8",
+          "pmp_snapshot": "20", "nature_ecart": "PERTE",
+          "qualification_note": "Détérioration observée"}],
+        [{"type_article": "MP", "article_id": "MP-01", "lot_id": "LOT-1",
+          "quantite_theorique": "10", "quantite_comptee": "8"}],
+    )
+    assert dossier["executable"] is False
+    assert dossier["mouvements_stock_appliques"] is False
+    assert dossier["lignes"][0]["operation_envisagee"] == "SORTIE"
+    assert dossier["lignes"][0]["valeur_indicative_dzd"] == "40"
+    assert dossier["lignes"][0]["statut_projet"] == "NON_EXECUTABLE"
+
+
+def test_adjustment_fails_closed_without_lot_trace_or_cost():
+    from modules.stocks.inventory_adjustment import build_adjustment_preparation
+    dossier = build_adjustment_preparation(
+        {"inventaire_id": "INV-TEST", "statut": "OUVERT"},
+        [{"type_article": "PF", "article_id": "DEMO26_SKU2",
+          "quantite_theorique": "60", "quantite_comptee": "58",
+          "pmp_snapshot": None, "nature_ecart": "NON_QUALIFIE"}],
+        [],
+    )
+    assert dossier["executable"] is False
+    assert any("lots non réconciliés" in reason for reason in dossier["blocages"])
+    assert any("non qualifiée" in reason for reason in dossier["blocages"])
+    assert any("PMP" in reason for reason in dossier["blocages"])
+
+
+def test_sql_classification_resets_after_recount_and_never_moves_stock():
+    sql = (Path(__file__).resolve().parents[1] /
+           "sql/ERP_057c_qualification_ecarts_20261120.sql").read_text()
+    assert "NEW.nature_ecart='NON_QUALIFIE'" in sql
+    assert "p_nature='RETOUR_CLIENT' AND v_delta<0" in sql
+    assert "v_inv.statut<>'OUVERT'" in sql
+    assert "UPDATE public.stock_actuel " not in sql
+    assert "INSERT INTO public.mouvements " not in sql
