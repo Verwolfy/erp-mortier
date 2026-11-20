@@ -43,7 +43,7 @@ CREATE TABLE public.erp_inventory_events (
     event_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     inventory_id text NOT NULL REFERENCES public.erp_inventory_campaigns(inventory_id),
     operation_id text NOT NULL UNIQUE,
-    action text NOT NULL CHECK(action IN ('COUNT','SUBMIT','APPROVE','APPLY')),
+    action text NOT NULL CHECK(action IN ('COUNT','SUBMIT','APPROVE','APPLY','CANCEL')),
     actor_id text NOT NULL,
     request_payload jsonb NOT NULL,
     result_payload jsonb NOT NULL,
@@ -186,10 +186,12 @@ BEGIN
  END IF;
  IF p_operation_id IS NULL OR length(btrim(p_operation_id)) NOT BETWEEN 8 AND 128
     OR p_inventory_id IS NULL OR length(p_inventory_id) NOT BETWEEN 8 AND 128
-    OR p_action IS NULL OR p_action NOT IN ('COUNT','SUBMIT','APPROVE','APPLY')
+    OR p_action IS NULL OR p_action NOT IN ('COUNT','SUBMIT','APPROVE','APPLY','CANCEL')
     OR p_note IS NOT NULL AND length(p_note)>500 THEN
     RAISE EXCEPTION 'Commande inventaire invalide' USING ERRCODE='22023';
  END IF;
+ -- L'opération idempotente est sérialisée avant lecture du journal.
+ PERFORM pg_advisory_xact_lock(hashtextextended('ERP_INV_OP:'||p_operation_id,0));
  v_request:=jsonb_build_object('action',p_action,'inventory_id',p_inventory_id,
      'lot_id',p_lot_id,'count',p_count,'note',p_note,'actor',p_actor_id);
  SELECT * INTO v_prev FROM public.erp_inventory_events
@@ -233,6 +235,15 @@ BEGIN
       status='SOUMIS',submitted_by=p_actor_id,submitted_at=now()
       WHERE inventory_id=p_inventory_id;
     v_result:=jsonb_build_object('inventory_id',p_inventory_id,'status','SOUMIS');
+ ELSIF p_action='CANCEL' THEN
+    IF v_inv.status NOT IN ('OUVERT','SOUMIS','APPROUVE')
+       OR v_inv.created_by<>p_actor_id AND v_inv.approved_by IS DISTINCT FROM p_actor_id THEN
+       RAISE EXCEPTION 'Annulation réservée au créateur ou approbateur'
+         USING ERRCODE='42501';
+    END IF;
+    UPDATE public.erp_inventory_campaigns
+       SET status='ANNULE' WHERE inventory_id=p_inventory_id;
+    v_result:=jsonb_build_object('inventory_id',p_inventory_id,'status','ANNULE');
  ELSIF p_action='APPROVE' THEN
     IF v_inv.status<>'SOUMIS' OR v_inv.created_by=p_actor_id
        OR v_inv.submitted_by=p_actor_id
