@@ -1173,3 +1173,72 @@ def test_unknown_sql_shipment_result_not_confirmation(ui):
         ui.mod._verify_uncertain_shipment(
             {"operation_id": "SALE-UI-test", "payload": _ship()}, "USR-1",
         )
+
+
+@pytest.mark.parametrize("check_state", ["blocked", "confirmed", "retry"])
+def test_ship_failure_auto_verifies_sql_without_second_shipment(ui, check_state):
+    """Après une erreur de RPC, la lecture seule clarifie sans jamais re-débit."""
+    ui.sales.creer_bon_livraison.side_effect = RuntimeError("RPC unavailable")
+    existing_id = "SALE-UI-TEST-UNIQUE"
+    ui.st.session_state[ui.mod._operation_key("ship", "USR-1")] = {
+        "status": "uncertain",
+        "operation_id": existing_id,
+        "payload": _ship(),
+    }
+    expected_bl = "BL-EXISTANT" if check_state == "confirmed" else None
+    ui.mod._verify_uncertain_shipment = MagicMock(
+        return_value=(check_state, expected_bl)
+    )
+    ui.mod._execute_operation("ship", "USR-1")
+    key = ui.mod._operation_key("ship", "USR-1")
+    record = ui.st.session_state[key]
+    ui.mod._verify_uncertain_shipment.assert_called_once_with(record, "USR-1")
+    ui.sales.creer_bon_livraison.assert_called_once()
+    assert ui.sales.creer_bon_livraison.call_args.kwargs["operation_id"] == existing_id
+    if check_state == "blocked":
+        assert record["status"] == "uncertain"
+        assert record["verification"] == "blocked"
+        assert any(
+            "NON EXPÉDIABLE" in str(call.args[0])
+            for call in ui.st.error.call_args_list
+        )
+        ui.st.rerun.assert_not_called()
+    elif check_state == "retry":
+        assert record["status"] == "uncertain"
+        assert record["verification"] == "retry"
+        ui.st.rerun.assert_not_called()
+    else:
+        assert record["status"] == "confirmed"
+        assert record["document_id"] == expected_bl
+        ui.st.rerun.assert_called_once()
+
+
+def test_ship_failure_without_verifiable_sql_stays_uncertain(ui):
+    """Erreur de lecture (PostgREST, panne réseau) = aucune conclusion inventée."""
+    ui.sales.creer_bon_livraison.side_effect = TimeoutError("network timeout")
+    ui.mod._verify_uncertain_shipment = MagicMock(
+        side_effect=Exception("Database read failed")
+    )
+    ui.mod._start_operation("ship", "USR-1", _ship())
+    key = ui.mod._operation_key("ship", "USR-1")
+    record = ui.st.session_state[key]
+    assert record["status"] == "uncertain"
+    assert record.get("verification") is None
+    assert record["operation_id"].startswith("SALE-UI-")
+    assert any(
+        "Opération non confirmée" in str(call.args[0])
+        for call in ui.st.error.call_args_list
+    )
+    ui.sales.creer_bon_livraison.assert_called_once()
+    ui.st.rerun.assert_not_called()
+
+
+def test_auto_verification_of_bl_does_not_affect_invoice_failure(ui):
+    ui.mod._dossier_client_exoneration_a_revoir = MagicMock(return_value=False)
+    ui.mod._verify_uncertain_shipment = MagicMock()
+    ui.sales.create_facture_brouillon.side_effect = RuntimeError("network")
+    ui.mod._start_operation("draft", "USR-1", _draft())
+    ui.mod._verify_uncertain_shipment.assert_not_called()
+    assert ui.st.session_state[
+        ui.mod._operation_key("draft", "USR-1")
+    ]["status"] == "uncertain"
