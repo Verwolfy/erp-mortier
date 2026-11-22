@@ -211,7 +211,9 @@ def _execute_operation(kind: str, user_id: str) -> None:
             record.pop("verification", None)
             try:
                 state, bl_id = _verify_uncertain_shipment(record, user_id)
-            except (PermissionError, ValueError, RuntimeError, KeyError, TypeError) as verify_error:
+            except Exception as verify_error:
+                # Même une panne du client PostgREST de lecture ne doit jamais
+                # débloquer un retry ni interrompre la conservation du dossier.
                 _LOG.warning("Contrôle lecture seule BL indisponible (%s)",
                              type(verify_error).__name__)
             else:
