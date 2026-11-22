@@ -1123,8 +1123,14 @@ def test_uncertain_shipment_confirmed_in_sql_never_resent(ui):
                 "bl_id": "BL-CONFIRME",
             },
         },
-        bl={"bl_id": "BL-CONFIRME", "commande_vente_id": "CDV-1"},
+        bl={"bl_id": "BL-CONFIRME", "commande_vente_id": "CDV-1",
+            "statut": "EXPEDIE"},
     )
+    # Preuve par les lignes réellement persistées, non seulement l'en-tête.
+    ui.mod._read_required = MagicMock(return_value=pd.DataFrame([
+        {"bl_id": "BL-CONFIRME", "sku_id": "SKU-1", "quantite_livree": 1},
+        {"bl_id": "BL-CONFIRME", "sku_id": "SKU-1", "quantite_livree": 1},
+    ]))
     record = {"operation_id": operation_id, "payload": _ship()}
     assert ui.mod._verify_uncertain_shipment(record, "USR-1") == (
         "confirmed", "BL-CONFIRME",
@@ -1242,3 +1248,30 @@ def test_auto_verification_of_bl_does_not_affect_invoice_failure(ui):
     assert ui.st.session_state[
         ui.mod._operation_key("draft", "USR-1")
     ]["status"] == "uncertain"
+
+
+@pytest.mark.parametrize("stored_status,actual_qty", [
+    ("EXPEDIE", 1), ("BROUILLON", 2), ("LIVRE", 3),
+])
+def test_confirmed_sql_bl_requires_matching_status_and_quantity(ui, stored_status, actual_qty):
+    """Ne jamais présenter un BL comme confirmé si les lignes ne correspondent pas."""
+    _mock_verification_client(ui, operation={
+        "operation_id": "SALE-UI-test", "action": "SHIP",
+        "request_payload": {
+            "commande_vente_id": "CDV-1",
+            "lignes": [{"sku_id": "SKU-1", "quantite_livree": "2"}],
+        },
+        "result_payload": {
+            "operation_id": "SALE-UI-test", "action": "SHIP",
+            "bl_id": "BL-1",
+        },
+    }, bl={"bl_id": "BL-1", "commande_vente_id": "CDV-1",
+           "statut": stored_status})
+    ui.mod._read_required = MagicMock(return_value=pd.DataFrame([
+        {"bl_id": "BL-1", "sku_id": "SKU-1", "quantite_livree": actual_qty},
+    ]))
+    with pytest.raises(RuntimeError, match="BL"):
+        ui.mod._verify_uncertain_shipment(
+            {"operation_id": "SALE-UI-test", "payload": _ship()}, "USR-1"
+        )
+    ui.sales.creer_bon_livraison.assert_not_called()
