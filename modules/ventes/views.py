@@ -33,7 +33,7 @@ from modules.ventes.service import (
 _LOG = logging.getLogger(__name__)
 # Repère public de la livraison de l'écran, sans revendication d'un SHA
 # déployé. Permet une vérification visuelle de Streamlit après mise à jour.
-_UI_REVISION = "SOF-ERP-20261120-BL-RECONCILIATION-01"
+_UI_REVISION = "SOF-ERP-20261122-BL-AUTO-VERIFY-02"
 _ACTIVE = frozenset({"oui", "true", "1", "actif", "active", "yes"})
 _ACTIONS = frozenset({"draft", "validate", "cancel", "ship", "order"})
 _REQUIRED = {
@@ -200,9 +200,47 @@ def _execute_operation(kind: str, user_id: str) -> None:
         st.error("Opération refusée : corrigez les données ou les autorisations.")
         return
     except Exception as exc:
-        # Échec incertain après éventuel COMMIT : l'opération reste verrouillée.
+        # Un refus de RPC peut être définitif, mais un timeout peut aussi
+        # survenir APRÈS COMMIT. Ne jamais inférer le résultat depuis le texte
+        # d'une exception ni générer une nouvelle référence d'opération.
         _LOG.warning("Opération Ventes non confirmée (%s)", type(exc).__name__)
         record["status"] = "uncertain"
+        if kind == "ship":
+            # Vérification automatique en LECTURE SEULE du journal SQL et des
+            # BL, avant tout éventuel retry. Aucun appel de création ici.
+            record.pop("verification", None)
+            try:
+                state, bl_id = _verify_uncertain_shipment(record, user_id)
+            except (PermissionError, ValueError, RuntimeError, KeyError, TypeError) as verify_error:
+                _LOG.warning("Contrôle lecture seule BL indisponible (%s)",
+                             type(verify_error).__name__)
+            else:
+                if state == "confirmed" and bl_id:
+                    record["status"] = "confirmed"
+                    record["document_id"] = bl_id
+                    st.success(f"BL {bl_id} retrouvé dans Supabase : aucune seconde expédition.")
+                    st.rerun()
+                    return
+                if state == "blocked":
+                    record["verification"] = "blocked"
+                    st.error(
+                        "Livraison non enregistrée et désormais NON EXPÉDIABLE : "
+                        "commande déjà livrée ou stock FIFO insuffisant. "
+                        "Aucune nouvelle sortie autorisée. "
+                        "Utilisez le dossier de reprise pour clore la tentative après contrôle."
+                    )
+                    st.code(record["operation_id"])
+                    return
+                # 'retry' n'autorise PAS de retry automatique : le panneau
+                # exige une seconde vérification et le même operation_id.
+                if state == "retry":
+                    record["verification"] = "retry"
+                    st.warning(
+                        "Livraison non retrouvée dans le journal ; reprise potentiellement "
+                        "possible après une nouvelle vérification, avec le MÊME identifiant."
+                    )
+                    st.code(record["operation_id"])
+                    return
         st.error("Opération non confirmée. Vérifiez-la dans Supabase avant de réessayer.")
         st.code(record["operation_id"])
         return
