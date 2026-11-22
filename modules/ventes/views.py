@@ -330,14 +330,25 @@ def _verify_uncertain_shipment(record: dict, user_id: str) -> tuple[str, str | N
             raise RuntimeError("Réponse de livraison non confirmée")
         bl_id = result["bl_id"]
         bl = (get_supabase_client().table("bons_livraison")
-              .select("bl_id,commande_vente_id").eq("bl_id", bl_id)
+              .select("bl_id,commande_vente_id,statut").eq("bl_id", bl_id)
               .limit(2).execute())
         found = getattr(bl, "data", None)
         if (not isinstance(found, list) or len(found) != 1
                 or not isinstance(found[0], dict)
                 or found[0].get("bl_id") != bl_id
-                or found[0].get("commande_vente_id") != order_id):
+                or found[0].get("commande_vente_id") != order_id
+                or str(found[0].get("statut") or "").strip().upper()
+                    not in _DELIVERED_BL_STATES):
             raise RuntimeError("BL de l'opération SQL non identifiable")
+        # L'existence du BL seul ne suffit PAS : confronter chaque SKU et
+        # quantité livrée au journal de l'opération, y compris BL multi-lots.
+        all_lines = _read_required("lignes_bons_livraison")
+        required = {"bl_id", "sku_id", "quantite_livree"}
+        if all_lines.empty or not required.issubset(all_lines.columns):
+            raise RuntimeError("Lignes du BL de l'opération SQL non vérifiables")
+        lines = all_lines[all_lines["bl_id"] == bl_id].to_dict("records")
+        if _shipment_payload_quantities(lines, stored=True) != requested:
+            raise RuntimeError("Lignes du BL incohérentes avec l'opération SQL")
         return ("confirmed", bl_id)
 
     orders = _read_required("commandes_ventes")
