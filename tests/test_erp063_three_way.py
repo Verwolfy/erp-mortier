@@ -192,9 +192,14 @@ def test_read_error_never_creates_fake_concordance():
 def test_ui_in_achats_history_and_exports_consultative_only():
     code = (ROOT / "modules/achats/views.py").read_text()
     panel = (ROOT / "modules/achats/three_way_views.py").read_text()
+    row_actions = (ROOT / "modules/achats/po_row_actions.py").read_text()
     assert 'if active_panel == panels[2]:' in code
-    assert "show_three_way_match, show_po_print_copy" in code
-    assert 'if st.session_state.get(po_key) or st.session_state.get(match_key):' in code
+    assert "show_three_way_match" in code
+    assert "show_purchase_orders_with_actions(rows_commandes, user_id)" in code
+    assert "show_po_print_copy" not in code  # la référence n'est plus saisie à la main
+    assert "load_operation_snapshot" in row_actions
+    assert "render_operation_pdf(snapshot)" in row_actions
+    assert "NON ÉMISE" in row_actions
     assert "load_supplier_invoice_match" in panel
     assert "autorise_paiement" not in panel  # aucun bouton d'autorisation
     assert "build_export(" in panel

@@ -1,5 +1,5 @@
 # --- Interface ---
-streamlit>=1.38.0
+streamlit>=1.59.0,<2
 plotly==5.18.0
 
 # --- Base de données & APIs ---
