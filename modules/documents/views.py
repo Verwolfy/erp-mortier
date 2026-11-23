@@ -249,6 +249,7 @@ def show_documents_page():
                 st.session_state.pop(widget_key, None)
         st.session_state[doc_key] = new_draft(kind)
         st.session_state["nextgen_doc_type"] = kind
+        st.session_state.pop("ng_doc_draft_action", None)
     doc = st.session_state[doc_key]
     st.subheader("Reprendre un brouillon", help=topic_help("documents.import"))
     show_context_help(st, "documents.import")
@@ -474,12 +475,31 @@ def show_documents_page():
     except (ValueError, RuntimeError, ImportError) as exc:
         st.error(f"Export indisponible : {type(exc).__name__}")
         return
-    left, right = st.columns(2)
-    left.download_button("Exporter PDF (brouillon)", pdf,
-                         file_name=doc["trace_id"] + ".pdf", mime="application/pdf")
-    right.download_button("Exporter Word modifiable", word,
-                          file_name=doc["trace_id"] + ".docx",
-                          mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    st.subheader("Actions du brouillon")
+    st.caption("Consulter, imprimer ou télécharger : document non émis et non signé.")
+    c_view, c_print, c_pdf = st.columns(3)
+    if c_view.button("👁️ Consulter", key="ng_doc_draft_view"):
+        st.session_state["ng_doc_draft_action"] = "consulter"
+    if c_print.button("🖨️ Imprimer", key="ng_doc_draft_print"):
+        st.session_state["ng_doc_draft_action"] = "imprimer"
+    c_pdf.download_button("📄 PDF", pdf, file_name=doc["trace_id"] + ".pdf",
+                          mime="application/pdf", key="ng_doc_draft_pdf")
+    action = st.session_state.get("ng_doc_draft_action")
+    if action in ("consulter", "imprimer"):
+        st.warning("BROUILLON NON ÉMIS / NON SIGNÉ — aperçu interne.")
+        if callable(getattr(st, "pdf", None)):
+            try:
+                st.pdf(pdf, height=650)
+            except Exception:
+                st.caption("Lecteur PDF indisponible : utiliser 📄 PDF pour imprimer localement.")
+        else:
+            st.caption("Téléchargez le PDF puis ouvrez-le pour le consulter ou l'imprimer (Ctrl+P).")
+        if st.button("Fermer l'aperçu", key="ng_doc_draft_close"):
+            st.session_state.pop("ng_doc_draft_action", None)
+            st.rerun()
+    st.download_button("Exporter Word modifiable", word,
+                       file_name=doc["trace_id"] + ".docx",
+                       mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
     st.download_button("Exporter JSON (brouillon)", json.dumps(doc, ensure_ascii=False, indent=2),
                        file_name=doc["trace_id"] + ".json", mime="application/json")
     # Les feuilles Excel/CSV exportent les lignes du même brouillon normalisé
