@@ -87,6 +87,7 @@ def build_request_snapshot(identifier: str, requests: list[dict],
         ("Date de besoin souhaitée", wanted),
         ("Motivation enregistrée (intégrale)", motivation.strip()),
         ("Approbateur (référence)", approver or "NON RENSEIGNÉ"),
+        ("Motif de décision enregistré", str(record.get("decision_motif") or "NON RENSEIGNÉ")),
         ("Commande fournisseur liée", command_id or "AUCUNE"),
     ]
     for pos, line in enumerate(lines, 1):
