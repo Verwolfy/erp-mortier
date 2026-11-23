@@ -417,11 +417,12 @@ def show_achats_page():
                                     f"{montant_ligne:,.2f} {devise} "
                                     f"({qte} {unite} × {prix_u} {devise}/{unite})"
                                 )
-                            if unite and c_btn.button(
+                            ajout_demande = c_btn.button(
                                 "Ajouter", use_container_width=True,
                                 disabled=not bool(unite),
                                 help=field_help("Ajouter", module="achats"),
-                            ):
+                            )
+                            if unite and ajout_demande:
                                 # Sans conversion d'unité non définie : la
                                 # quantité achetée est la quantité en stock.
                                 st.session_state[_cart_key(user_id)].append({
