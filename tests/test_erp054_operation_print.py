@@ -127,3 +127,33 @@ def test_missing_invoice_line_does_not_generate_a_fake_invoice():
     }]
     with pytest.raises(OperationPrintError):
         load_operation_snapshot("Facture (aperçu interne)", "FAC-1", reader=_reader(data))
+
+
+
+def test_supplier_purchase_order_print_generates_branded_pdf_from_persisted_values():
+    """Le document fournisseur doit être imprimable mais jamais marqué émis."""
+    data = _catalog()
+    data[("commandes_achats", "commande_achat_id", "E2E61-PO")] = [{
+        "commande_achat_id": "E2E61-PO", "fournisseur_id": "FR-1",
+        "date_commande": "2026-11-23", "statut": "EN_ATTENTE",
+        "montant_total_local": "1000.00",
+    }]
+    data[("lignes_achats", "commande_achat_id", "E2E61-PO")] = [{
+        "ligne_achat_id": "E2E61-L1", "commande_achat_id": "E2E61-PO",
+        "mp_id": "MP-1", "unite_cond": "KG",
+        "qte_cond": "10", "qte_totale": "10",
+        "prix_unitaire": "100.00", "total_devise": "1000.00",
+    }]
+    snapshot = load_operation_snapshot(
+        "Commande fournisseur", "E2E61-PO", reader=_reader(data),
+    )
+    assert snapshot["partner"] == "Fournisseur de test"
+    assert snapshot["date"] == "2026-11-23"
+    assert snapshot["lines"][0]["quantite"] == "10"
+    assert snapshot["lines"][0]["prix_unitaire"] == "100.00"
+    assert snapshot["lines"][0]["total_ht"] == "1000.00"
+    assert snapshot["totals"] == [("Total DZD enregistré", "1000.00")]
+    assert "NON ÉMISE" in snapshot["warning"]
+    pdf = render_operation_pdf(snapshot)
+    assert pdf.startswith(b"%PDF")
+    assert b"/Type /Page" in pdf
