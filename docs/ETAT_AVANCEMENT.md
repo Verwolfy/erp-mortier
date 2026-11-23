@@ -1,3 +1,16 @@
+## 23 novembre 2026 — ERP-061 : recette transversale réelle et blocage Finance fournisseur
+
+- **Test SQL sur Supabase principal en ROLLBACK** : commande fournisseur 10 kg × 100 DZD, idempotence BC, réception 4+6 kg, statuts PARTIELLEMENT_RECEPTIONNE puis RECEPTIONNE, deux mouvements MP et liens de lots, PMP recalculé, sur-réception refusée. 0 BC/BR/op test persistés ; stock initial restauré.
+- **Document** : test de génération réelle d'un PDF de **commande fournisseur** via `render_operation_pdf` depuis un snapshot contrôlé. Document de CONSULTATION NON ÉMIS ; le parcours de bon signé/transmis au fournisseur reste à créer.
+- **Finance** : RPC `ALLOCATE FactureFournisseur` plante sur `record v_invoice has no field montant_paye` (champ client) ; les factures BROUILLON passaient le filtre logique ; et 3 comptes existants ACTIF (au lieu de OUI), sans compte tiers fournisseur actif. Correctif et migration ciblée préparés sur GitHub **NON APPLIQUÉS en production**. Simulation `BEGIN...ROLLBACK` de la migration : rejet du brouillon, paiement/lettrage NON_PAYEE 1000 DZD + 2 écritures équilibrées PASS, 0 facture/règlement/compte de test persisté. Approbation financière indispensable avant migration SQL et changement de configuration réelle. [#85](https://github.com/Verwolfy/erp-mortier/issues/85).
+- **Production** : OF créé, démarré, CQ clôture refus/rejet en ROLLBACK ; pas de production conforme homologuée (SKU DEMO sans emballage qualifié, emballages PROOF sans stock).
+- **Ventes** : commande client créée et rejouée idempotemment ; livraison bloquée sans lot PF FIFO ACTIF ; 0 BL/op de test.
+- **Autres modules** : lecture SQL CRM (5 opportunités, 4 interactions), RH (14 employés, 5 congés), Administration (5 audits), autres registres ; 6 contrôles relationnels à 0 anomalie, 5 RPC critiques non exécutables par anon/authenticated. Suite complète de tests GitHub : 3405 tests réussis sur le commit de code `e846f5fc6192`, audit réussi. Vérifier la CI sur le dernier commit documentaire.
+- **Processus complet absent** : demande d'achat et approbation avant BC, émission/signature/transmission du PDF, saisie + validation facture fournisseur, rapprochement BC/BR/FF et pilotage du paiement. [#86](https://github.com/Verwolfy/erp-mortier/issues/86).
+- **Limite navigateur** : aucun E2E authentifié Streamlit effectué, pas de TinyFish ; version hébergée non garantie (issue #78). Rapport `docs/ERP_061_RECETTE_TRANSVERSALE_20261123.md`.
+
+---
+
 ## 20 novembre 2026 — ERP-059 : correctif BL, reprise sûre et disponibilité FIFO
 
 - **Incident BL utilisateur** `DEMO26_CV1` : le BL historique `DEMO26_BL1` est déjà `LIVRE` pour **10/10 unités**, mais l'écran et la RPC ne comptaient que `EXPEDIE`. Le stock PF affichait 180 alors que le seul lot `DEMO26_LOT2` est `DISPONIBLE`, non éligible à la FIFO qui exige `ACTIF`. L'opération `SALE-UI-7b11a0b925a74262b72ddf3616083d5e` **n'est pas enregistrée** en base. Reproduction transactionnelle `ROLLBACK` : erreur `23514 Incohérence globale / somme des lots`.
