@@ -178,7 +178,7 @@ def test_real_read_strict_loader_only_reads_six_tables_no_mutation():
         return deepcopy(data.get((table, equal_column, equal_value), []))
     assert load_supplier_invoice_match("FF-TEST", reader=reader)["verdict"] == \
         "CONCORDANCE_DOCUMENTAIRE"
-    assert len(calls) == 7
+    assert len(calls) == 8
     assert all(0 < limit <= 200 for _, _, _, limit in calls)
 
 
@@ -193,7 +193,8 @@ def test_ui_in_achats_history_and_exports_consultative_only():
     code = (ROOT / "modules/achats/views.py").read_text()
     panel = (ROOT / "modules/achats/three_way_views.py").read_text()
     assert 'if active_panel == panels[2]:' in code
-    assert "from modules.achats.three_way_views import show_three_way_match" in code
+    assert "show_three_way_match, show_po_print_copy" in code
+    assert 'if st.session_state.get(po_key) or st.session_state.get(match_key):' in code
     assert "load_supplier_invoice_match" in panel
     assert "autorise_paiement" not in panel  # aucun bouton d'autorisation
     assert "build_export(" in panel
