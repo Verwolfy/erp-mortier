@@ -22,6 +22,8 @@ INTERNAL_KINDS = {
     "Fiche de mouvement PF": ("mouvements_pf", "mouvement_pf_id", "Stocks"),
     "Fiche de consommation OF": ("consommations_of", "consommation_id", "Production"),
     "Compte rendu de contrôle qualité": ("controle_qualite", "qc_id", "Production"),
+    # Registre ERP-062 NON ACTIF : chargement réservé au service RBAC Achats spécialisé.
+    "Demande d'achat (copie interne)": ("erp_purchase_requests", "demande_id", "Achats"),
 }
 
 
@@ -68,6 +70,11 @@ def load_internal_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
     if (kind not in INTERNAL_KINDS or type(identifier) is not str
             or not _ID.fullmatch(identifier)):
         raise InternalPrintError("Référence ou type documentaire invalide")
+    if kind == "Demande d'achat (copie interne)":
+        if reader is not None:
+            raise InternalPrintError("Accès DA réservé au service Achats ERP-062")
+        from modules.achats.request_print import load_request_snapshot
+        return load_request_snapshot(identifier)
     if reader is None:
         from core.strict_reads import fetch_data_strict
         reader = fetch_data_strict
@@ -224,7 +231,10 @@ def render_internal_pdf(snapshot: dict) -> bytes:
         pdf.multi_cell(190, 5, safe(label) + " :", new_x=XPos.LMARGIN,
                        new_y=YPos.NEXT)
         pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(190, 6, safe(value), new_x=XPos.LMARGIN,
+        # Les motivations DA (jusqu'à 1500 caractères) doivent être imprimées
+        # intégralement : aucune troncature silencieuse d'une justification.
+        text_limit = 1500 if label == "Motivation enregistrée (intégrale)" else 230
+        pdf.multi_cell(190, 6, safe(value, text_limit), new_x=XPos.LMARGIN,
                        new_y=YPos.NEXT)
         pdf.ln(2)
     pdf.ln(6)
