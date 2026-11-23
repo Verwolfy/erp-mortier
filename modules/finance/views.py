@@ -700,7 +700,11 @@ def _accuses_internes_tab(user_id: str, can_write: bool,
                         "montant_encaisse", "statut"]
             if not set(colonnes).issubset(recus.columns):
                 raise ValueError("Historique des accusés incomplet")
-            st.dataframe(recus[colonnes], use_container_width=True, hide_index=True)
+            from modules.documents.row_actions import show_recorded_documents
+            show_recorded_documents(
+                recus[colonnes], kind="Accusé interne d'encaissement",
+                id_column="recu_id", user_id=user_id, scope="finance_accuses",
+            )
     except Exception as exc:
         _LOG.warning("Accusés internes indisponibles (%s)", type(exc).__name__)
         st.error("Journal des accusés inaccessible : émission désactivée.")
