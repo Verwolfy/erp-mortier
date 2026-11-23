@@ -193,8 +193,12 @@ def test_read_only_role_can_view_history_not_write(ui):
     ui.achats.creer_bon_reception.assert_not_called()
     # L'historique est désormais chargé uniquement après clic explicite.
     ui.achats.get_commandes.assert_not_called()
-    call = ui.st.button.call_args
-    assert call.args == ("Afficher l'historique Achats",)
+    # Le contrôle documentaire ERP-063 ajoute des boutons consultatifs :
+    # l'ordre d'appel n'est pas un contrat métier.
+    history = [call for call in ui.st.button.call_args_list
+               if call.args == ("Afficher l'historique Achats",)]
+    assert len(history) == 1
+    call = history[0]
     assert call.kwargs["key"] == "ng_achats_history_load"
     assert call.kwargs["on_click"] is ui.mod._mark_achats_activity
     assert isinstance(call.kwargs["help"], str)
