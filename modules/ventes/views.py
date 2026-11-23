@@ -816,13 +816,13 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
     if st.session_state.get(history_key) == int(page_bl):
         from core.strict_reads import fetch_history_page_strict
         from modules.documents.row_actions import show_recorded_documents
-        rows, total = fetch_history_page_strict(
+        bl_rows, bl_total = fetch_history_page_strict(
             "bons_livraison", page=int(page_bl), date_column="date",
         )
-        st.caption(f"Page {int(page_bl)} : {len(rows)} BL sur {total}.")
-        if rows:
+        st.caption(f"Page {int(page_bl)} : {len(bl_rows)} BL sur {bl_total}.")
+        if bl_rows:
             show_recorded_documents(
-                rows, kind="Bon de livraison", id_column="bl_id",
+                bl_rows, kind="Bon de livraison", id_column="bl_id",
                 user_id=user_id, scope="ventes_bl",
             )
         else:
