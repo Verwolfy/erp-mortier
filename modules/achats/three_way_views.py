@@ -77,3 +77,41 @@ def show_three_way_match() -> None:
             f"ERP63_controle_{result['facture_fournisseur_id']}", ext),
         key="erp63_match_download",
     )
+
+
+
+def show_po_print_copy() -> None:
+    """Prépare le BC PDF interne depuis les seules données persistées."""
+    st.subheader("Bon de commande fournisseur — copie imprimable")
+    st.warning(
+        "NON ÉMIS / NON SIGNÉ : aucun visa de l'acheteur, signature, "
+        "envoi ni réception fournisseur attestés par ce téléchargement."
+    )
+    po_id = st.text_input(
+        "Référence exacte du BC enregistré",
+        max_chars=128, key="erp63_po_print_reference",
+    )
+    if not st.button("Préparer le PDF fournisseur de consultation",
+                     key="erp63_po_print_prepare"):
+        return
+    from modules.documents.erp_print import (
+        OperationPrintError, load_operation_snapshot, render_operation_pdf,
+    )
+    try:
+        snapshot = load_operation_snapshot("Commande fournisseur", po_id.strip())
+        if "NON ÉMISE" not in snapshot.get("warning", ""):
+            raise OperationPrintError("Preuve de copie non émise absente")
+        payload = render_operation_pdf(snapshot)
+        if not isinstance(payload, bytes) or not payload.startswith(b"%PDF"):
+            raise OperationPrintError("PDF non confirmable")
+    except (OperationPrintError, PermissionError, ValueError,
+            RuntimeError, TypeError, KeyError) as exc:
+        _LOG.warning("Préparation copie BC impossible (%s)", type(exc).__name__)
+        st.error("BC ou lignes indisponibles : aucun document partiel présenté.")
+        return
+    st.download_button(
+        "Télécharger le BC PDF — COPIE NON ÉMISE",
+        data=payload, mime="application/pdf",
+        file_name=f"BC_consultation_{snapshot['id']}.pdf",
+        key="erp63_po_print_download",
+    )
