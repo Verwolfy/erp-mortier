@@ -163,12 +163,14 @@ def list_purchase_requests() -> list[dict]:
         result = (_stock_rpc_client().table("erp_purchase_requests")
                   .select("demande_id,demandeur_id,motivation,date_souhaitee,"
                           "statut,approbateur_id,commande_achat_id,cree_le")
-                  .order("cree_le", desc=True).limit(200).execute())
+                  .order("cree_le", desc=True).limit(201).execute())
     except Exception as exc:
         raise RuntimeError("Registre des demandes indisponible") from exc
     rows = result.data
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise RuntimeError("Registre des demandes non vérifiable")
+    if len(rows) > 200:
+        raise RuntimeError("Plus de 200 demandes : pagination obligatoire")
     return rows
 
 
