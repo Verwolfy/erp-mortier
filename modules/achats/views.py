@@ -516,8 +516,11 @@ def show_achats_page():
                 st.divider()
                 st.subheader("Bons de réception", help=topic_help("achats.historique"))
                 if rows_receptions:
-                    st.dataframe(pd.DataFrame(rows_receptions), use_container_width=True,
-                                 hide_index=True)
+                    from modules.documents.row_actions import show_recorded_documents
+                    show_recorded_documents(
+                        rows_receptions, kind="Bon de réception",
+                        id_column="bon_reception_id", user_id=user_id, scope="achats_br",
+                    )
                 else:
                     st.info("Aucun bon de réception sur cette page.")
 
