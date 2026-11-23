@@ -485,9 +485,16 @@ def show_achats_page():
             , help=field_help("Page des historiques Achats", module="achats"))
             from core.history_filters import history_period_inputs
             period = history_period_inputs("ng_achats_history")
+            # La consultation reste chargée uniquement après demande explicite.
+            # Conserver ce choix entre les reruns des boutons situés dans les lignes.
+            load_key = f"achats_history_loaded_{user_id}"
             if period is not None and st.button(
                     "Afficher l'historique Achats", key="ng_achats_history_load",
                     on_click=_mark_achats_activity, help=field_help("Afficher l'historique Achats", module="achats")):
+                st.session_state[load_key] = (int(page_achats), dict(period))
+            history_loaded = st.session_state.get(load_key)
+            if (period is not None and
+                    history_loaded == (int(page_achats), dict(period))):
                 from core.strict_reads import fetch_history_page_strict
                 rows_commandes, total_commandes = fetch_history_page_strict(
                     "commandes_achats", page=int(page_achats), date_column="date_commande", **period
@@ -501,8 +508,9 @@ def show_achats_page():
                 )
                 st.subheader("Commandes d'Achats", help=topic_help("achats.historique"))
                 if rows_commandes:
-                    st.dataframe(pd.DataFrame(rows_commandes), use_container_width=True,
-                                 hide_index=True)
+                    # Boutons de ligne : voir, préparer la copie imprimable, télécharger PDF.
+                    from modules.achats.po_row_actions import show_purchase_orders_with_actions
+                    show_purchase_orders_with_actions(rows_commandes, user_id)
                 else:
                     st.info("Aucune commande sur cette page.")
                 st.divider()
@@ -519,25 +527,15 @@ def show_achats_page():
         with read_section("Demandes achat"):
             show_purchase_requests(user_id, can_write)
 
-    # --- ERP-063 : outils consultatifs, importés UNIQUEMENT après ouverture.
-    # Pas de lecture des autres modules au simple changement de panneau.
+    # --- ERP-063 : rapprochement consultatif, conservé en bas de l'historique.
+    # La copie du BC est désormais disponible sur chaque ligne de commande.
     if active_panel == panels[2]:
-        po_key = f"erp63_show_po_print_{user_id}"
         match_key = f"erp63_show_match_{user_id}"
-        if st.button("🖨️ Préparer une copie PDF du BC fournisseur (NON ÉMISE)",
-                     key=f"erp63_open_po_{user_id}"):
-            st.session_state[po_key] = True
         if st.button("🔎 Contrôler BC / BR / facture fournisseur",
                      key=f"erp63_open_match_{user_id}"):
             st.session_state[match_key] = True
-        if st.session_state.get(po_key) or st.session_state.get(match_key):
-            from modules.achats.three_way_views import (
-                show_three_way_match, show_po_print_copy,
-            )
-            if st.session_state.get(po_key):
-                with st.expander("Copie BC imprimable — NON ÉMISE", expanded=True):
-                    show_po_print_copy()
-            if st.session_state.get(match_key):
-                with st.expander("Rapprochement BC / BR / facture — consultation",
-                                 expanded=True):
-                    show_three_way_match()
+        if st.session_state.get(match_key):
+            from modules.achats.three_way_views import show_three_way_match
+            with st.expander("Rapprochement BC / BR / facture — consultation",
+                             expanded=True):
+                show_three_way_match()
