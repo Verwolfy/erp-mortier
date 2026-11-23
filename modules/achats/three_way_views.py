@@ -109,9 +109,10 @@ def show_po_print_copy() -> None:
         _LOG.warning("Préparation copie BC impossible (%s)", type(exc).__name__)
         st.error("BC ou lignes indisponibles : aucun document partiel présenté.")
         return
+    from core.export_formats import export_filename
     st.download_button(
         "Télécharger le BC PDF — COPIE NON ÉMISE",
         data=payload, mime="application/pdf",
-        file_name=f"BC_consultation_{snapshot['id']}.pdf",
+        file_name=export_filename(f"BC_consultation_{snapshot['id']}", "pdf"),
         key="erp63_po_print_download",
     )
