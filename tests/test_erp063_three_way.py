@@ -102,9 +102,11 @@ def test_cumulative_other_invoices_prevents_double_billing():
 def test_supplier_mismatch_and_foreign_po_reference_are_detected():
     docs = _documents()
     docs[0]["fournisseur_id"] = "OTHER"
-    docs[0]["commande_achat_id"] = "DIFFERENT"
     result = _match(docs)
-    assert len(result["blocages"]) >= 2
+    assert any("Fournisseur facture" in message for message in result["blocages"])
+    docs[0]["commande_achat_id"] = "DIFFERENT"
+    with pytest.raises(ThreeWayError, match="autre commande"):
+        _match(docs)
 
 
 def test_nonconform_receipt_cannot_cover_invoice():
