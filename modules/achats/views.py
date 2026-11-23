@@ -519,13 +519,25 @@ def show_achats_page():
         with read_section("Demandes achat"):
             show_purchase_requests(user_id, can_write)
 
-    # --- ERP-063 : copies et contrôle fournisseur en consultation ---
-    # Aucun visa, émission fournisseur, stock ou Finance n'est créé.
+    # --- ERP-063 : outils consultatifs, importés UNIQUEMENT après ouverture.
+    # Pas de lecture des autres modules au simple changement de panneau.
     if active_panel == panels[2]:
-        from modules.achats.three_way_views import (
-            show_three_way_match, show_po_print_copy,
-        )
-        with st.expander("🖨️ Imprimer BC fournisseur — COPIE NON ÉMISE"):
-            show_po_print_copy()
-        with st.expander("🔎 Rapprochement BC / BR / Facture (lecture seule)"):
-            show_three_way_match()
+        po_key = f"erp63_show_po_print_{user_id}"
+        match_key = f"erp63_show_match_{user_id}"
+        if st.button("🖨️ Préparer une copie PDF du BC fournisseur (NON ÉMISE)",
+                     key=f"erp63_open_po_{user_id}"):
+            st.session_state[po_key] = True
+        if st.button("🔎 Contrôler BC / BR / facture fournisseur",
+                     key=f"erp63_open_match_{user_id}"):
+            st.session_state[match_key] = True
+        if st.session_state.get(po_key) or st.session_state.get(match_key):
+            from modules.achats.three_way_views import (
+                show_three_way_match, show_po_print_copy,
+            )
+            if st.session_state.get(po_key):
+                with st.expander("Copie BC imprimable — NON ÉMISE", expanded=True):
+                    show_po_print_copy()
+            if st.session_state.get(match_key):
+                with st.expander("Rapprochement BC / BR / facture — consultation",
+                                 expanded=True):
+                    show_three_way_match()
