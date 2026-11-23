@@ -139,7 +139,7 @@ def test_all_three_modules_use_row_actions():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
     for module, required in [
-        ("finance", 'kind="Accusé interne d\\'encaissement"'),
+        ("finance", "kind=\"Accusé interne d'encaissement\""),
         ("rh", 'kind="Demande de congé"'),
         ("stocks", 'kind="Fiche de mouvement MP"'),
     ]:
