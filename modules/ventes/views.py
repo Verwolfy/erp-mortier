@@ -729,6 +729,30 @@ def _order_tab(user_id: str, can_write: bool) -> None:
             kind="Commande client", id_column="commande_vente_id",
             user_id=user_id, scope="ventes_commandes",
         )
+    # Le registre devis existe déjà en base : consultation explicite et bornée.
+    # Aucune création de devis, validation commerciale ou émission par cet écran.
+    with st.expander("Devis commerciaux enregistrés — consultation", expanded=False):
+        page_devis = st.number_input(
+            "Page des devis", min_value=1, max_value=1000, value=1,
+            step=1, key="ng_ventes_devis_page",
+        )
+        history_key = f"ventes_devis_loaded_{user_id}"
+        if st.button("Afficher les devis enregistrés", key="ng_ventes_devis_load"):
+            st.session_state[history_key] = int(page_devis)
+        if st.session_state.get(history_key) == int(page_devis):
+            from core.strict_reads import fetch_history_page_strict
+            from modules.documents.row_actions import show_recorded_documents
+            quote_rows, total_devis = fetch_history_page_strict(
+                "devis", page=int(page_devis), date_column="date",
+            )
+            st.caption(f"Page {int(page_devis)} : {len(quote_rows)} devis sur {total_devis}.")
+            if quote_rows:
+                show_recorded_documents(
+                    quote_rows, kind="Devis commercial",
+                    id_column="devis_id", user_id=user_id, scope="ventes_devis",
+                )
+            else:
+                st.info("Aucun devis enregistré sur cette page.")
     if not can_write:
         st.info("Mode lecture seule")
         return
