@@ -222,7 +222,7 @@ BEGIN
             SELECT * INTO v_invoice FROM public.factures_fournisseurs
               WHERE facture_fournisseur_id=v_doc_id FOR UPDATE;
             IF NOT FOUND OR v_invoice.fournisseur_id IS DISTINCT FROM v_payment.partenaire_id
-               OR upper(btrim(coalesce(v_invoice.statut_paiement,''))) IN ('','ANNULE','REJETE','PAYEE') THEN
+               OR upper(btrim(coalesce(v_invoice.statut_paiement,''))) NOT IN ('NON_PAYEE','PARTIELLE') THEN
                 RAISE EXCEPTION 'Facture fournisseur non payable ou fournisseur différent' USING ERRCODE='23514';
             END IF;
         END IF;
@@ -234,9 +234,12 @@ BEGIN
            OR v_invoice_applied<0 OR v_invoice_applied+v_amount>v_montant_ttc THEN
             RAISE EXCEPTION 'Facture déjà réglée ou montant de règlement supérieur' USING ERRCODE='23514';
         END IF;
-        IF v_doc_type='FactureClient' AND
-           v_invoice_applied IS DISTINCT FROM coalesce(v_invoice.montant_paye,0) THEN
-            RAISE EXCEPTION 'Facture client : montant payé incohérent avec les lettrages' USING ERRCODE='23514';
+        -- Le RECORD fournisseur n'a pas de champ montant_paye : ne jamais
+        -- résoudre ce champ hors de la branche FactureClient.
+        IF v_doc_type='FactureClient' THEN
+            IF v_invoice_applied IS DISTINCT FROM coalesce(v_invoice.montant_paye,0) THEN
+                RAISE EXCEPTION 'Facture client : montant payé incohérent avec les lettrages' USING ERRCODE='23514';
+            END IF;
         END IF;
         v_letter_id := 'LET-'||gen_random_uuid()::text;
         INSERT INTO public.lettrage(lettrage_id,date,reglement_id,document_id,type_document,montant_applique)
