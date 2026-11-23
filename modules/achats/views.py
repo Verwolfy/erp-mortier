@@ -9,6 +9,7 @@ from __future__ import annotations
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 import logging
+import os
 from uuid import uuid4
 
 import pandas as pd
@@ -271,8 +272,13 @@ def show_achats_page():
     st.session_state.setdefault(_cart_key(user_id), [])
     # L'affichage de st.tabs exécute les 3 blocs et leurs lectures à chaque rendu.
     # Le panneau sélectionné est le seul rendu, après la vérification du compte.
+    # ERP-062 est conservé inactif tant que la migration métier n'est pas
+    # approuvée, et qu'un véritable deuxième approbateur n'est pas disponible.
+    demandes_actives = os.environ.get("ERP_PURCHASE_REQUESTS_ENABLED") == "1"
     panels = ("➕ Nouvelle Commande", "📦 Réception & Entrée Stock",
               "📋 Historique & Suivi")
+    if demandes_actives:
+        panels += ("📝 Demandes d'achat",)
     active_panel = st.selectbox(
         "Vue Achats", panels, key="_erp_achats_active_panel",
         on_change=_mark_achats_activity,
@@ -280,6 +286,13 @@ def show_achats_page():
     )
 
     # --- COMMANDE FOURNISSEUR ---
+    if demandes_actives and active_panel == panels[0]:
+        st.warning(
+            "ERP-062 actif : toute nouvelle commande doit provenir d'une "
+            "demande d'achat approuvée par une seconde personne. "
+            "Utilisez « Demandes d'achat »."
+        )
+        return
     if active_panel == panels[0]:
         with read_section("Nouvelle commande"):
             show_context_help(st, "achats.commande")
@@ -499,3 +512,9 @@ def show_achats_page():
                                  hide_index=True)
                 else:
                     st.info("Aucun bon de réception sur cette page.")
+
+    # --- DEMANDES D'ACHAT ERP-062 ---
+    if demandes_actives and active_panel == panels[3]:
+        from modules.achats.requisitions_views import show_purchase_requests
+        with read_section("Demandes achat"):
+            show_purchase_requests(user_id, can_write)
