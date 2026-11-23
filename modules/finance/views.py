@@ -258,7 +258,7 @@ def _open_invoices(df: pd.DataFrame, document_type: str, partner_id: str,
         if is_customer:
             if row["statut"] != "VALIDE" or row["type_facture"] != "FactureClient":
                 continue
-        elif str(row["statut_paiement"]).strip().upper() in {"ANNULE", "REJETE", "PAYEE"}:
+        elif str(row["statut_paiement"]).strip().upper() not in {"NON_PAYEE", "PARTIELLE"}:
             continue
         total = _money(row["montant_ttc"], "Montant TTC")
         paid = (_money(row["montant_paye"], "Montant payé", allow_zero=True)
