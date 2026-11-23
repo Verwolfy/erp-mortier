@@ -1,3 +1,14 @@
+## 23 novembre 2026 — ERP-063 : contrôle fournisseur 3 voies et visa BC préparé
+
+- **Ajout actif dans le code Achats → Historique & Suivi** : outils à ouverture explicite, téléchargement direct de la copie PDF de commande fournisseur (NON ÉMISE), rapprochement lecture seule **BC/BR conforme/facture**, contrôle cumulatif de toutes les factures liées, matières/quantités/prix DZD/HT/TVA/TTC et exports Excel/CSV/PDF. **Jamais de validation fiscale, paiement ni sortie stock** par ce rapport.
+- **Audit Supabase réel en lecture seule** : `DEMO26_FF1` (1000 commandés, conformes, facturés à 80 DZD, HT 80 000 DZD) reste BROUILLON et TVA/TTC absents ; `SIM26_BILL` (100 × 10 DZD = 1000 DZD) également BROUILLON. Les deux factures sont **non payables**.
+- **Visa interne BC, migration préparatoire NON APPLIQUÉE** `sql/ERP_063_PREPARATION_visa_bc_20261123.sql` : dépend d'ERP-062, impose DA approuvée par un tiers, BC EN_ATTENTE sans réception, préparateur DA puis second approbateur ADMIN, empreinte de l'en-tête/lignes stable, journal idempotent et ACL/RLS serveur. Visa ≠ signature ≠ transmission ; réponses `signature_effectuee=false`, `transmission_fournisseur_effectuee=false`, `paiement_autorise=false`.
+- **Test SQL principal en BEGIN…ROLLBACK** : DA → approbation temporaire indépendante → BC → dossier de visa → rejeu idempotent ; auto-visa et prix modifié refusés ; visa indépendant accepté, avec 0 utilisateur, table de visa ou BC de test persisté. ERP-062 et ERP-063 ne sont toujours pas installés sur le principal.
+- **Tests ajoutés** `tests/test_erp063_three_way.py` et `tests/test_erp063_po_visa.py`, corrections de chargement lazy, suites d'historique ajustées pour détecter le bouton par son nom et non sa position. Voir `docs/ERP_063_CONTROLE_TROIS_VOIES_VISA_BC_20261123.md` et [#86](https://github.com/Verwolfy/erp-mortier/issues/86).
+- **Blocages** : Finance #85 non appliquée, second approbateur humain absent, pas de signature/envoi officiel BC, pas de fiscalité validée, déploiement Streamlit #78 non vérifié. Contrôle 3 voies read-only non atomique ; décision d'affectation/paiement exige une nouvelle RPC homologuée.
+
+---
+
 ## 23 novembre 2026 — ERP-062 : demandes d'achat et approbation indépendante (NON ACTIVÉ)
 
 - Schéma **préparé**, **non déployé** sur Supabase principal : `sql/ERP_062_PREPARATION_demandes_achats_20261123.sql`, tables DA/ligne/opération/événement et RPC transactionnelle `CREATE/SUBMIT/APPROVE/REJECT/CONVERT` ; RLS, ACL service_role seulement.
