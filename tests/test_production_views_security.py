@@ -41,6 +41,9 @@ def ui(monkeypatch):
     roles.has_permission = MagicMock(return_value=True)
     utils = types.ModuleType('core.utils')
     utils.get_local_now = MagicMock(return_value=datetime(2026, 10, 21, 12, 0))
+    row_actions = types.ModuleType('modules.documents.row_actions')
+    row_actions.show_recorded_documents = MagicMock()
+    documents_package = types.ModuleType('modules.documents')
     production = types.ModuleType('modules.production.service')
     for name in ('create_recette', 'create_ordre_fabrication', 'get_recettes',
                  'get_ordres_fabrication', 'changer_statut_of', 'enregistrer_controle_qualite',
@@ -62,7 +65,9 @@ def ui(monkeypatch):
     for key, value in {
         'streamlit': st, 'config': types.ModuleType('config'), 'config.roles': roles,
         'core': types.ModuleType('core'), 'core.db_service': db, 'core.utils': utils,
-        'modules': modules, 'modules.production': types.ModuleType('modules.production'),
+        'modules': modules, 'modules.documents': documents_package,
+        'modules.documents.row_actions': row_actions,
+        'modules.production': types.ModuleType('modules.production'),
         'modules.production.service': production,
         'modules.production.cost_views': cost_views,
     }.items():
