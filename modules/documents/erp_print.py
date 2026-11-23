@@ -208,6 +208,12 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
                 material = _single(reader, "matieres_premieres", "mp_id", mp_id)
                 designation = str(material.get("nom") or mp_id)
                 unit = str(material.get("unite_stock") or "")
+                if kind == "Commande fournisseur":
+                    # Une commande conserve son unité historique dans la ligne.
+                    # Ne pas substituer l'unité actuelle si elle a changé depuis.
+                    recorded_unit = row.get("unite_cond")
+                    if isinstance(recorded_unit, str) and recorded_unit.strip():
+                        unit = recorded_unit.strip()
         if kind == "Bon de livraison":
             qty = row.get("quantite_livree")
         elif kind == "Bon de réception":
