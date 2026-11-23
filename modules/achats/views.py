@@ -257,6 +257,27 @@ def get_mp_actives():
     return df[df["actif"] == "OUI"] if not df.empty else df
 
 
+def _catalogue_achat_texte(value: object) -> str:
+    """Conserver une unité/conditionnement seulement si le référentiel le précise."""
+    return value.strip() if isinstance(value, str) and value.strip() else ""
+
+
+def _unite_stock_comptee(unite: str) -> bool:
+    """Les articles comptés à la pièce ne doivent pas recevoir de décimales.
+
+    Les autres unités conservent la précision historique des quantités.
+    """
+    from unicodedata import combining, normalize
+
+    canonical = "".join(
+        char for char in normalize("NFKD", unite.casefold())
+        if not combining(char)
+    ).strip().replace(".", "")
+    return canonical in {
+        "u", "un", "unite", "unites", "pce", "pcs", "pc", "piece", "pieces"
+    }
+
+
 def _mark_achats_activity() -> None:
     """Signale une interaction Achats sans renouveler la session."""
     st.session_state["_erp_achats_interacted"] = True
@@ -337,25 +358,101 @@ def show_achats_page():
                     st.divider()
                     st.subheader("2. Lignes de Commande", help=topic_help("achats.commande"))
                     with st.expander("➕ Ajouter un article", expanded=True):
-                        c_mp, c_qte, c_prix, c_btn = st.columns([3, 1, 1, 1])
-                        liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}" for _, row in df_mp.iterrows()}
-                        mp_choisie = c_mp.selectbox("Article", options=list(liste_mp),
-                                                   format_func=lambda x: liste_mp[x], help=field_help("Article", module="achats"))
-                        qte = c_qte.number_input("Quantité en unité de stock", min_value=0.001, step=0.001, format="%.3f", help=field_help("Quantité en unité de stock", module="achats"))
-                        prix_u = c_prix.number_input(f"Prix unitaire ({devise})", min_value=0.0, step=1.0)
-                        if c_btn.button("Ajouter", use_container_width=True, help=field_help("Ajouter", module="achats")):
-                            mp_row = df_mp[df_mp["mp_id"] == mp_choisie].iloc[0]
-                            unit = str(mp_row.get("unite_stock") or "Unité")
-                            st.session_state[_cart_key(user_id)].append({
-                                "mp_id": mp_choisie, "nom_article": liste_mp[mp_choisie],
-                                "unite_cond": unit, "qte_cond": qte, "qte_totale": qte,
-                                "prix_unitaire": prix_u, "total_devise": qte * prix_u,
-                            })
-                            st.rerun()
+                        liste_mp = {row["mp_id"]: f"{row['mp_id']} - {row['nom']}"
+                                    for _, row in df_mp.iterrows()}
+                        mp_choisie = st.selectbox(
+                            "Article", options=list(liste_mp),
+                            format_func=lambda x: liste_mp[x],
+                            key=f"achats_article_{user_id}",
+                            help=field_help("Article", module="achats"),
+                        )
+                        articles = df_mp[df_mp["mp_id"] == mp_choisie]
+                        if len(articles) != 1:
+                            st.error("Référence article ambiguë : vérifiez le référentiel.")
+                        else:
+                            mp_row = articles.iloc[0]
+                            unite = _catalogue_achat_texte(mp_row.get("unite_stock"))
+                            conditionnement = _catalogue_achat_texte(
+                                mp_row.get("type_emballage")
+                            )
+                            with st.container(border=True):
+                                st.markdown("**Fiche de l'article sélectionné**")
+                                st.caption(liste_mp[mp_choisie])
+                                c_unit, c_pack = st.columns(2)
+                                c_unit.write("**Unité de stock**")
+                                c_unit.write(unite or "Non renseignée")
+                                c_pack.write("**Conditionnement référencé**")
+                                c_pack.write(conditionnement or "Non renseigné")
+                            if not unite:
+                                st.warning(
+                                    "Unité de stock absente : compléter la fiche "
+                                    "de l'article avant de l'ajouter à la commande."
+                                )
+                            piece = _unite_stock_comptee(unite) if unite else False
+                            c_qte, c_prix, c_btn = st.columns([2, 2, 1])
+                            qte = c_qte.number_input(
+                                f"Quantité ({unite or 'unité non renseignée'})",
+                                min_value=1 if piece else 0.001,
+                                value=1 if piece else 1.0,
+                                step=1 if piece else 0.001,
+                                format="%d" if piece else "%.3f",
+                                key=f"achats_qte_{user_id}_{mp_choisie}",
+                                disabled=not bool(unite),
+                                help=field_help("Quantité en unité de stock", module="achats"),
+                            )
+                            prix_u = c_prix.number_input(
+                                f"Prix unitaire ({devise}/{unite})" if unite
+                                else f"Prix unitaire ({devise})",
+                                min_value=0.0, value=0.0, step=1.0, format="%.2f",
+                                key=f"achats_prix_{user_id}_{mp_choisie}_{devise}",
+                                disabled=not bool(unite),
+                            )
+                            if unite:
+                                # Prévisualisation seulement ; PostgreSQL reste
+                                # responsable du total définitif de la commande.
+                                montant_ligne = (Decimal(str(qte))
+                                                 * Decimal(str(prix_u)))
+                                st.caption(
+                                    f"Montant estimé de la ligne : "
+                                    f"{montant_ligne:,.2f} {devise} "
+                                    f"({qte} {unite} × {prix_u} {devise}/{unite})"
+                                )
+                            if c_btn.button(
+                                "Ajouter", use_container_width=True,
+                                disabled=not bool(unite),
+                                help=field_help("Ajouter", module="achats"),
+                            ):
+                                # Sans conversion d'unité non définie : la
+                                # quantité achetée est la quantité en stock.
+                                st.session_state[_cart_key(user_id)].append({
+                                    "mp_id": mp_choisie,
+                                    "nom_article": liste_mp[mp_choisie],
+                                    "unite_cond": unite,
+                                    "qte_cond": qte, "qte_totale": qte,
+                                    "prix_unitaire": prix_u,
+                                    "total_devise": qte * prix_u,
+                                })
+                                st.rerun()
                     if st.session_state[_cart_key(user_id)]:
                         df_panier = pd.DataFrame(st.session_state[_cart_key(user_id)])
-                        st.dataframe(df_panier[["mp_id", "nom_article", "qte_totale", "prix_unitaire", "total_devise"]],
-                                     use_container_width=True)
+                        columns_panier = [
+                            "mp_id", "nom_article", "qte_totale", "unite_cond",
+                            "prix_unitaire", "total_devise",
+                        ]
+                        if not set(columns_panier).issubset(df_panier.columns):
+                            st.error("Panier incomplet : l'unité ou les prix sont manquants.")
+                            return
+                        st.dataframe(
+                            df_panier[columns_panier].rename(columns={
+                                "mp_id": "Référence",
+                                "nom_article": "Article",
+                                "qte_totale": "Quantité",
+                                "unite_cond": "Unité de stock",
+                                "prix_unitaire": f"Prix unitaire ({devise}/unité)",
+                                "total_devise": f"Montant ({devise})",
+                            }),
+                            use_container_width=True, hide_index=True,
+                        )
                         # Apercu indicatif : PostgreSQL recalcule le total avant d'ecrire.
                         total_devise = sum((Decimal(str(x["total_devise"]))
                                              for x in st.session_state[_cart_key(user_id)]), Decimal(0))
