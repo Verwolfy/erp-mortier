@@ -519,9 +519,13 @@ def show_achats_page():
         with read_section("Demandes achat"):
             show_purchase_requests(user_id, can_write)
 
-    # --- ERP-063 : rapprochement fournisseur consultatif ---
-    # Ce contrôle ne modifie ni BC, ni BR, ni facture, ni Finance.
+    # --- ERP-063 : copies et contrôle fournisseur en consultation ---
+    # Aucun visa, émission fournisseur, stock ou Finance n'est créé.
     if active_panel == panels[2]:
+        from modules.achats.three_way_views import (
+            show_three_way_match, show_po_print_copy,
+        )
+        with st.expander("🖨️ Imprimer BC fournisseur — COPIE NON ÉMISE"):
+            show_po_print_copy()
         with st.expander("🔎 Rapprochement BC / BR / Facture (lecture seule)"):
-            from modules.achats.three_way_views import show_three_way_match
             show_three_way_match()
