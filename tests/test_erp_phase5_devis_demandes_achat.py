@@ -142,7 +142,7 @@ def test_self_approved_da_must_not_print():
 
 
 def test_complete_motivation_kept_on_pdf():
-    motivation = "A" * 1500
+    motivation = "Besoin " * 214 + "BB"  # 1500 caractères de justification
     snap = build_request_snapshot("DA-1", _request_data(motivation=motivation), _request_lines())
     assert motivation in dict(snap["fields"])["Motivation enregistrée (intégrale)"]
     data = render_internal_pdf(snap)
@@ -156,7 +156,7 @@ def test_erp62_gate_not_changed_and_no_sql_mutations():
     printing = (ROOT / "modules/achats/request_print.py").read_text()
     assert 'os.environ.get("ERP_PURCHASE_REQUESTS_ENABLED") == "1"' in achats
     assert 'if demandes_actives and active_panel == panels[3]:' in achats
-    assert 'kind="Demande d\\'achat (copie interne)"' in req_view
+    assert "kind=\"Demande d'achat (copie interne)\"" in req_view
     assert 'kind="Devis commercial"' in quotes
     assert '"devis", page=int(page_devis)' in quotes
     assert ".rpc(" not in printing
