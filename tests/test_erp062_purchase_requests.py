@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def access(monkeypatch):
-    monkeypatch.setattr(req.check_server_permission, "__name__", "permission", raising=False)
     monkeypatch.setattr(req, "check_server_permission", lambda table: table == "commandes_achats")
     monkeypatch.setattr(req, "check_server_read_permission", lambda table: table == "commandes_achats")
     monkeypatch.setattr(req.st, "session_state", {
