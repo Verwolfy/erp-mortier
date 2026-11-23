@@ -162,7 +162,7 @@ def list_purchase_requests() -> list[dict]:
     try:
         result = (_stock_rpc_client().table("erp_purchase_requests")
                   .select("demande_id,demandeur_id,motivation,date_souhaitee,"
-                          "statut,approbateur_id,commande_achat_id,cree_le")
+                          "statut,approbateur_id,decision_motif,commande_achat_id,cree_le")
                   .order("cree_le", desc=True).limit(201).execute())
     except Exception as exc:
         raise RuntimeError("Registre des demandes indisponible") from exc

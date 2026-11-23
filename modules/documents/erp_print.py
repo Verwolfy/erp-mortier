@@ -21,6 +21,7 @@ KINDS = {
     "Facture fournisseur (aperçu interne)": (
         "factures_fournisseurs", "facture_fournisseur_id",
         "lignes_factures_fournisseurs", "facture_fournisseur_id"),
+    "Devis commercial": ("devis", "devis_id", "lignes_devis", "devis_id"),
 }
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 
@@ -97,6 +98,20 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             ("Notes", str(header.get("notes") or "")),
         ]
         doc_date = header.get("date_planification")
+    elif kind == "Devis commercial":
+        client_id = header.get("client_id")
+        if not isinstance(client_id, str) or not client_id:
+            raise OperationPrintError("Client de devis non rattaché")
+        client = _single(reader, "clients", "client_id", client_id)
+        partner = str(client.get("nom") or client_id)
+        meta = [
+            ("Client", partner),
+            ("Statut du devis enregistré", str(header.get("statut") or "NON RENSEIGNÉ")),
+            ("Commercial (référence)", str(header.get("commercial_id") or "NON RENSEIGNÉ")),
+            ("Validité enregistrée", str(header.get("validite") or "NON RENSEIGNÉE")),
+            ("Montants totaux", "Non enregistrés dans l'en-tête ; aucun calcul présumé"),
+        ]
+        doc_date = header.get("date")
     elif kind in ("Bon de livraison", "Commande client"):
         order = (header if kind == "Commande client" else
                  _single(reader, "commandes_ventes", "commande_vente_id",
@@ -204,6 +219,13 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         discount = row.get("remise_ligne") if kind == "Facture (aperçu interne)" else None
         if discount is not None and Decimal(_amount(discount)) != 0:
             designation += f" (remise enregistrée : {_amount(discount)})"
+        if kind == "Devis commercial":
+            rate = row.get("remise_pct")
+            if rate is not None:
+                parsed_rate = Decimal(_amount(rate))
+                if parsed_rate > Decimal("100"):
+                    raise OperationPrintError("Remise de devis hors limites")
+                designation += f" (remise enregistrée : {_amount(rate)} %)"
         lines.append({
             "reference": article, "designation": designation, "unite": unit,
             "quantite": _amount(qty, allow_null=False),

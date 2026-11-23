@@ -106,7 +106,11 @@ def show_purchase_requests(actor: str, can_write: bool) -> None:
         st.error("Circuit DA non disponible : vérifier la migration et les droits.")
         return
     if requests:
-        st.dataframe(pd.DataFrame(requests), use_container_width=True, hide_index=True)
+        from modules.documents.row_actions import show_recorded_documents
+        show_recorded_documents(
+            requests, kind="Demande d'achat (copie interne)",
+            id_column="demande_id", user_id=actor, scope="achats_demandes",
+        )
     if not can_write:
         st.info("Consultation uniquement.")
         return
