@@ -58,7 +58,10 @@ def test_sql_account_and_partner_integrity_guards():
     assert 'v_counter_type NOT IN' in s
     assert "WHERE client_id=p_payload->>'partenaire_id' AND actif='OUI'" in s
     assert "WHERE fournisseur_id=p_payload->>'partenaire_id' AND actif='OUI'" in s
-    assert "'ANNULE','REJETE','PAYEE'" in s
+    # Une liste d'interdictions laissait passer BROUILLON ; seules les
+    # factures fournisseurs effectivement payables sont admises.
+    assert "NOT IN ('NON_PAYEE','PARTIELLE')" in s
+    assert "IF v_doc_type='FactureClient' AND" not in s
 
 @pytest.mark.parametrize('expression',[
     "v_direction || ' ' || (p_payload->>'reference_trace')",
