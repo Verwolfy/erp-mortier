@@ -18,6 +18,9 @@ KINDS = {
     "Bon de réception": ("bons_reception", "bon_reception_id", "lignes_bons_reception", "bon_reception_id"),
     "Commande client": ("commandes_ventes", "commande_vente_id", "lignes_commande_ventes", "commande_vente_id"),
     "Commande fournisseur": ("commandes_achats", "commande_achat_id", "lignes_achats", "commande_achat_id"),
+    "Facture fournisseur (aperçu interne)": (
+        "factures_fournisseurs", "facture_fournisseur_id",
+        "lignes_factures_fournisseurs", "facture_fournisseur_id"),
 }
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 
@@ -125,6 +128,29 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             ("Total TTC enregistré", _amount(header.get("montant_ttc"))),
         ]
         doc_date = header.get("date")
+    elif kind == "Facture fournisseur (aperçu interne)":
+        order_id = header.get("commande_achat_id")
+        if not isinstance(order_id, str) or not order_id:
+            raise OperationPrintError("Commande fournisseur absente")
+        order = _single(reader, "commandes_achats", "commande_achat_id", order_id)
+        supplier_id = header.get("fournisseur_id")
+        if not isinstance(supplier_id, str) or not supplier_id or order.get("fournisseur_id") != supplier_id:
+            raise OperationPrintError("Fournisseur facture/commande incohérent")
+        supplier = _single(reader, "fournisseurs", "fournisseur_id", supplier_id)
+        partner = str(supplier.get("nom") or supplier_id)
+        meta = [
+            ("Fournisseur", partner),
+            ("Commande fournisseur", order_id),
+            ("Référence facture fournisseur", str(header.get("reference_facture_fournisseur") or "NON RENSEIGNÉE")),
+            ("Statut paiement enregistré", str(header.get("statut_paiement") or "NON RENSEIGNÉ")),
+            ("Taux TVA enregistré (non homologué)", _amount(header.get("taux_tva"))),
+        ]
+        totals = [
+            ("Total HT enregistré", _amount(header.get("montant_ht"))),
+            ("TVA enregistrée (non homologuée)", _amount(header.get("montant_tva"))),
+            ("Total TTC enregistré", _amount(header.get("montant_ttc"))),
+        ]
+        doc_date = header.get("date")
     else:
         order = (header if kind == "Commande fournisseur" else
                  _single(reader, "commandes_achats", "commande_achat_id",
@@ -147,18 +173,26 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
     for row in source_lines:
         sku_id = row.get("sku_id")
         mp_id = row.get("mp_id")
-        article = sku_id or mp_id
-        if not isinstance(article, str) or not article:
-            raise OperationPrintError("Article de ligne absent")
-        if sku_id:
-            sku = _single(reader, "sku_conditionnement", "sku_id", sku_id)
-            product = _single(reader, "produits", "pf_id", str(sku.get("pf_id") or ""))
-            designation = f"{product.get('nom') or sku_id} — {sku.get('format') or ''}"
-            unit = str(sku.get("unite_vente") or "")
+        if kind == "Facture fournisseur (aperçu interne)":
+            # mp_id_ou_service peut désigner une prestation : ne jamais prétendre
+            # que chaque ligne est une matière première ou inventer une unité.
+            article = row.get("mp_id_ou_service")
+            if not isinstance(article, str) or not article.strip():
+                raise OperationPrintError("Article ou prestation de facture absent")
+            designation, unit = article, ""
         else:
-            material = _single(reader, "matieres_premieres", "mp_id", mp_id)
-            designation = str(material.get("nom") or mp_id)
-            unit = str(material.get("unite_stock") or "")
+            article = sku_id or mp_id
+            if not isinstance(article, str) or not article:
+                raise OperationPrintError("Article de ligne absent")
+            if sku_id:
+                sku = _single(reader, "sku_conditionnement", "sku_id", sku_id)
+                product = _single(reader, "produits", "pf_id", str(sku.get("pf_id") or ""))
+                designation = f"{product.get('nom') or sku_id} — {sku.get('format') or ''}"
+                unit = str(sku.get("unite_vente") or "")
+            else:
+                material = _single(reader, "matieres_premieres", "mp_id", mp_id)
+                designation = str(material.get("nom") or mp_id)
+                unit = str(material.get("unite_stock") or "")
         if kind == "Bon de livraison":
             qty = row.get("quantite_livree")
         elif kind == "Bon de réception":
@@ -176,6 +210,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             "prix_unitaire": _amount(row.get("prix_unitaire")),
             "total_ht": _amount(
                 row.get("total_ligne_ht") if kind == "Facture (aperçu interne)"
+                else row.get("total_ht") if kind == "Facture fournisseur (aperçu interne)"
                 else row.get("total_devise") if kind == "Commande fournisseur" else None),
             "lot": str(row.get("lot_id") or row.get("lot_attribue_id") or ""),
         })
@@ -186,7 +221,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         "partner": partner, "meta": meta, "totals": totals, "lines": lines,
         "source": table, "warning": (
             "APERÇU INTERNE - NON VALABLE FISCALEMENT / NON ÉMIS"
-            if kind == "Facture (aperçu interne)"
+            if kind in ("Facture (aperçu interne)", "Facture fournisseur (aperçu interne)")
             else "COPIE DE CONSULTATION - NON SIGNÉE / NON ÉMISE"
         ),
     }

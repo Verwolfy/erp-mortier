@@ -192,8 +192,12 @@ def _statement_tab() -> None:
         "Format de l'état", ["Excel (.xlsx)", "CSV (.csv)", "PDF (.pdf)"],
         key="stocks_statement_export_format",
     )
-    if not st.button("Calculer l'état des mouvements", key="stocks_statement_load",
-                     on_click=_mark_stocks_activity):
+    state_key = "stocks_statement_params"
+    params = (start.isoformat(), end.isoformat(), mode)
+    if st.button("Calculer l'état des mouvements", key="stocks_statement_load",
+                 on_click=_mark_stocks_activity):
+        st.session_state[state_key] = params
+    if st.session_state.get(state_key) != params:
         return
     from core.strict_reads import fetch_data_strict, DataReadError
     from modules.stocks.stock_statement import build_stock_statement, StockStatementError
@@ -235,7 +239,12 @@ def _statement_tab() -> None:
                         ("Produits finis (unités SKU)", report_pf)):
         st.subheader(title)
         df = pd.DataFrame(rows, columns=selected)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        from modules.documents.report_actions import show_report_actions
+        show_report_actions(
+            df, columns=selected, title=title,
+            period=f"{start} au {end}",
+            scope="stocks_statement_mp" if rows is report_mp else "stocks_statement_pf",
+        )
         from core.export_formats import build_export, export_filename, ExportError
         fmt = export_format.split("(")[1].split(")")[0].lstrip(".")
         try:

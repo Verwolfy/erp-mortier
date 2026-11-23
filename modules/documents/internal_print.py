@@ -20,6 +20,8 @@ INTERNAL_KINDS = {
     "Demande de congé": ("demandes_conges", "demande_conge_id", "RH"),
     "Fiche de mouvement MP": ("mouvements", "mouvement_id", "Stocks"),
     "Fiche de mouvement PF": ("mouvements_pf", "mouvement_pf_id", "Stocks"),
+    "Fiche de consommation OF": ("consommations_of", "consommation_id", "Production"),
+    "Compte rendu de contrôle qualité": ("controle_qualite", "qc_id", "Production"),
 }
 
 
@@ -75,6 +77,7 @@ def load_internal_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             not isinstance(rows[0], dict) or rows[0].get(pk) != identifier):
         raise InternalPrintError("Dossier absent ou ambigu")
     row = rows[0]
+    date_label = "Date enregistrée"
 
     if kind == "Accusé interne d'encaissement":
         if (_required(row, "statut") != "INTERNE_NON_FISCAL"
@@ -109,6 +112,30 @@ def load_internal_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         ]
         warning = ("COPIE D'UNE DEMANDE ENREGISTRÉE — NON SIGNÉE. "
                    "Ne vaut pas autorisation de congé ni approbation de la hiérarchie.")
+    elif kind == "Fiche de consommation OF":
+        partner = _required(row, "of_id")
+        date_doc = "NON ENREGISTRÉE DANS LE REGISTRE"
+        date_label = "Date du mouvement de consommation"
+        fields = [
+            ("Ordre de fabrication (référence)", partner),
+            ("Matière première (référence)", _required(row, "mp_id")),
+            ("Lot consommé (référence)", _optional(row, "lot_id")),
+            ("Quantité consommée enregistrée", _amount(row.get("quantite_consommee"))),
+        ]
+        warning = ("FICHE INTERNE DE CONSOMMATION — NON SIGNÉE. "
+                   "Le registre ne contient pas la date propre de la consommation. "
+                   "Aucune sortie supplémentaire de matière n'est générée.")
+    elif kind == "Compte rendu de contrôle qualité":
+        partner = _required(row, "of_id")
+        date_doc = _day(row.get("date"))
+        fields = [
+            ("Ordre de fabrication (référence)", partner),
+            ("Conformité enregistrée", _required(row, "conforme")),
+            ("Contrôleur enregistré", _required(row, "controleur")),
+            ("Observations enregistrées", _optional(row, "remarques")),
+        ]
+        warning = ("COPIE INTERNE DU CONTRÔLE QUALITÉ — NON SIGNÉE. "
+                   "Ne constitue ni certificat qualité externe ni nouveau visa.")
     else:
         is_mp = kind == "Fiche de mouvement MP"
         partner = _required(row, "mp_id" if is_mp else "sku_id")
@@ -131,7 +158,7 @@ def load_internal_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
     return {
         "kind": kind, "id": identifier, "date": date_doc,
         "section": section, "partner": partner, "source": table,
-        "fields": fields, "warning": warning,
+        "fields": fields, "warning": warning, "date_label": date_label,
     }
 
 
@@ -187,7 +214,7 @@ def render_internal_pdf(snapshot: dict) -> bytes:
     pdf.set_text_color(0, 0, 0)
     for label, value in [
         ("Référence ERP", snapshot["id"]),
-        ("Date enregistrée", snapshot["date"]),
+        (snapshot.get("date_label", "Date enregistrée"), snapshot["date"]),
         ("Registre source", snapshot["source"]),
         *snapshot["fields"],
     ]:

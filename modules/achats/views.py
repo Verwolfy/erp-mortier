@@ -502,9 +502,13 @@ def show_achats_page():
                 rows_receptions, total_receptions = fetch_history_page_strict(
                     "bons_reception", page=int(page_achats), date_column="date_reception", **period
                 )
+                rows_factures_fournisseurs, total_factures_fournisseurs = fetch_history_page_strict(
+                    "factures_fournisseurs", page=int(page_achats), date_column="date", **period
+                )
                 st.caption(
                     f"Page {int(page_achats)} : commandes {len(rows_commandes)}/{total_commandes}, "
-                    f"réceptions {len(rows_receptions)}/{total_receptions}."
+                    f"réceptions {len(rows_receptions)}/{total_receptions}, "
+                    f"factures fournisseurs {len(rows_factures_fournisseurs)}/{total_factures_fournisseurs}."
                 )
                 st.subheader("Commandes d'Achats", help=topic_help("achats.historique"))
                 if rows_commandes:
@@ -523,6 +527,19 @@ def show_achats_page():
                     )
                 else:
                     st.info("Aucun bon de réception sur cette page.")
+                st.divider()
+                st.subheader("Factures fournisseurs — copies internes")
+                if rows_factures_fournisseurs:
+                    from modules.documents.row_actions import show_recorded_documents
+                    show_recorded_documents(
+                        rows_factures_fournisseurs,
+                        kind="Facture fournisseur (aperçu interne)",
+                        id_column="facture_fournisseur_id",
+                        user_id=user_id, scope="achats_ff",
+                    )
+                else:
+                    st.info("Aucune facture fournisseur sur cette page.")
+                st.caption("Factures en consultation : aucun visa, TVA homologuée ou paiement autorisé.")
 
     # --- DEMANDES D'ACHAT ERP-062 ---
     if demandes_actives and active_panel == panels[3]:
