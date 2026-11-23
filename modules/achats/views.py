@@ -518,3 +518,10 @@ def show_achats_page():
         from modules.achats.requisitions_views import show_purchase_requests
         with read_section("Demandes achat"):
             show_purchase_requests(user_id, can_write)
+
+    # --- ERP-063 : rapprochement fournisseur consultatif ---
+    # Ce contrôle ne modifie ni BC, ni BR, ni facture, ni Finance.
+    if active_panel == panels[2]:
+        with st.expander("🔎 Rapprochement BC / BR / Facture (lecture seule)"):
+            from modules.achats.three_way_views import show_three_way_match
+            show_three_way_match()
