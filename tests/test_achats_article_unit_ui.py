@@ -41,6 +41,9 @@ def _configure_new_order(ui, *, unit="PCS", packaging="Carton", add=False):
             col.button.side_effect = (
                 lambda label, **kwargs: bool(add and label == "Ajouter")
             )
+            col.selectbox.side_effect = (
+                lambda label, options, **kwargs: choices.get(label, list(options)[0])
+            )
             col.number_input.side_effect = (
                 lambda label, **kwargs: 10 if "Quantité (" in label else 150.0
             )
