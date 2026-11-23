@@ -417,7 +417,7 @@ def show_achats_page():
                                     f"{montant_ligne:,.2f} {devise} "
                                     f"({qte} {unite} × {prix_u} {devise}/{unite})"
                                 )
-                            if c_btn.button(
+                            if unite and c_btn.button(
                                 "Ajouter", use_container_width=True,
                                 disabled=not bool(unite),
                                 help=field_help("Ajouter", module="achats"),
