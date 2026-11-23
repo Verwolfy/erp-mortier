@@ -648,8 +648,11 @@ def show_production_page() -> None:
         page_production = st.number_input(
             "Page des historiques Production", min_value=1, max_value=1000,
             value=1, step=1, key="ng_production_history_page", help=field_help("Page des historiques Production", module="production"))
+        history_key = f"production_history_loaded_{user_id}"
         if st.button("Afficher l'historique Production", key="ng_production_load_history",
                      on_click=_mark_production_activity, help=field_help("Afficher l'historique Production", module="production")):
+            st.session_state[history_key] = int(page_production)
+        if st.session_state.get(history_key) == int(page_production):
             from modules.production.service import (
                 get_consommations_of_page, get_controles_qualite_page,
             )
@@ -660,10 +663,20 @@ def show_production_page() -> None:
                 f"contrôles qualité : {len(controls)}/{total_controls} (50 maximum par registre)."
             )
             if not consumed.empty:
-                st.dataframe(consumed, use_container_width=True, hide_index=True)
+                from modules.documents.row_actions import show_recorded_documents
+                show_recorded_documents(
+                    consumed, kind="Fiche de consommation OF",
+                    id_column="consommation_id", user_id=user_id,
+                    scope="production_consommations",
+                )
             else:
                 st.info("Aucune consommation sur cette page")
             if not controls.empty:
-                st.dataframe(controls, use_container_width=True, hide_index=True)
+                from modules.documents.row_actions import show_recorded_documents
+                show_recorded_documents(
+                    controls, kind="Compte rendu de contrôle qualité",
+                    id_column="qc_id", user_id=user_id,
+                    scope="production_controles",
+                )
             else:
                 st.info("Aucun contrôle qualité sur cette page")
