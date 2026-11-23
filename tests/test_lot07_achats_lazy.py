@@ -26,7 +26,8 @@ def test_history_without_explicit_load_does_not_fetch_business_data(ui):
     ui.db.fetch_data.assert_not_called()
     ui.st.form.assert_not_called()
     ui.st.tabs.assert_not_called()
-    assert ui.st.button.call_args.args == ("Afficher l'historique Achats",)
+    assert any(call.args == ("Afficher l'historique Achats",)
+               for call in ui.st.button.call_args_list)
 
 
 def test_receipt_panel_does_not_execute_order_creation_or_history(ui):
