@@ -160,7 +160,11 @@ def show_rh_page():
                 fictifs_conges = df_conges["demande_conge_id"].astype(str).str.startswith("SIM-CNG-").sum()
                 if fictifs_conges:
                     st.warning(f"{fictifs_conges} demande(s) SIM-CNG fictive(s) dans ce registre ; elles figurent dans les compteurs.")
-            st.dataframe(df_conges, use_container_width=True)
+            from modules.documents.row_actions import show_recorded_documents
+            show_recorded_documents(
+                df_conges, kind="Demande de congé",
+                id_column="demande_conge_id", user_id=user_role, scope="rh_conges",
+            )
         else:
             st.info("Aucune demande de congé.")
     if can_read_paie:

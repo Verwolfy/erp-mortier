@@ -443,9 +443,13 @@ def show_stocks_page():
         , help=field_help("Page des mouvements", module="stocks"))
         from core.history_filters import history_period_inputs
         period = history_period_inputs("ng_stocks_history")
+        history_key = f"stocks_history_loaded_{user_id}"
         if period is not None and st.button(
                 "Afficher les mouvements de stock", key="ng_stocks_history_load",
                 on_click=_mark_stocks_activity, help=field_help("Afficher les mouvements de stock", module="stocks")):
+            st.session_state[history_key] = (int(page_stock), dict(period))
+        # Conserver les résultats pendant les reruns des trois actions documentaires.
+        if period is not None and st.session_state.get(history_key) == (int(page_stock), dict(period)):
             from core.strict_reads import fetch_history_page_strict, DataReadError
             try:
                 mp_rows, mp_total = fetch_history_page_strict("mouvements", page=int(page_stock), date_column="date", **period)
@@ -480,16 +484,29 @@ def show_stocks_page():
                     if df_mouv_vrac.empty:
                         st.info("Aucun mouvement Vrac sur cette page.")
                     else:
-                        st.dataframe(df_mouv_vrac.drop(columns=["categorie_mp"]),
-                                     use_container_width=True, hide_index=True)
+                        from modules.documents.row_actions import show_recorded_documents
+                        show_recorded_documents(
+                            df_mouv_vrac.drop(columns=["categorie_mp"]),
+                            kind="Fiche de mouvement MP", id_column="mouvement_id",
+                            user_id=user_id, scope="stocks_mp_vrac",
+                        )
                 with st.expander("Mouvements Emballages"):
                     if df_mouv_emb.empty:
                         st.info("Aucun mouvement Emballages sur cette page.")
                     else:
-                        st.dataframe(df_mouv_emb.drop(columns=["categorie_mp"]),
-                                     use_container_width=True, hide_index=True)
+                        from modules.documents.row_actions import show_recorded_documents
+                        show_recorded_documents(
+                            df_mouv_emb.drop(columns=["categorie_mp"]),
+                            kind="Fiche de mouvement MP", id_column="mouvement_id",
+                            user_id=user_id, scope="stocks_mp_emb",
+                        )
                 with st.expander("Mouvements Produits Finis"):
                     if df_mouv_pf.empty:
                         st.info("Aucun mouvement PF sur cette page.")
                     else:
-                        st.dataframe(df_mouv_pf, use_container_width=True, hide_index=True)
+                        from modules.documents.row_actions import show_recorded_documents
+                        show_recorded_documents(
+                            df_mouv_pf, kind="Fiche de mouvement PF",
+                            id_column="mouvement_pf_id", user_id=user_id,
+                            scope="stocks_pf",
+                        )

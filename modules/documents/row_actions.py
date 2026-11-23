@@ -47,21 +47,33 @@ def _show_selected(kind: str, user_id: str, scope: str,
     from modules.documents.erp_print import (
         OperationPrintError, load_operation_snapshot, render_operation_pdf,
     )
+    from modules.documents.internal_print import (
+        INTERNAL_KINDS, InternalPrintError, load_internal_snapshot,
+        render_internal_pdf,
+    )
     st.markdown(f"**{kind} : {identifier}**")
-    st.warning("COPIE NON EMISE / NON SIGNEE. Les factures ne constituent "
-               "pas des documents fiscaux homologués.")
+    st.warning("COPIE DE CONSULTATION — NON ÉMISE / NON SIGNÉE. "
+               "Aucun acte juridique, fiscal ou de stock n'est déclenché.")
     try:
-        snapshot = load_operation_snapshot(kind, identifier)
-        if "NON ÉMIS" not in str(snapshot.get("warning", "")):
+        internal = kind in INTERNAL_KINDS
+        snapshot = (load_internal_snapshot(kind, identifier) if internal
+                    else load_operation_snapshot(kind, identifier))
+        if not internal and "NON ÉMIS" not in str(snapshot.get("warning", "")):
             raise OperationPrintError("Statut documentaire absent")
+        st.caption(snapshot["warning"])
         if action == "consulter":
-            st.caption(f"Date : {snapshot['date']} · Tiers : {snapshot['partner']}")
-            for label, value in snapshot["meta"] + snapshot["totals"]:
+            st.caption(f"Date : {snapshot['date']} · "
+                       f"Référence liée : {snapshot['partner']}")
+            details = (snapshot["fields"] if internal
+                       else snapshot["meta"] + snapshot["totals"])
+            for label, value in details:
                 st.write(f"**{label} :** {value}")
-            st.dataframe(pd.DataFrame(snapshot["lines"]),
-                         use_container_width=True, hide_index=True)
+            if not internal:
+                st.dataframe(pd.DataFrame(snapshot["lines"]),
+                             use_container_width=True, hide_index=True)
         else:
-            pdf = render_operation_pdf(snapshot)
+            pdf = (render_internal_pdf(snapshot) if internal
+                   else render_operation_pdf(snapshot))
             if not isinstance(pdf, bytes) or not pdf.startswith(b"%PDF"):
                 raise OperationPrintError("PDF non vérifiable")
             if action == "imprimer":
@@ -80,7 +92,7 @@ def _show_selected(kind: str, user_id: str, scope: str,
                 file_name=export_filename(f"Copie_{identifier}", "pdf"),
                 key=_key(scope, user_id, "download"),
             )
-    except (OperationPrintError, PermissionError, ValueError,
+    except (OperationPrintError, InternalPrintError, PermissionError, ValueError,
             RuntimeError, TypeError, KeyError, ImportError) as exc:
         _LOG.warning("Copie %s indisponible (%s)", identifier, type(exc).__name__)
         st.error("Document ou lignes non vérifiables : aucune copie partielle.")
@@ -97,7 +109,8 @@ def show_recorded_documents(rows, *, kind: str, id_column: str,
     par load_operation_snapshot à chaque consultation.
     """
     from modules.documents.erp_print import KINDS
-    if kind not in KINDS:
+    from modules.documents.internal_print import INTERNAL_KINDS
+    if kind not in KINDS and kind not in INTERNAL_KINDS:
         raise ValueError("Type documentaire sans moteur d'impression vérifié")
     frame = (rows.copy() if isinstance(rows, pd.DataFrame)
              else pd.DataFrame(rows)).reset_index(drop=True)
