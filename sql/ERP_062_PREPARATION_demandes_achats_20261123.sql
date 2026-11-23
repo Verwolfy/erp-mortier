@@ -239,7 +239,7 @@ BEGIN
      THEN RAISE EXCEPTION 'Quantités du BC différentes de la demande approuvée'
           USING ERRCODE='23514'; END IF;
      v_po:=public.erp_create_purchase_order(
-        'DA-PO-'||p_operation_id,'CMA-DA-'||gen_random_uuid()::text,
+        'DA-PO-'||md5(p_operation_id),'CMA-DA-'||gen_random_uuid()::text,
         p_payload->>'fournisseur_id',p_payload->>'type_achat',
         p_payload->>'devise',(p_payload->>'taux_change')::numeric,
         coalesce(p_payload->>'mode_paiement',''),
@@ -255,6 +255,7 @@ BEGIN
    END IF;
  END IF;
 
+ v_result:=v_result||jsonb_build_object('operation_id',p_operation_id);
  UPDATE public.erp_purchase_request_operations SET result_payload=v_result
  WHERE operation_id=p_operation_id;
  INSERT INTO public.erp_purchase_request_events(demande_id,operation_id,acteur_id,
