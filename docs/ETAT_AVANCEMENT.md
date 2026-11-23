@@ -1,3 +1,14 @@
+## 23 novembre 2026 — ERP-062 : demandes d'achat et approbation indépendante (NON ACTIVÉ)
+
+- Schéma **préparé**, **non déployé** sur Supabase principal : `sql/ERP_062_PREPARATION_demandes_achats_20261123.sql`, tables DA/ligne/opération/événement et RPC transactionnelle `CREATE/SUBMIT/APPROVE/REJECT/CONVERT` ; RLS, ACL service_role seulement.
+- La DA requiert un demandeur actif Achats, motivation et MP actives ; seul un approbateur **différent** peut approuver/refuser ; refus motivé. Conversion de la DA approuvée vers `erp_create_purchase_order` et lien de BC **atomiques**, fournisseurs actifs, lignes et quantités strictement identiques à la DA, clé d'opération idempotente.
+- Tests SQL principaux **BEGIN…ROLLBACK** : DA 10 kg → soumission → approbation temporaire indépendante → BC 1 000 DZD → réception 10 kg, tests négatifs auto-approbation, premature, quantité augmentée, MP et fournisseur inactifs, doublon/replay et refus ; commande multi-lignes 1 300 DZD validée. **0 comptes/test, 0 tables DA, 0 BC/BR et 0 stock persistés** après rollback.
+- UI : `modules/achats/requisitions.py` + `requisitions_views.py`. Le panneau est **OFF** sauf `ERP_PURCHASE_REQUESTS_ENABLED=1` ; si flag actif, les nouveaux BC directs dans la vue legacy sont bloqués. L'ancienne RPC BC reste toutefois appelable par le serveur : bascule globale à homologuer.
+- Un seul ADMIN réellement actif, donc deuxième approbateur humain légitime absent. **Ne pas activer** le flag ni installer le schéma tant que cette séparation n'est pas homologuée ; aucune identité de test persistée. Finance fournisseur #85 reste à homologuer, PDF BC non émis. Suivi [#86](https://github.com/Verwolfy/erp-mortier/issues/86).
+- Détails `docs/ERP_062_DEMANDES_ACHAT_APPROBATION_20261123.md`. Vérifier les workflows GitHub sur le dernier SHA du statut.
+
+---
+
 ## 23 novembre 2026 — ERP-061 : recette transversale réelle et blocage Finance fournisseur
 
 - **Test SQL sur Supabase principal en ROLLBACK** : commande fournisseur 10 kg × 100 DZD, idempotence BC, réception 4+6 kg, statuts PARTIELLEMENT_RECEPTIONNE puis RECEPTIONNE, deux mouvements MP et liens de lots, PMP recalculé, sur-réception refusée. 0 BC/BR/op test persistés ; stock initial restauré.
