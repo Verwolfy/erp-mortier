@@ -830,3 +830,24 @@ def test_correspondances_finance_scf_synthese_sans_mutation(ui, monkeypatch):
     ui.st.dataframe.assert_called_once()
     ui.finance.creer_compte.assert_not_called()
     ui.finance.enregistrer_reglement.assert_not_called()
+
+
+def test_supplier_draft_is_not_offered_for_payment_allocation(ui):
+    invoices = _supplier_invoices().copy()
+    invoices.loc[invoices["facture_fournisseur_id"] == "FF-1", "statut_paiement"] = "BROUILLON"
+    result = ui.mod._open_invoices(
+        invoices, "FactureFournisseur", "FRN-1", pd.DataFrame(),
+    )
+    assert all(row["document_id"] != "FF-1" for row in result)
+
+
+def test_supplier_unpaid_and_partially_paid_remain_eligible(ui):
+    invoices = _supplier_invoices().copy()
+    result_unpaid = ui.mod._open_invoices(
+        invoices, "FactureFournisseur", "FRN-2", pd.DataFrame(),
+    )
+    result_partial = ui.mod._open_invoices(
+        invoices, "FactureFournisseur", "FRN-1", pd.DataFrame(),
+    )
+    assert any(row["document_id"] == "FF-2" for row in result_unpaid)
+    assert any(row["document_id"] == "FF-1" for row in result_partial)
