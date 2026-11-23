@@ -9,7 +9,8 @@ import pytest
     ("module", "expected"),
     [
         ("ventes", {
-            "button": 11,
+            # Historique BL : nouveau bouton chargé à la demande avec callback.
+            "button": 12,
             "selectbox": 10,
             "form_submit_button": 2,
         }),

@@ -37,6 +37,9 @@ def ui(monkeypatch):
     roles = types.ModuleType("config.roles")
     roles.has_permission = MagicMock(return_value=True)
 
+    row_actions = types.ModuleType("modules.documents.row_actions")
+    row_actions.show_recorded_documents = MagicMock()
+    documents_package = types.ModuleType("modules.documents")
     sales = types.ModuleType("modules.ventes.service")
     for name in ("annuler_facture", "calculer_montants_facture", "create_facture_brouillon",
                  "creer_bon_livraison", "creer_commande_client", "get_factures", "get_lignes_facture", "lire_diagnostic_fiscal_sku", "valider_facture"):
@@ -65,6 +68,8 @@ def ui(monkeypatch):
         "core.db_service": db,
         "core.utils": utils,
         "modules": types.ModuleType("modules"),
+        "modules.documents": documents_package,
+        "modules.documents.row_actions": row_actions,
         "modules.ventes": types.ModuleType("modules.ventes"),
         "modules.ventes.service": sales,
     }.items():

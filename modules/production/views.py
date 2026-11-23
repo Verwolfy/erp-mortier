@@ -574,8 +574,12 @@ def _followup_tab(user_id: str, can_write: bool, can_stock: bool,
     if orders.empty:
         st.info("Aucun OF enregistré.")
         return
-    st.dataframe(orders.sort_values(by="date_planification", ascending=False),
-                 use_container_width=True, hide_index=True)
+    from modules.documents.row_actions import show_recorded_documents
+    show_recorded_documents(
+        orders.sort_values(by="date_planification", ascending=False),
+        kind="Ordre de fabrication", id_column="of_id",
+        user_id=user_id, scope="production_of",
+    )
     if not can_write:
         st.info("Mode lecture seule")
         return

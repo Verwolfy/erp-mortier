@@ -723,8 +723,12 @@ def _order_tab(user_id: str, can_write: bool) -> None:
         if not needed.issubset(orders.columns):
             st.error("Colonnes Commandes clients manquantes")
             return
-        st.dataframe(orders[["commande_vente_id", "client_id", "statut"]],
-                     use_container_width=True, hide_index=True)
+        from modules.documents.row_actions import show_recorded_documents
+        show_recorded_documents(
+            orders[["commande_vente_id", "client_id", "statut"]],
+            kind="Commande client", id_column="commande_vente_id",
+            user_id=user_id, scope="ventes_commandes",
+        )
     if not can_write:
         st.info("Mode lecture seule")
         return
@@ -802,6 +806,27 @@ def _ship_tab(user_id: str, can_write: bool) -> None:
     st.subheader("Expédition / Bons de livraison", help=topic_help("ventes.bl"))
     show_context_help(st, "ventes.bl")
     st.info("Un BL est rattaché à une vraie commande client, jamais à un numéro de facture.")
+    st.markdown("**Bons de livraison enregistrés**")
+    page_bl = st.number_input("Page des BL", min_value=1, max_value=1000,
+                              value=1, step=1, key="ng_ventes_bl_page")
+    history_key = f"ng_ventes_bl_loaded_{user_id}"
+    if st.button("Afficher les bons de livraison", key="ng_ventes_bl_load",
+                 on_click=_mark_ventes_activity):
+        st.session_state[history_key] = int(page_bl)
+    if st.session_state.get(history_key) == int(page_bl):
+        from core.strict_reads import fetch_history_page_strict
+        from modules.documents.row_actions import show_recorded_documents
+        bl_rows, bl_total = fetch_history_page_strict(
+            "bons_livraison", page=int(page_bl), date_column="date",
+        )
+        st.caption(f"Page {int(page_bl)} : {len(bl_rows)} BL sur {bl_total}.")
+        if bl_rows:
+            show_recorded_documents(
+                bl_rows, kind="Bon de livraison", id_column="bl_id",
+                user_id=user_id, scope="ventes_bl",
+            )
+        else:
+            st.info("Aucun bon de livraison sur cette page.")
     if not can_write:
         st.info("Mode lecture seule")
         return
@@ -889,21 +914,32 @@ def _workflow_tab(user_id: str, can_write: bool, factures: pd.DataFrame) -> None
                                value=1, step=1, key="ng_ventes_invoice_history_page", help=field_help("Page des factures", module="ventes"))
         from core.history_filters import history_period_inputs
         period = history_period_inputs("ng_ventes_history")
+        history_key = f"ng_ventes_factures_loaded_{user_id}"
         if period is not None and st.button(
                 "Afficher les factures", key="ng_ventes_invoice_history_load",
                 on_click=_mark_ventes_activity, help=field_help("Afficher les factures", module="ventes")):
+            st.session_state[history_key] = (int(page), dict(period))
+        if period is not None and st.session_state.get(history_key) == (int(page), dict(period)):
             from core.strict_reads import fetch_history_page_strict
+            from modules.documents.row_actions import show_recorded_documents
             rows, total = fetch_history_page_strict("factures", page=int(page), date_column="date", **period)
             st.caption(f"Page {int(page)} : {len(rows)} factures sur {total}.")
             if rows:
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                show_recorded_documents(
+                    rows, kind="Facture (aperçu interne)", id_column="facture_id",
+                    user_id=user_id, scope="ventes_factures_pag",
+                )
             else:
                 st.info("Aucune facture sur cette page.")
         return
     if factures.empty:
         st.info("Aucune facture")
         return
-    st.dataframe(factures, use_container_width=True, hide_index=True)
+    from modules.documents.row_actions import show_recorded_documents
+    show_recorded_documents(
+        factures, kind="Facture (aperçu interne)", id_column="facture_id",
+        user_id=user_id, scope="ventes_factures_workflow",
+    )
     if not can_write:
         return
     if _operation_panel("validate", user_id) or _operation_panel("cancel", user_id):
