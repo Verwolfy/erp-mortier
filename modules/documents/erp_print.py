@@ -85,6 +85,8 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
     meta: list[tuple[str, str]] = []
     totals: list[tuple[str, str]] = []
     partner = ""
+    party_record = None
+    party_role = ""
     if kind == "Ordre de fabrication":
         source_lines = [{
             "sku_id": header.get("sku_id"),
@@ -104,6 +106,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             raise OperationPrintError("Client de devis non rattaché")
         client = _single(reader, "clients", "client_id", client_id)
         partner = str(client.get("nom") or client_id)
+        party_record, party_role = client, "CLIENT"
         meta = [
             ("Client", partner),
             ("Statut du devis enregistré", str(header.get("statut") or "NON RENSEIGNÉ")),
@@ -121,6 +124,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             raise OperationPrintError("Client non rattaché")
         client = _single(reader, "clients", "client_id", client_id)
         partner = str(client.get("nom") or client_id)
+        party_record, party_role = client, "CLIENT"
         meta = [("Client", partner), ("Commande", str(order.get("commande_vente_id") or "")),
                 ("Statut", str(header.get("statut") or ""))]
         if kind == "Bon de livraison":
@@ -133,6 +137,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             raise OperationPrintError("Client non rattaché")
         client = _single(reader, "clients", "client_id", client_id)
         partner = str(client.get("nom") or client_id)
+        party_record, party_role = client, "CLIENT"
         meta = [("Client", partner), ("Statut ERP", str(header.get("statut") or "")),
                 ("Type ERP", str(header.get("type_facture") or "")),
                 ("Commande", str(header.get("commande_vente_id") or ""))]
@@ -153,6 +158,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             raise OperationPrintError("Fournisseur facture/commande incohérent")
         supplier = _single(reader, "fournisseurs", "fournisseur_id", supplier_id)
         partner = str(supplier.get("nom") or supplier_id)
+        party_record, party_role = supplier, "FOURNISSEUR"
         meta = [
             ("Fournisseur", partner),
             ("Commande fournisseur", order_id),
@@ -175,6 +181,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             raise OperationPrintError("Fournisseur non rattaché")
         supplier = _single(reader, "fournisseurs", "fournisseur_id", supplier_id)
         partner = str(supplier.get("nom") or supplier_id)
+        party_record, party_role = supplier, "FOURNISSEUR"
         meta = [("Fournisseur", partner),
                 ("Commande", str(order.get("commande_achat_id") or "")),
                 ("Statut", str(header.get("statut") or ""))]
@@ -244,9 +251,16 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         })
     if not lines or len(lines) > 200:
         raise OperationPrintError("Lignes d'opération invalides")
+    from modules.documents.party_identity import normalize_party
     return {
         "kind": kind, "id": identifier, "date": _day(doc_date),
         "partner": partner, "meta": meta, "totals": totals, "lines": lines,
+        "party_fields": normalize_party(party_record) if party_record is not None else [],
+        "party_role": party_role,
+        "currency": (
+            str(header.get("devise") or "DZD").strip().upper()
+            if kind == "Commande fournisseur" else "DZD"
+        ),
         "source": table, "warning": (
             "APERÇU INTERNE - NON VALABLE FISCALEMENT / NON ÉMIS"
             if kind in ("Facture (aperçu interne)", "Facture fournisseur (aperçu interne)")
@@ -256,20 +270,25 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
 
 
 def render_operation_pdf(snapshot: dict) -> bytes:
-    """PDF de consultation lisible et imprimable, sans prétention de certification."""
+    """Copie A4 lisible : identité légale émetteur/destinataire + lignes non tronquées.
+
+    Les champs RC/NIF/NIS/AI manquants apparaissent comme "Non renseigné".
+    Pas d'émission, de calcul fiscal ni de validation commerciale.
+    """
+    from pathlib import Path
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
-
-    def latin(value: object, limit: int = 240) -> str:
-        return str(value if value is not None else "").encode(
-            "latin-1", "replace").decode("latin-1")[:limit]
+    from modules.documents.branding_images import branded_images
+    from modules.documents.party_identity import (
+        NAVY, GREEN, PALE, configured_company, draw_party_panels,
+        pdf_safe, wrap_pdf_text,
+    )
 
     if not isinstance(snapshot, dict) or snapshot.get("kind") not in KINDS:
         raise OperationPrintError("Dossier d'impression invalide")
     if not isinstance(snapshot.get("lines"), list) or not 1 <= len(snapshot["lines"]) <= 200:
         raise OperationPrintError("Lignes d'impression invalides")
-    from pathlib import Path
-    from modules.documents.branding_images import branded_images
+
     logo = Path("assets/nextgen_logo_hd.jpg")
     header_png, footer_png = branded_images(str(logo) if logo.is_file() else None)
 
@@ -281,7 +300,7 @@ def render_operation_pdf(snapshot: dict) -> bytes:
             self.image(BytesIO(footer_png), x=0, y=268, w=210, h=24.36)
             self.set_y(-8)
             self.set_font("Helvetica", "", 7)
-            self.set_text_color(14, 43, 79)
+            self.set_text_color(*NAVY)
             self.cell(190, 5, f"Page {self.page_no()}/{{nb}}", align="R")
 
     pdf = OperationPDF(format="A4", unit="mm")
@@ -289,56 +308,141 @@ def render_operation_pdf(snapshot: dict) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=36)
     pdf.add_page()
     pdf.set_y(49)
-    pdf.set_font("Helvetica", "B", 15)
-    pdf.set_text_color(14, 43, 79)
-    pdf.cell(190, 10, "NEXTGEN - " + latin(snapshot["kind"]).upper(),
-             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(175, 32, 40)
-    pdf.multi_cell(190, 6, latin(snapshot["warning"]),
-                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.cell(190, 6, f"Référence ERP : {latin(snapshot['id'])}   |   Date : {latin(snapshot['date'])}",
-             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    for label, value in snapshot["meta"]:
-        pdf.multi_cell(190, 5, latin(label + " : " + value, 180),
-                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(4)
-    widths = [32, 74, 17, 19, 24, 24]
-    headers = ["Référence", "Désignation", "Unité", "Qté", "P.U.", "Total HT"]
-    pdf.set_fill_color(14, 43, 79)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 8)
-    for width, title in zip(widths, headers):
-        pdf.cell(width, 8, latin(title), border=1, fill=True)
-    pdf.ln(8)
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Helvetica", "", 7.5)
-    for row in snapshot["lines"]:
-        values = [row.get("reference", ""), row.get("designation", ""),
-                  row.get("unite", ""), row.get("quantite", ""),
-                  row.get("prix_unitaire", ""), row.get("total_ht", "")]
-        if pdf.get_y() > 249:
+
+    def ensure_height(height: float, *, extra_margin: float = 0) -> None:
+        if pdf.get_y() + height + extra_margin > 255:
             pdf.add_page()
-            pdf.set_y(49)
-            pdf.set_font("Helvetica", "", 7.5)
-        for width, value in zip(widths, values):
-            pdf.cell(width, 9, latin(value, 40), border=1)
-        pdf.ln(9)
-        if row.get("lot"):
-            pdf.set_font("Helvetica", "I", 7)
-            pdf.cell(190, 5, "Lot : " + latin(row["lot"]),
-                     new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-            pdf.set_font("Helvetica", "", 7.5)
-    pdf.ln(4)
+            pdf.set_y(50)
+
+    # Bandeau titre cohérent avec les autres documents NEXTGEN.
+    pdf.set_fill_color(*NAVY)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(190, 11, pdf_safe(snapshot["kind"]).upper(),
+             align="C", fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_text_color(175, 32, 40)
+    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.multi_cell(190, 5, pdf_safe(snapshot["warning"]),
+                   align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(2)
+    pdf.set_fill_color(*PALE)
+    pdf.set_text_color(*NAVY)
     pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(190, 8, pdf_safe(f"Référence : {snapshot['id']}     |     Date : {snapshot['date']}"),
+             fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.ln(3)
+
+    counterpart = snapshot.get("party_fields")
+    if isinstance(counterpart, list) and counterpart:
+        issuer = configured_company()
+        if snapshot["kind"] == "Facture fournisseur (aperçu interne)":
+            # L'original vient du fournisseur : ne jamais présenter NEXTGEN
+            # comme émetteur de cette facture tierce.
+            draw_party_panels(pdf, "FOURNISSEUR - ÉMETTEUR", counterpart,
+                              "NEXTGEN - DESTINATAIRE", issuer)
+        else:
+            title = "FOURNISSEUR" if snapshot.get("party_role") == "FOURNISSEUR" else "CLIENT"
+            draw_party_panels(pdf, "NEXTGEN - ÉMETTEUR", issuer, title, counterpart)
+
+    # Metadata opérationnelles, sans redoubler la raison sociale du tiers.
+    metadata = [(label, value) for label, value in snapshot["meta"]
+                if label not in ("Client", "Fournisseur")]
+    if metadata:
+        ensure_height(9)
+        pdf.set_fill_color(*PALE)
+        pdf.set_text_color(*NAVY)
+        pdf.set_font("Helvetica", "B", 8.5)
+        pdf.cell(190, 7, "Informations de l'opération",
+                 fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 8)
+        for label, value in metadata:
+            lines = wrap_pdf_text(pdf, f"{label} : {value}", 186)
+            for line in lines:
+                ensure_height(5)
+                pdf.cell(190, 4.5, line,
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(3)
+
+    currency = pdf_safe(snapshot.get("currency") or "DZD")
+    is_order = snapshot["kind"] == "Commande fournisseur"
+    headings = [
+        "Référence", "Désignation", "Unité", "Qté",
+        f"P.U. {currency}" if is_order else "P.U.",
+        f"Montant {currency}" if is_order else "Total HT",
+    ]
+    widths = [27, 65, 18, 17, 32, 31]  # somme = 190 mm
+
+    def table_header() -> None:
+        ensure_height(9)
+        pdf.set_x(10)
+        pdf.set_fill_color(*NAVY)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 7.6)
+        for width, title in zip(widths, headings):
+            pdf.cell(width, 8, pdf_safe(title), border=1, fill=True)
+        pdf.ln(8)
+        pdf.set_text_color(*NAVY)
+
+    table_header()
+    for index, item in enumerate(snapshot["lines"]):
+        if not isinstance(item, dict):
+            raise OperationPrintError("Ligne d'impression invalide")
+        values = [
+            item.get("reference", ""), item.get("designation", ""),
+            item.get("unite", ""), item.get("quantite", ""),
+            item.get("prix_unitaire", ""), item.get("total_ht", ""),
+        ]
+        pdf.set_font("Helvetica", "", 7.5)
+        wrapped = [
+            wrap_pdf_text(pdf, v, width - 3) for width, v in zip(widths, values)
+        ]
+        row_height = max(8, max(len(lines) for lines in wrapped) * 4.1 + 2)
+        if row_height > 185:
+            raise OperationPrintError("Ligne trop longue pour l'impression A4")
+        if pdf.get_y() + row_height > 254:
+            pdf.add_page()
+            pdf.set_y(50)
+            table_header()
+
+        row_y = pdf.get_y()
+        fill = index % 2 == 1
+        if fill:
+            pdf.set_fill_color(*PALE)
+        x = 10
+        for col, (width, lines) in enumerate(zip(widths, wrapped)):
+            pdf.rect(x, row_y, width, row_height, style="DF" if fill else "D")
+            pdf.set_xy(x + 1.5, row_y + 1.0)
+            pdf.multi_cell(width - 3, 4.1, "\n".join(lines),
+                           align="R" if col >= 3 else "L")
+            x += width
+        pdf.set_xy(10, row_y + row_height)
+        if item.get("lot"):
+            pdf.set_font("Helvetica", "I", 7.1)
+            lot_lines = wrap_pdf_text(pdf, f"Lot : {item['lot']}", 186)
+            for lot_line in lot_lines:
+                ensure_height(5)
+                pdf.cell(190, 4.5, lot_line,
+                         new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.ln(4)
+    pdf.set_text_color(*NAVY)
     for label, value in snapshot["totals"]:
-        pdf.cell(190, 6, latin(f"{label} : {value if value else 'NON RENSEIGNÉ'} DZD"
-                              if value else f"{label} : NON RENSEIGNÉ"),
+        ensure_height(9)
+        text = f"{label} : {value} DZD" if value else f"{label} : NON RENSEIGNÉ"
+        pdf.set_x(82)
+        pdf.set_font("Helvetica", "B", 8.7)
+        pdf.set_fill_color(*PALE)
+        pdf.cell(118, 8, pdf_safe(text), fill=True, align="R",
                  new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.ln(5)
+
+    ensure_height(24)
+    pdf.ln(6)
     pdf.set_font("Helvetica", "I", 8)
-    pdf.multi_cell(190, 5, "Copie de lecture seule des données enregistrées dans l'ERP. "
-                   "Aucune signature, émission, validation fiscale ou comptable n'est produite.")
-    return bytes(pdf.output())
+    pdf.set_text_color(*NAVY)
+    pdf.multi_cell(
+        190, 5, "Copie de consultation des données enregistrées dans l'ERP. "
+        "Aucune signature, émission, validation fiscale ou comptable produite.",
+        new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+    )
+    result = pdf.output()
+    return bytes(result) if not isinstance(result, str) else result.encode("latin-1")

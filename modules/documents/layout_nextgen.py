@@ -157,23 +157,34 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
             pdf.cell(92, 7, latin(f"{item[0]} : {item[1] or '-'}", 90), fill=True)
         pdf.set_y(y + 9)
     pdf.set_y(pdf.get_y() + 3)
-    partner_label = "Client / destinataire" if kind not in {
-        "Bon de commande fournisseur", "Bon de réception", "Contrôle facture fournisseur",
-    } else "Fournisseur"
-    pdf.set_fill_color(*NAVY)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(190, 7, latin("  " + partner_label), fill=True,
-             new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_text_color(*NAVY)
-    pdf.set_font("Helvetica", "", 9)
-    for label, value in (("Raison sociale / service", doc.get("tiers_nom")),
-                         ("Adresse", doc.get("tiers_adresse"))):
-        pdf.set_x(11)
-        pdf.multi_cell(185, 6, latin(f"{label} : {value or '-'}"))
-    pdf.ln(5)
+    from modules.documents.party_identity import (
+        PARTY_LABELS, draw_party_panels, normalize_party,
+    )
+    from modules.documents.prefill import CLIENT_TYPES, SUPPLIER_TYPES
+    if kind in CLIENT_TYPES or kind in SUPPLIER_TYPES:
+        issuer_fields = normalize_party({
+            "nom": company, "adresse": address,
+            "rc": rc, "nif": nif, "email_entreprise": email,
+        }, issuer=True)
+        party_data = {
+            "nom": doc.get("tiers_nom", ""),
+            "adresse": doc.get("tiers_adresse", ""),
+        }
+        party_data.update({
+            field: doc.get("tiers_" + field, "")
+            for _, field, _ in PARTY_LABELS if field not in ("nom", "adresse")
+        })
+        party_fields = normalize_party(party_data)
+        title = "FOURNISSEUR" if kind in SUPPLIER_TYPES else "CLIENT"
+        draw_party_panels(pdf, "NEXTGEN - ÉMETTEUR", issuer_fields,
+                          title, party_fields)
+    else:
+        pdf.ln(3)
 
     def table_header():
+        if pdf.get_y() > 241:
+            pdf.add_page()
+            pdf.set_y(52)
         pdf.set_x(10)
         pdf.set_fill_color(*NAVY)
         pdf.set_text_color(255, 255, 255)

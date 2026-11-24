@@ -32,6 +32,11 @@ def new_draft(kind: str) -> dict:
     return {
         "type": kind, "numero": "BROUILLON", "date": date.today().isoformat(),
         "tiers_nom": "", "tiers_adresse": "", "objet": "",
+        **{"tiers_" + key: "" for key in (
+            "wilaya", "pays", "rc", "nif", "nis", "ai",
+            "nom_contact", "poste_contact", "telephone_fixe", "mobile_contact",
+            "email_entreprise", "email_contact", "site_web",
+        )},
         "items": [], "total_ht": "", "total_taxes": "", "total_ttc": "",
         "observations": "", "trace_id": "NG-" + uuid4().hex.upper(),
         "statut": "BROUILLON",
@@ -140,11 +145,33 @@ def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
     document.add_heading(doc["type"].upper(), 0)
     p = document.add_paragraph("BROUILLON - NON VALABLE / NON EMIS")
     p.runs[0].font.color.rgb = RGBColor(190, 37, 38)
-    for label, key in (("N°", "numero"), ("Date", "date"), ("Tiers", "tiers_nom"),
-                       ("Adresse", "tiers_adresse"), ("Objet", "objet")):
+    from modules.documents.party_identity import (
+        PARTY_LABELS, configured_company, normalize_party, MISSING,
+    )
+    for label, key in (("N°", "numero"), ("Date", "date"), ("Objet", "objet")):
         paragraph = document.add_paragraph()
         paragraph.add_run(label + " : ").bold = True
         paragraph.add_run(str(doc.get(key, "")))
+    # Aligner les exports Word et PDF sur la même identité juridique.
+    document.add_heading("NEXTGEN — Émetteur / société", level=2)
+    for label, value in configured_company():
+        line = document.add_paragraph()
+        line.add_run(label + " : ").bold = True
+        line.add_run(value)
+    from modules.documents.prefill import SUPPLIER_TYPES, CLIENT_TYPES
+    kind = doc.get("type", "")
+    if kind in SUPPLIER_TYPES or kind in CLIENT_TYPES:
+        party = {"nom": doc.get("tiers_nom", ""), "adresse": doc.get("tiers_adresse", "")}
+        party.update({key: doc.get("tiers_" + key, "") for _, key, _ in PARTY_LABELS
+                      if key not in ("nom", "adresse")})
+        document.add_heading(
+            "Fournisseur" if kind in SUPPLIER_TYPES else "Client / destinataire",
+            level=2,
+        )
+        for label, value in normalize_party(party):
+            line = document.add_paragraph()
+            line.add_run(label + " : ").bold = True
+            line.add_run(value)
     from modules.documents.layout_nextgen import columns_for, signature_labels, FINANCIAL_KINDS
     columns = columns_for(doc["type"])
     table = document.add_table(rows=1, cols=len(columns))
@@ -315,6 +342,11 @@ def show_documents_page():
                         st.session_state[doc_key] = apply_party(doc, by_id[choice])
                         for k in ("doc_tiers", "doc_address"):
                             st.session_state.pop(k, None)
+                        for _, field, _ in __import__(
+                            "modules.documents.party_identity",
+                            fromlist=["PARTY_LABELS"]
+                        ).PARTY_LABELS:
+                            st.session_state.pop("ng_tiers_" + field, None)
                         st.rerun()
                 else:
                     st.info("Aucun tiers actif accessible.")
@@ -378,6 +410,21 @@ def show_documents_page():
     doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date", help=field_help("Date", module="documents")))
     doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers", help=field_help("Client / fournisseur / service", module="documents"))
     doc["tiers_adresse"] = st.text_input("Adresse", value=doc["tiers_adresse"], key="doc_address", help=field_help("Adresse", module="documents"))
+    from modules.documents.party_identity import PARTY_LABELS
+    from modules.documents.prefill import CLIENT_TYPES, SUPPLIER_TYPES
+    if kind in CLIENT_TYPES or kind in SUPPLIER_TYPES:
+        with st.expander("Coordonnées et identifiants légaux du tiers", expanded=False):
+            st.caption(
+                "RC, NIF, NIS et AI : saisir uniquement les numéros communiqués "
+                "par le client ou fournisseur. Un champ absent restera non renseigné sur les PDF."
+            )
+            for label, field, _ in PARTY_LABELS:
+                if field in ("nom", "adresse"):
+                    continue
+                doc["tiers_" + field] = st.text_input(
+                    label, value=str(doc.get("tiers_" + field) or ""),
+                    key="ng_tiers_" + field,
+                )
     doc["objet"] = st.text_input("Objet", value=doc["objet"], key="doc_subject", help=field_help("Objet", module="documents"))
     from modules.documents.layout_nextgen import columns_for, FINANCIAL_KINDS
     columns = columns_for(kind)

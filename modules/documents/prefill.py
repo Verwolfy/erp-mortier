@@ -31,7 +31,12 @@ def list_parties(kind: str, *, reader=None) -> list[dict]:
     fetch = reader or _read
     return sorted([
         {"id": str(x[key]), "nom": str(x.get("nom") or ""),
-         "adresse": str(x.get("adresse") or "")}
+         "adresse": str(x.get("adresse") or ""),
+         **{field: str(x.get(field) or "") for field in (
+             "wilaya", "pays", "rc", "nif", "nis", "ai",
+             "nom_contact", "poste_contact", "telephone_fixe",
+             "mobile_contact", "email_entreprise", "email_contact", "site_web",
+         )}}
         for x in fetch(table)
         if isinstance(x, dict) and x.get(key) and _active(x.get("actif"))
     ], key=lambda x: (x["nom"], x["id"]))
@@ -69,6 +74,14 @@ def apply_party(doc: dict, party: dict) -> dict:
     out = deepcopy(doc)
     out["tiers_nom"] = party["nom"]
     out["tiers_adresse"] = party.get("adresse") or ""
+    # Les champs légaux sont copiés, jamais déduits d'autres identifiants.
+    # AI peut être complété manuellement si absent du référentiel historique.
+    for field in (
+        "wilaya", "pays", "rc", "nif", "nis", "ai",
+        "nom_contact", "poste_contact", "telephone_fixe",
+        "mobile_contact", "email_entreprise", "email_contact", "site_web",
+    ):
+        out["tiers_" + field] = str(party.get(field) or "")
     return out
 
 
