@@ -251,13 +251,11 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         })
     if not lines or len(lines) > 200:
         raise OperationPrintError("Lignes d'opération invalides")
+    from modules.documents.party_identity import normalize_party
     return {
         "kind": kind, "id": identifier, "date": _day(doc_date),
         "partner": partner, "meta": meta, "totals": totals, "lines": lines,
-        "party_fields": (
-            __import__("modules.documents.party_identity", fromlist=["normalize_party"])
-            .normalize_party(party_record) if party_record is not None else []
-        ),
+        "party_fields": normalize_party(party_record) if party_record is not None else [],
         "party_role": party_role,
         "currency": (
             str(header.get("devise") or "DZD").strip().upper()
