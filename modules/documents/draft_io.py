@@ -64,6 +64,11 @@ def read_draft_json(payload: bytes, kind: str) -> dict:
         "date": document_date.isoformat(),
         "tiers_nom": "",
         "tiers_adresse": "",
+        **{"tiers_" + field: "" for field in (
+            "wilaya", "pays", "rc", "nif", "nis", "ai",
+            "nom_contact", "poste_contact", "telephone_fixe",
+            "mobile_contact", "email_entreprise", "email_contact", "site_web",
+        )},
         "objet": "",
         "items": clean_lines,
         "total_ht": "",
@@ -73,8 +78,15 @@ def read_draft_json(payload: bytes, kind: str) -> dict:
         "trace_id": trace,
         "statut": "BROUILLON",
     }
-    for field in ("numero", "tiers_nom", "tiers_adresse", "objet", "observations",
-                  "total_ht", "total_taxes", "total_ttc"):
+    for field in (
+        "numero", "tiers_nom", "tiers_adresse", "objet", "observations",
+        "total_ht", "total_taxes", "total_ttc",
+        *("tiers_" + field for field in (
+            "wilaya", "pays", "rc", "nif", "nis", "ai",
+            "nom_contact", "poste_contact", "telephone_fixe",
+            "mobile_contact", "email_entreprise", "email_contact", "site_web",
+        )),
+    ):
         value = decoded.get(field, "")
         if not isinstance(value, (str, int, float)) and value is not None:
             raise ValueError(f"Champ {field} invalide")
