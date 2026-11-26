@@ -277,7 +277,7 @@ def export_pdf(
             separators=(",", ":")).encode("utf-8"))
         digest.update(b"\\n")
     snapshot = {
-        "kind": "Rapport ERP", "id": _text(title)[:128],
+        "kind": "Rapport ERP", "id": _text(title).strip()[:128] or "Rapport ERP",
         "date": date.today().isoformat(), "source": "export_formats",
         "columns": list(columns), "row_count": len(table),
         "digest_source": digest.hexdigest(), "statut": "CONSULTATION",
