@@ -10,7 +10,9 @@ import os
 from modules.documents.pdf_presentation import (
     amount_in_words, draw_qr, format_money, qr_payload, has_value,
 )
-from modules.documents.party_identity import pdf_safe, wrap_pdf_text
+from modules.documents.party_identity import (
+    pdf_safe, wrap_pdf_text, wrap_table_cell_text, draw_table_cell_text,
+)
 
 def hex_to_rgb(hex_color):
     """Convertit une couleur Hex en tuple RGB."""
@@ -161,7 +163,7 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
         ]
         sizes = [75, 20, 30, 30, 35]
         pdf.set_font("Helvetica", "", 9)
-        cells = [wrap_pdf_text(pdf, val, size - 3)
+        cells = [wrap_table_cell_text(pdf, val, size)
                  for val, size in zip(values, sizes)]
         height = max(8, 4.4 * max(len(row) for row in cells) + 2)
         if height > 195:
@@ -174,9 +176,10 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
         x, y = 10, pdf.get_y()
         for idx, (size, wrapped) in enumerate(zip(sizes, cells)):
             pdf.rect(x, y, size, height)
-            pdf.set_xy(x + 1.5, y + 1)
-            pdf.multi_cell(size - 3, 4.4, "\n".join(wrapped),
-                           align="R" if idx > 0 else "L")
+            draw_table_cell_text(
+                pdf, wrapped, x=x, y=y, width=size, height=height,
+                line_height=4.4, align="R" if idx > 0 else "L",
+            )
             x += size
         pdf.set_xy(10, y + height)
 
