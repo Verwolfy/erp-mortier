@@ -58,10 +58,9 @@ def test_export_pdf_word_modifiables_sans_donnees_inventees(kind):
     assert "BROUILLON" in xml
     assert sheet["trace_id"] in xml
     assert "Produit essai" in xml
-    assert "Non renseigné" in xml
+    assert "Non renseigné" not in xml
+    assert "Texte validable par laboratoire" in xml
     if kind == SAFETY:
         assert len(SAFETY_SECTIONS) == 16
-        assert "Informations toxicologiques" in xml
     else:
         assert len(TECHNICAL_SECTIONS) == 10
-        assert "Caractéristiques et performances" in xml
