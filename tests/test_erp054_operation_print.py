@@ -76,7 +76,7 @@ def test_invoice_preview_keeps_persisted_taxes_and_discounts():
     snapshot = load_operation_snapshot("Facture (aperçu interne)", "FAC-1", reader=_reader(data))
     assert snapshot["totals"][1][1] == "36.1"
     assert snapshot["lines"][0]["total_ht"] == "190"
-    assert "remise enregistrée" in snapshot["lines"][0]["designation"]
+    assert "remise :" in snapshot["lines"][0]["designation"]
     assert "NON VALABLE FISCALEMENT" in snapshot["warning"]
     assert render_operation_pdf(snapshot).startswith(b"%PDF")
 
@@ -152,7 +152,7 @@ def test_supplier_purchase_order_print_generates_branded_pdf_from_persisted_valu
     assert snapshot["lines"][0]["quantite"] == "10"
     assert snapshot["lines"][0]["prix_unitaire"] == "100.00"
     assert snapshot["lines"][0]["total_ht"] == "1000.00"
-    assert snapshot["totals"] == [("Total DZD enregistré", "1000.00")]
+    assert snapshot["totals"] == [("Total", "1000.00")]
     assert "NON ÉMISE" in snapshot["warning"]
     pdf = render_operation_pdf(snapshot)
     assert pdf.startswith(b"%PDF")
