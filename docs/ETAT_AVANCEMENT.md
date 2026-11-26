@@ -1,3 +1,13 @@
+## 26 novembre 2026 — ERP-066 : débordement texte de désignation PDF corrigé
+
+- **Cause reproduite** : sur `FAC-2026-000001`, « 25kg » s'imprimait en dessous du cadre de la colonne « Désignation » ; le `multi_cell` FPDF ajoutait une troisième ligne non comptée dans la hauteur de cellule car `c_margin` était omis.
+- **Correction sur main** : [PR #96](https://github.com/Verwolfy/erp-mortier/pull/96) fusionnée, SHA `4813fb81264a900fe3ff003ced373920b8e0308d`. Découpage tenant compte des marges internes et dessin ligne par ligne à hauteur contrôlée dans les moteurs `erp_print`, `layout_nextgen`, `core/pdf_generator` ; module commun `party_identity`.
+- **Tests PR** : [audit #45855656883](https://github.com/Verwolfy/erp-mortier/actions/runs/45855656883) et [facturation #45855656780](https://github.com/Verwolfy/erp-mortier/actions/runs/45855656780) **success, 3 599 tests chacun (12 warnings)**, au SHA PR `447179366417`. Test de positionnement exact de « Sac 25kg » inclus.
+- **Prochaine validation** : vérifier le SHA `Version ERP` dans Streamlit, régénérer `FAC-2026-000001`, contrôler **Page 1/1**, `Sac 25kg` dans la bordure, QR et montants non recouverts. La recette Streamlit n'est **pas encore attestée**.
+- **Suivi** : `docs/ERP_066_DEBORDEMENT_DESIGNATION_PDF_20261126.md`. **Sauvegarde externe R2 toujours en pause** jusqu'à clôture tests et nouvel accord. Aucune modification de BDD.
+
+---
+
 ## 26 novembre 2026 — ERP-065 : DOCUMENTS OPÉRATIONNELS UNE PAGE A4 — FUSIONNÉ
 
 - **Exemple utilisateur** : facture `FAC-2026-000001` (PDF du 26/11, 2 pages) ; QR isolé sur une deuxième page alors que les données étaient toutes sur la première.
