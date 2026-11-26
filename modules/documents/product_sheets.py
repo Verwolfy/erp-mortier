@@ -171,13 +171,29 @@ def export_product_sheet_pdf(sheet: dict, logo_path: str | None = None) -> bytes
                 self.set_fill_color(*LIGHT)
                 self.set_text_color(*NAVY)
                 self.set_font("Helvetica", "B", 9)
-                self.set_xy(10, 64)
-                self.cell(95, 8, _latin("Réf. : " + sheet["reference"], 70), fill=True)
-                self.cell(95, 8, _latin("Révision : " + sheet["version"], 70), fill=True)
-                self.set_xy(10, 74)
-                self.cell(95, 8, _latin("Date : " + sheet["date"], 70), fill=True)
-                self.cell(95, 8, _latin("Code : " + sheet["code_produit"], 70), fill=True)
-                self.set_xy(10, 86)
+                from modules.documents.party_identity import wrap_pdf_text
+                # Métadonnées à hauteur variable : références longues jamais
+                # tronquées et jamais superposées à la ligne suivante.
+                current_y = 64
+                for left, right in (
+                    ("Réf. : " + sheet["reference"],
+                     "Révision : " + sheet["version"]),
+                    ("Date : " + sheet["date"],
+                     "Code : " + sheet["code_produit"]),
+                ):
+                    self.set_font("Helvetica", "B", 9)
+                    prepared = (wrap_pdf_text(self, left, 91),
+                                wrap_pdf_text(self, right, 91))
+                    row_h = max(8, 4.3 * max(map(len, prepared)) + 1)
+                    if current_y + row_h > 133:
+                        raise ValueError("Références de fiche trop longues pour l'en-tête A4")
+                    for x, lines in zip((10, 105), prepared):
+                        self.set_xy(x, current_y)
+                        self.rect(x, current_y, 95, row_h, style="F")
+                        self.set_xy(x + 2, current_y + 1)
+                        self.multi_cell(91, 4.3, "\n".join(lines))
+                    current_y += row_h + 2
+                self.set_xy(10, current_y + 2)
                 self.set_font("Helvetica", "B", 11)
                 self.set_text_color(*NAVY)
                 if sheet["produit"]:
