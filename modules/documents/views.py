@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from io import BytesIO
 import json
+from hashlib import sha256
+from decimal import Decimal, ROUND_HALF_UP
 from uuid import uuid4
 
 import streamlit as st
@@ -56,12 +58,17 @@ def validate_draft(doc: dict) -> None:
 
 
 def tracking_payload(doc: dict) -> str:
-    """QR hors ligne : une identité, pas une URL de suivi fictive."""
+    """QR hors ligne : identifiant et empreinte, sans information personnelle."""
     validate_draft(doc)
-    return json.dumps({"issuer": NIF, "id": doc["trace_id"],
-                       "type": doc["type"], "number": str(doc.get("numero", ""))[:100],
-                       "date": str(doc.get("date", ""))[:20]}, ensure_ascii=False,
-                      sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(doc, ensure_ascii=False, sort_keys=True,
+                           separators=(",", ":"), default=str, allow_nan=False)
+    digest = sha256(canonical.encode("utf-8")).hexdigest()[:32]
+    return json.dumps({
+        "v": 1, "erp": "NEXTGEN", "id": doc["trace_id"],
+        "type": doc["type"], "reference": str(doc.get("numero", ""))[:100],
+        "date": str(doc.get("date", ""))[:20], "empreinte": digest,
+        "statut": "BROUILLON",
+    }, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
 
 def _safe(value: object) -> str:
@@ -146,14 +153,19 @@ def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
     p = document.add_paragraph("BROUILLON - NON VALABLE / NON EMIS")
     p.runs[0].font.color.rgb = RGBColor(190, 37, 38)
     from modules.documents.party_identity import (
-        PARTY_LABELS, configured_company, normalize_party, MISSING,
+        PARTY_LABELS, configured_company, normalize_party,
+    )
+    from modules.documents.pdf_presentation import (
+        amount_in_words, format_money, has_value,
     )
     for label, key in (("N°", "numero"), ("Date", "date"), ("Objet", "objet")):
+        if not has_value(doc.get(key)):
+            continue
         paragraph = document.add_paragraph()
         paragraph.add_run(label + " : ").bold = True
         paragraph.add_run(str(doc.get(key, "")))
     # Aligner les exports Word et PDF sur la même identité juridique.
-    document.add_heading("NEXTGEN — Émetteur / société", level=2)
+    document.add_heading("NEXTGEN", level=2)
     for label, value in configured_company():
         line = document.add_paragraph()
         line.add_run(label + " : ").bold = True
@@ -165,7 +177,7 @@ def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
         party.update({key: doc.get("tiers_" + key, "") for _, key, _ in PARTY_LABELS
                       if key not in ("nom", "adresse")})
         document.add_heading(
-            "Fournisseur" if kind in SUPPLIER_TYPES else "Client / destinataire",
+            "Fournisseur" if kind in SUPPLIER_TYPES else "Client",
             level=2,
         )
         for label, value in normalize_party(party):
@@ -182,11 +194,16 @@ def export_docx(doc: dict, logo_path: str | bytes | None = None) -> bytes:
         for cell, (key, _) in zip(table.add_row().cells, columns):
             cell.text = str(item.get(key, ""))
     if doc["type"] in FINANCIAL_KINDS:
-        for label, key in (("Total HT", "total_ht"), ("Taxes (montant fourni)", "total_taxes"),
+        tax_name = "TVA" if doc["type"] in FISCAL else "Taxes"
+        for label, key in (("Total HT", "total_ht"), (tax_name, "total_taxes"),
                            ("Total TTC", "total_ttc")):
-            if doc.get(key) not in ("", None):
-                document.add_paragraph(f"{label} : {doc[key]} DZD")
-    document.add_paragraph("Observations : " + str(doc.get("observations", "")))
+            if has_value(doc.get(key)):
+                document.add_paragraph(f"{label} : {format_money(doc[key])} DZD")
+        if doc["type"] in FISCAL and has_value(doc.get("total_ttc")):
+            document.add_paragraph("Arrêté le présent document à : "
+                                   + amount_in_words(doc["total_ttc"]))
+    if has_value(doc.get("observations")):
+        document.add_paragraph("Observations : " + str(doc["observations"]))
     import qrcode
     qr = qrcode.make(tracking_payload(doc))
     image = BytesIO()
@@ -409,7 +426,7 @@ def show_documents_page():
     doc["numero"] = st.text_input("Numéro / référence", value=doc["numero"], key="doc_number", help=field_help("Numéro / référence", module="documents"))
     doc["date"] = str(st.date_input("Date", value=date.fromisoformat(doc["date"]), key="doc_date", help=field_help("Date", module="documents")))
     doc["tiers_nom"] = st.text_input("Client / fournisseur / service", value=doc["tiers_nom"], key="doc_tiers", help=field_help("Client / fournisseur / service", module="documents"))
-    doc["tiers_adresse"] = st.text_input("Adresse", value=doc["tiers_adresse"], key="doc_address", help=field_help("Adresse", module="documents"))
+    doc["tiers_adresse"] = st.text_input("Adresse de Facturation", value=doc["tiers_adresse"], key="doc_address", help=field_help("Adresse", module="documents"))
     from modules.documents.party_identity import PARTY_LABELS
     from modules.documents.prefill import CLIENT_TYPES, SUPPLIER_TYPES
     if kind in CLIENT_TYPES or kind in SUPPLIER_TYPES:
@@ -464,9 +481,21 @@ def show_documents_page():
     doc["items"] = updated
     financial_errors = []
     if kind in FISCAL:
-        st.warning("Brouillon fiscal uniquement : aucun taux de TVA n'est présumé.")
+        st.warning("Brouillon fiscal NON ÉMIS : taux standard proposé de 19 %. "
+                   "Vérifier l'éligibilité, un éventuel taux réduit ou une exonération.")
     if kind in FINANCIAL_KINDS:
         from modules.documents.calculations import calculate_financial_draft
+        if kind in FISCAL and st.checkbox(
+                "Appliquer la TVA normale de 19 % à cette simulation "
+                "(éligibilité des lignes vérifiée)",
+                value=False, key="ng_doc_apply_vat_19"):
+            preview = calculate_financial_draft(doc["items"])
+            if preview["total_ht"] and not preview["errors"]:
+                doc["total_taxes"] = format(
+                    (Decimal(preview["total_ht"]) * Decimal("0.19")).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+            else:
+                st.warning("TVA à 19 % non calculable sans lignes HT valides.")
         doc["total_taxes"] = st.text_input(
             "Montant des taxes validé, en DZD (laisser vide si inconnu)",
             value=str(doc.get("total_taxes") or ""), key="ng_doc_taxes",
