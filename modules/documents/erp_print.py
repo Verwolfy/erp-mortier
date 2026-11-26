@@ -318,14 +318,18 @@ def render_operation_pdf(snapshot: dict) -> bytes:
 
     pdf = OperationPDF(format="A4", unit="mm")
     pdf.alias_nb_pages()
-    pdf.set_auto_page_break(auto=True, margin=36)
+    # Une pièce opérationnelle doit être intégralement imprimable sur une
+    # seule page A4 : jamais de nouvelle page silencieuse.
+    pdf.set_auto_page_break(auto=False)
     pdf.add_page()
     pdf.set_y(49)
 
     def ensure_height(height: float, *, extra_margin: float = 0) -> None:
-        if pdf.get_y() + height + extra_margin > 255:
-            pdf.add_page()
-            pdf.set_y(50)
+        if pdf.get_y() + height + extra_margin > 257:
+            raise OperationPrintError(
+                "Document trop volumineux pour une seule page A4 : "
+                "réduire le nombre de lignes ou les informations affichées"
+            )
 
     # Bandeau titre cohérent avec les autres documents NEXTGEN.
     pdf.set_fill_color(*NAVY)
@@ -359,6 +363,10 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         else:
             title = "FOURNISSEUR" if snapshot.get("party_role") == "FOURNISSEUR" else "CLIENT"
             draw_party_panels(pdf, "NEXTGEN", issuer, title, counterpart)
+        if pdf.page_no() != 1:
+            raise OperationPrintError(
+                "Identité du tiers trop volumineuse pour une seule page A4"
+            )
 
     # Metadata opérationnelles, sans redoubler la raison sociale du tiers.
     metadata = [(label, value) for label, value in snapshot["meta"]
@@ -431,10 +439,10 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         row_height = max(8, max(len(lines) for lines in wrapped) * 4.1 + 2)
         if row_height > 185:
             raise OperationPrintError("Ligne trop longue pour l'impression A4")
-        if pdf.get_y() + row_height > 254:
-            pdf.add_page()
-            pdf.set_y(50)
-            table_header()
+        if pdf.get_y() + row_height > 255:
+            raise OperationPrintError(
+                "Tableau trop long pour une seule page A4 : réduire les lignes"
+            )
 
         row_y = pdf.get_y()
         fill = index % 2 == 1
@@ -457,6 +465,23 @@ def render_operation_pdf(snapshot: dict) -> bytes:
                          new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     pdf.ln(4)
+    # Le QR et les totaux partagent la même bande horizontale.
+    # À gauche : QR 28 mm ; à droite : totaux (à partir de x=82).
+    # Cela évite la page 2 qui ne contenait que le QR et la mention.
+    summary_y = pdf.get_y()
+    qr_size = 28
+    qr_bottom = summary_y + 38
+    if qr_bottom > 256:
+        raise OperationPrintError(
+            "Espace insuffisant pour le QR sur une seule page A4"
+        )
+    draw_qr(pdf, qr_payload(snapshot), x=12, y=summary_y, size=qr_size)
+    pdf.set_xy(11, summary_y + 29)
+    pdf.set_font("Helvetica", "", 6.7)
+    pdf.set_text_color(*NAVY)
+    pdf.multi_cell(65, 3.6, "QR de repérage ERP - copie non émise",
+                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_y(summary_y)
     pdf.set_text_color(*NAVY)
     for label, value in snapshot["totals"]:
         if not has_value(value):
@@ -474,6 +499,8 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         pdf.set_xy(x + 2, y + 1)
         pdf.multi_cell(114, 4.6, "\n".join(prepared), align="R")
         pdf.set_y(y + height)
+    # Aucun chevauchement entre le QR gauche et le texte en lettres.
+    pdf.set_y(max(pdf.get_y(), qr_bottom))
     if snapshot["kind"] in ("Facture (aperçu interne)",
                             "Facture fournisseur (aperçu interne)"):
         ttc = next((value for label, value in snapshot["totals"]
@@ -487,17 +514,6 @@ def render_operation_pdf(snapshot: dict) -> bytes:
             pdf.multi_cell(190, 6, "\n".join(wrapped_words),
                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    # QR de repérage hors ligne (pas de données personnelles ni URL publique).
-    ensure_height(45)
-    top = pdf.get_y() + 3
-    draw_qr(pdf, qr_payload(snapshot), x=168, y=top, size=30)
-    pdf.set_xy(10, top + 5)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.set_text_color(*NAVY)
-    pdf.multi_cell(148, 5, "QR de repérage ERP - copie non émise",
-                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_y(top + 34)
-
     ensure_height(19)
     pdf.ln(3)
     pdf.set_font("Helvetica", "I", 8)
@@ -507,5 +523,7 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         "Ce document ne vaut ni signature, ni émission fiscale ou comptable.",
         new_x=XPos.LMARGIN, new_y=YPos.NEXT,
     )
+    if pdf.page_no() != 1:
+        raise OperationPrintError("La pièce doit tenir sur une seule page A4")
     result = pdf.output()
     return bytes(result) if not isinstance(result, str) else result.encode("latin-1")
