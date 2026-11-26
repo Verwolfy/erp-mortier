@@ -1,3 +1,12 @@
+## 26 novembre 2026 — décision de gel du chantier de sauvegarde externe
+
+- **STATUT : EN PAUSE jusqu'à la clôture de la phase de tests ERP.** Décision explicite de l'utilisateur concernant uniquement la **nouvelle sauvegarde Supabase vers Cloudflare R2 / Backblaze B2**.
+- **Interdit pendant le gel** : activation/billing R2, création de bucket, ajout de secrets, configuration de workflow, sauvegarde/export vers un nouveau service, changement de RLS/GRANT ou relance automatique du chantier.
+- **Services inchangés** : Supabase principal, Streamlit, Google Sheets existant et GitHub Actions keepalive restent en service ; ne pas mettre le projet Supabase en pause.
+- **Condition de reprise** : fin formellement constatée de la phase de tests ERP, puis décision explicite de réactiver le chantier. Consulter `docs/ETUDE_SAUVEGARDE_SUPABASE_R2_20261126.md` avant toute mise en œuvre.
+
+---
+
 ## 26 novembre 2026 — étude de backup PostgreSQL externe (NON ACTIVÉ)
 
 - **Mesure SQL principale en lecture seule** : PostgreSQL 17.6, 17 Mo (`pg_database_size` = 18 205 843 octets), 101 tables publiques, 5 vues, Supabase Storage 0 bucket/0 objet, 0 compte `auth.users` et 1 compte ERP `public.users`.
