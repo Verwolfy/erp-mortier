@@ -247,15 +247,13 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             row.get("total_ligne_ht") if kind == "Facture (aperçu interne)"
             else row.get("total_ht") if kind == "Facture fournisseur (aperçu interne)"
             else row.get("total_devise") if kind == "Commande fournisseur" else None)
-        if (not line_total and kind in ("Commande client", "Devis commercial")
+        if (not line_total and kind == "Commande client"
                 and row.get("prix_unitaire") is not None):
-            # Calcul transparent à partir des seules quantités et prix ERP.
+            # Calcul indicatif de commande client à partir des quantités/prix ERP.
             # Aucun calcul de taxe, aucune écriture dans la base.
             subtotal = Decimal(_amount(qty, allow_null=False)) * Decimal(
                 _amount(row["prix_unitaire"], allow_null=False))
-            if kind == "Devis commercial" and row.get("remise_pct") is not None:
-                rate = Decimal(_amount(row["remise_pct"]))
-                subtotal *= (Decimal("1") - rate / Decimal("100"))
+            
             line_total = format(subtotal.quantize(Decimal("0.01")), "f")
         lines.append({
             "reference": article, "designation": designation, "unite": unit,
@@ -266,7 +264,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         })
     if not lines or len(lines) > 200:
         raise OperationPrintError("Lignes d'opération invalides")
-    if kind in ("Commande client", "Devis commercial") and all(
+    if kind == "Commande client" and all(
             has_value(line.get("total_ht")) for line in lines):
         total = sum((Decimal(line["total_ht"]) for line in lines), Decimal("0"))
         totals = [("Total HT", format(total, "f"))]
