@@ -124,6 +124,10 @@ def draw_party_panels(pdf, left_title: str, left_fields: list,
     if height > 195:
         raise ValueError("Coordonnées trop longues pour un bloc A4 cohérent")
     if pdf.get_y() + height + 5 > 255:
+        if getattr(pdf, "single_page", False):
+            raise ValueError(
+                "Bloc d'identité trop long pour une seule page A4"
+            )
         pdf.add_page()
         pdf.set_y(50)
 
