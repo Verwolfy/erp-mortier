@@ -1,3 +1,14 @@
+## 26 novembre 2026 — ERP-064 : harmonisation PDF/DOCX — CODE FUSIONNÉ
+
+- **PR #94 fusionnée sur main** : commit `280f9e7087e16f0e0d8d241f03decc7f6b74fd1a`. Nom légal exact conservé : **SARL NEXT GENRATION BUILDING SOLUTIONS**.
+- **Correctifs** : colonnes/références A4 sans débordement, « Raison Sociale », « Adresse de Facturation », « AI », absence de « Non renseigné »/ligne vide, suppression Émetteur/Destinataire, formats DZD, TVA/HT/TTC clarifiés, TTC en lettres sur factures, QR de repérage sans données privées. Copies et brouillons toujours NON ÉMIS.
+- **Fiscalité** : taux standard **19 % uniquement en simulation éligible confirmée** ; aucun montant fiscal historique ni schéma Supabase modifié. Devis sans total persistant reste sans faux total.
+- **Tests PR** : [réconciliation #45814221665](https://github.com/Verwolfy/erp-mortier/actions/runs/45814221665) et [facturation #45814221790](https://github.com/Verwolfy/erp-mortier/actions/runs/45814221790) **success, 3556 tests chacun**, sur le dernier SHA de PR. Vérifier séparément les CI de merge et de documentation.
+- **Restant à homologuer** : relecture visuelle des six PDF produits sur Streamlit authentifié, vérification du déploiement, lecture physique des QR et pagination ; aucun E2E hébergé effectué dans ce lot. Le système QR n'est pas une signature ni une attestation serveur.
+- **Suivi** : `docs/ERP_064_HARMONISATION_DOCUMENTS_20261126.md`. **Sauvegarde externe R2 toujours EN PAUSE** jusqu'à la fin de la phase de tests ERP et nouvel accord explicite.
+
+---
+
 ## 26 novembre 2026 — décision de gel du chantier de sauvegarde externe
 
 - **STATUT : EN PAUSE jusqu'à la clôture de la phase de tests ERP.** Décision explicite de l'utilisateur concernant uniquement la **nouvelle sauvegarde Supabase vers Cloudflare R2 / Backblaze B2**.
