@@ -89,7 +89,10 @@ def vat_label(*, rate: object = None, ht: object = None,
             percent = Decimal("19")
     if percent is None:
         return "TVA"
-    return "TVA (" + format(percent, "f").rstrip("0").rstrip(".") + " %)"
+    value = format(percent, "f")
+    if "." in value:
+        value = value.rstrip("0").rstrip(".")
+    return "TVA (" + value + " %)"
 
 
 def qr_payload(snapshot: dict) -> str:
