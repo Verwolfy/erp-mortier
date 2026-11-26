@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from io import BytesIO
 
+from modules.documents.pdf_presentation import (
+    amount_in_words, format_money, has_value,
+)
+
 NAVY = (14, 43, 79)
 GREEN = (10, 133, 93)
 PALE = (240, 244, 248)
@@ -72,7 +76,9 @@ def signature_labels(kind: str):
 
 
 def latin(value, limit=220):
-    return str("" if value is None else value).encode("latin-1", "replace").decode("latin-1")[:limit]
+        
+    from modules.documents.party_identity import pdf_safe
+    return pdf_safe(value)
 
 
 def _fit_text(pdf, text, max_width, font_size=8, max_lines=3):
@@ -103,7 +109,7 @@ def _fit_text(pdf, text, max_width, font_size=8, max_lines=3):
                 part += char
         if part:
             fixed.append(part)
-    return fixed[:max_lines] or [""]
+    return fixed or [""]
 
 
 def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
@@ -152,9 +158,11 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
     ):
         y = pdf.get_y()
         for x, item in ((10, left), (109, right)):
+            if not has_value(item[1]):
+                continue
             pdf.set_xy(x, y)
             pdf.set_fill_color(*PALE)
-            pdf.cell(92, 7, latin(f"{item[0]} : {item[1] or '-'}", 90), fill=True)
+            pdf.cell(92, 7, latin(f"{item[0]} : {item[1]}"), fill=True)
         pdf.set_y(y + 9)
     pdf.set_y(pdf.get_y() + 3)
     from modules.documents.party_identity import (
@@ -176,7 +184,7 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
         })
         party_fields = normalize_party(party_data)
         title = "FOURNISSEUR" if kind in SUPPLIER_TYPES else "CLIENT"
-        draw_party_panels(pdf, "NEXTGEN - ÉMETTEUR", issuer_fields,
+        draw_party_panels(pdf, "NEXTGEN", issuer_fields,
                           title, party_fields)
     else:
         pdf.ln(3)
@@ -202,7 +210,9 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
         pdf.set_font("Helvetica", "", 8)
         lines_by_cell = [_fit_text(pdf, item.get(key, ""), width - 3)
                          for (key, _), width in zip(cols, col_width)]
-        height = min(24, max(7, max(len(lines) for lines in lines_by_cell) * 4.4 + 2))
+        height = max(7, max(len(lines) for lines in lines_by_cell) * 4.4 + 2)
+        if height > 185:
+            raise ValueError("Ligne documentaire trop longue pour une page A4")
         if pdf.get_y() + height > 244:
             pdf.add_page()
             pdf.set_y(52)
@@ -221,7 +231,8 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
     pdf.ln(5)
 
     if kind in FINANCIAL_KINDS:
-        totals = (("Total HT", "total_ht"), ("Taxes (saisie contrôlée)", "total_taxes"),
+        tax_label = "TVA" if kind in ("Facture", "Avoir") else "Taxes"
+        totals = (("Total HT", "total_ht"), (tax_label, "total_taxes"),
                   ("Total TTC", "total_ttc"))
         for label, key in totals:
             value = doc.get(key)
@@ -234,9 +245,18 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
             pdf.set_text_color(*( (255,255,255) if key == "total_ttc" else NAVY ))
             pdf.set_font("Helvetica", "B", 9)
             pdf.cell(58, 8, latin(label), fill=True)
-            pdf.cell(38, 8, latin(f"{value} DZD", 35), align="R", fill=True,
+            pdf.cell(38, 8, latin(f"{format_money(value)} DZD"), align="R", fill=True,
                      new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.set_text_color(*NAVY)
+        if kind in ("Facture", "Avoir") and has_value(doc.get("total_ttc")):
+            if pdf.get_y() > 216:
+                pdf.add_page()
+                pdf.set_y(51)
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.set_x(10)
+            pdf.multi_cell(190, 5.5, latin(
+                "Arrêté le présent document à : " + amount_in_words(doc["total_ttc"])),
+                new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     if doc.get("observations"):
         if pdf.get_y() > 220:
             pdf.add_page()
