@@ -140,7 +140,8 @@ def test_pdf_multilignes_longues_sans_exception():
                if key == "designation" else "1") for key, _ in columns_for(doc["type"])])
         for _ in range(55)
     ]
-    assert export_pdf(doc, None).startswith(b"%PDF")
+    with pytest.raises(ValueError, match="une seule page"):
+        export_pdf(doc, None)
 
 
 def test_images_entete_pied_nextgen():

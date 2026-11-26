@@ -127,6 +127,7 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
     Génère un document unifié (Facture, Devis, Commande, etc.).
     """
     pdf = ERPDocument(doc_type, doc_id, date_doc, partner_info, params, is_supplier)
+    pdf.set_auto_page_break(auto=False)
     pdf.alias_nb_pages() # Permet le décompte total des pages
     pdf.add_page()
 
@@ -165,9 +166,11 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
         height = max(8, 4.4 * max(len(row) for row in cells) + 2)
         if height > 195:
             raise ValueError("Ligne trop longue pour impression A4")
-        if pdf.get_y() + height > 264:
-            pdf.add_page()
-            pdf.set_y(93)
+        if pdf.get_y() + height > 249:
+            pdf.cleanup()
+            raise ValueError(
+                "Document trop volumineux pour une seule page A4"
+            )
         x, y = 10, pdf.get_y()
         for idx, (size, wrapped) in enumerate(zip(sizes, cells)):
             pdf.rect(x, y, size, height)
@@ -179,6 +182,25 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
 
     # --- BLOC DES TOTAUX COMPTABLES ---
     pdf.ln(5)
+    # QR et totaux côte à côte, jamais sur une page supplémentaire.
+    summary_y = pdf.get_y()
+    total_fields = (
+        "total_ht", "total_remise", "net_a_payer", "total_tva",
+        "timbre_fiscal", "total_ttc",
+    )
+    count_totals = sum(has_value(totaux.get(k)) for k in total_fields)
+    if max(summary_y + 35, summary_y + count_totals * 7) > 240:
+        pdf.cleanup()
+        raise ValueError("Espace insuffisant pour une seule page A4")
+    draw_qr(pdf, qr_payload({
+        "kind": doc_type, "id": doc_id, "date": date_doc,
+        "lines": lignes, "totals": totaux,
+        "statut": "COPIE NON ÉMISE",
+    }), x=12, y=summary_y, size=28)
+    pdf.set_xy(10, summary_y + 29)
+    pdf.set_font("Helvetica", "", 7)
+    pdf.multi_cell(90, 4, "QR de repérage ERP - copie non émise")
+    pdf.set_y(summary_y)
 
     x_totals = 125
     w_label = 35
@@ -199,13 +221,15 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
             ("timbre_fiscal", "Timbre fiscal :", False),
             ("total_ttc", "TOTAL TTC :", True)):
         if has_value(totaux.get(key)):
-            if pdf.get_y() > 260:
-                pdf.add_page()
+            if pdf.get_y() + 7 > 248:
+                pdf.cleanup()
+                raise ValueError("Totaux trop longs pour une seule page A4")
             print_total_line(label, float(totaux[key]), bold=bold,
                              text_color=pdf.couleur_theme if key == "total_ttc" else (0, 0, 0))
 
     # --- MONTANT EN LETTRES ---
-    pdf.ln(10)
+    pdf.set_y(max(pdf.get_y(), summary_y + 37))
+    pdf.ln(3)
     pdf.set_font("helvetica", "B", 10)
     pdf.set_text_color(0, 0, 0)
     montant_lettres = totaux.get("montant_lettres")
@@ -215,17 +239,9 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
         pdf.multi_cell(0, 6, pdf_safe(
             f"Arrêté le présent document à la somme de : {montant_lettres}"))
 
-    if pdf.get_y() > 220:
-        pdf.add_page()
-    mark_y = pdf.get_y() + 4
-    draw_qr(pdf, qr_payload({
-        "kind": doc_type, "id": doc_id, "date": date_doc,
-        "lines": lignes, "totals": totaux,
-        "statut": "COPIE NON ÉMISE",
-    }), x=166, y=mark_y, size=30)
-    pdf.set_xy(10, mark_y + 7)
-    pdf.set_font("Helvetica", "", 8)
-    pdf.multi_cell(145, 5, "QR de repérage ERP - copie non émise")
+    if pdf.get_y() > 261 or pdf.page_no() != 1:
+        pdf.cleanup()
+        raise ValueError("Document trop volumineux pour une seule page A4")
     pdf.cleanup()
     # Retourne les bytes directement compatibles avec Streamlit
     return bytes(pdf.output())
