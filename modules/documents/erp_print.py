@@ -11,6 +11,11 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 import re
 
+from modules.documents.pdf_presentation import (
+    amount_in_words, draw_qr, format_money, format_quantity,
+    has_value, qr_payload, vat_label,
+)
+
 KINDS = {
     "Ordre de fabrication": ("ordres_fabrication", "of_id", None, None),
     "Bon de livraison": ("bons_livraison", "bl_id", "lignes_bons_livraison", "bl_id"),
@@ -109,10 +114,9 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         party_record, party_role = client, "CLIENT"
         meta = [
             ("Client", partner),
-            ("Statut du devis enregistré", str(header.get("statut") or "NON RENSEIGNÉ")),
-            ("Commercial (référence)", str(header.get("commercial_id") or "NON RENSEIGNÉ")),
-            ("Validité enregistrée", str(header.get("validite") or "NON RENSEIGNÉE")),
-            ("Montants totaux", "Non enregistrés dans l'en-tête ; aucun calcul présumé"),
+            ("Statut du devis", str(header.get("statut") or "")),
+            ("Commercial (référence)", str(header.get("commercial_id") or "")),
+            ("Validité", str(header.get("validite") or "")),
         ]
         doc_date = header.get("date")
     elif kind in ("Bon de livraison", "Commande client"):
@@ -142,10 +146,10 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
                 ("Type ERP", str(header.get("type_facture") or "")),
                 ("Commande", str(header.get("commande_vente_id") or ""))]
         totals = [
-            ("Total HT enregistré", _amount(header.get("montant_ht"))),
-            ("TVA enregistrée (non homologuée)", _amount(header.get("montant_tva"))),
-            ("Timbre enregistré", _amount(header.get("montant_timbre"))),
-            ("Total TTC enregistré", _amount(header.get("montant_ttc"))),
+            ("Total HT", _amount(header.get("montant_ht"))),
+            (vat_label(ht=header.get("montant_ht"), vat=header.get("montant_tva")), _amount(header.get("montant_tva"))),
+            ("Timbre", _amount(header.get("montant_timbre"))),
+            ("Total TTC", _amount(header.get("montant_ttc"))),
         ]
         doc_date = header.get("date")
     elif kind == "Facture fournisseur (aperçu interne)":
@@ -162,13 +166,13 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
         meta = [
             ("Fournisseur", partner),
             ("Commande fournisseur", order_id),
-            ("Référence facture fournisseur", str(header.get("reference_facture_fournisseur") or "NON RENSEIGNÉE")),
-            ("Statut paiement enregistré", str(header.get("statut_paiement") or "NON RENSEIGNÉ")),
-            ("Taux TVA enregistré (non homologué)", _amount(header.get("taux_tva"))),
+            ("Référence facture fournisseur", str(header.get("reference_facture_fournisseur") or "")),
+            ("Statut paiement", str(header.get("statut_paiement") or "")),
+            ("Taux TVA", _amount(header.get("taux_tva"))),
         ]
         totals = [
             ("Total HT enregistré", _amount(header.get("montant_ht"))),
-            ("TVA enregistrée (non homologuée)", _amount(header.get("montant_tva"))),
+            (vat_label(rate=header.get("taux_tva"), ht=header.get("montant_ht"), vat=header.get("montant_tva")), _amount(header.get("montant_tva"))),
             ("Total TTC enregistré", _amount(header.get("montant_ttc"))),
         ]
         doc_date = header.get("date")
@@ -189,7 +193,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             meta.append(("Contrôle conformité", str(header.get("controle_conformite") or "")))
             doc_date = header.get("date_reception")
         else:
-            totals = [("Total DZD enregistré", _amount(header.get("montant_total_local")))]
+            totals = [("Total", _amount(header.get("montant_total_local")))]
             doc_date = header.get("date_commande")
     lines = []
     for row in source_lines:
@@ -231,26 +235,39 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             qty = row.get("quantite")
         discount = row.get("remise_ligne") if kind == "Facture (aperçu interne)" else None
         if discount is not None and Decimal(_amount(discount)) != 0:
-            designation += f" (remise enregistrée : {_amount(discount)})"
+            designation += f" (remise : {_amount(discount)})"
         if kind == "Devis commercial":
             rate = row.get("remise_pct")
             if rate is not None:
                 parsed_rate = Decimal(_amount(rate))
                 if parsed_rate > Decimal("100"):
                     raise OperationPrintError("Remise de devis hors limites")
-                designation += f" (remise enregistrée : {_amount(rate)} %)"
+                designation += f" (remise : {_amount(rate)} %)"
+        line_total = _amount(
+            row.get("total_ligne_ht") if kind == "Facture (aperçu interne)"
+            else row.get("total_ht") if kind == "Facture fournisseur (aperçu interne)"
+            else row.get("total_devise") if kind == "Commande fournisseur" else None)
+        if (not line_total and kind == "Commande client"
+                and row.get("prix_unitaire") is not None):
+            # Calcul indicatif de commande client à partir des quantités/prix ERP.
+            # Aucun calcul de taxe, aucune écriture dans la base.
+            subtotal = Decimal(_amount(qty, allow_null=False)) * Decimal(
+                _amount(row["prix_unitaire"], allow_null=False))
+            
+            line_total = format(subtotal.quantize(Decimal("0.01")), "f")
         lines.append({
             "reference": article, "designation": designation, "unite": unit,
             "quantite": _amount(qty, allow_null=False),
             "prix_unitaire": _amount(row.get("prix_unitaire")),
-            "total_ht": _amount(
-                row.get("total_ligne_ht") if kind == "Facture (aperçu interne)"
-                else row.get("total_ht") if kind == "Facture fournisseur (aperçu interne)"
-                else row.get("total_devise") if kind == "Commande fournisseur" else None),
+            "total_ht": line_total,
             "lot": str(row.get("lot_id") or row.get("lot_attribue_id") or ""),
         })
     if not lines or len(lines) > 200:
         raise OperationPrintError("Lignes d'opération invalides")
+    if kind == "Commande client" and all(
+            has_value(line.get("total_ht")) for line in lines):
+        total = sum((Decimal(line["total_ht"]) for line in lines), Decimal("0"))
+        totals = [("Total HT", format(total, "f"))]
     from modules.documents.party_identity import normalize_party
     return {
         "kind": kind, "id": identifier, "date": _day(doc_date),
@@ -270,11 +287,7 @@ def load_operation_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
 
 
 def render_operation_pdf(snapshot: dict) -> bytes:
-    """Copie A4 lisible : identité légale émetteur/destinataire + lignes non tronquées.
-
-    Les champs RC/NIF/NIS/AI manquants apparaissent comme "Non renseigné".
-    Pas d'émission, de calcul fiscal ni de validation commerciale.
-    """
+    """Copie A4 : données présentes seulement, QR de repérage et aucune émission."""
     from pathlib import Path
     from fpdf import FPDF
     from fpdf.enums import XPos, YPos
@@ -328,8 +341,11 @@ def render_operation_pdf(snapshot: dict) -> bytes:
     pdf.set_fill_color(*PALE)
     pdf.set_text_color(*NAVY)
     pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(190, 8, pdf_safe(f"Référence : {snapshot['id']}     |     Date : {snapshot['date']}"),
-             fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    reference_lines = wrap_pdf_text(
+        pdf, f"Référence : {snapshot['id']}     |     Date : {snapshot['date']}", 186)
+    pdf.multi_cell(190, max(5, 8 / len(reference_lines)),
+                   "\n".join(reference_lines), fill=True,
+                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.ln(3)
 
     counterpart = snapshot.get("party_fields")
@@ -338,15 +354,15 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         if snapshot["kind"] == "Facture fournisseur (aperçu interne)":
             # L'original vient du fournisseur : ne jamais présenter NEXTGEN
             # comme émetteur de cette facture tierce.
-            draw_party_panels(pdf, "FOURNISSEUR - ÉMETTEUR", counterpart,
-                              "NEXTGEN - DESTINATAIRE", issuer)
+            draw_party_panels(pdf, "FOURNISSEUR", counterpart,
+                              "NEXTGEN", issuer)
         else:
             title = "FOURNISSEUR" if snapshot.get("party_role") == "FOURNISSEUR" else "CLIENT"
-            draw_party_panels(pdf, "NEXTGEN - ÉMETTEUR", issuer, title, counterpart)
+            draw_party_panels(pdf, "NEXTGEN", issuer, title, counterpart)
 
     # Metadata opérationnelles, sans redoubler la raison sociale du tiers.
     metadata = [(label, value) for label, value in snapshot["meta"]
-                if label not in ("Client", "Fournisseur")]
+                if label not in ("Client", "Fournisseur") and has_value(value)]
     if metadata:
         ensure_height(9)
         pdf.set_fill_color(*PALE)
@@ -364,13 +380,27 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         pdf.ln(3)
 
     currency = pdf_safe(snapshot.get("currency") or "DZD")
-    is_order = snapshot["kind"] == "Commande fournisseur"
-    headings = [
-        "Référence", "Désignation", "Unité", "Qté",
-        f"P.U. {currency}" if is_order else "P.U.",
-        f"Montant {currency}" if is_order else "Total HT",
+    logistical = snapshot["kind"] in (
+        "Ordre de fabrication", "Bon de livraison", "Bon de réception",
+    )
+    columns = [
+        ("reference", "Référence"), ("designation", "Désignation"),
+        ("unite", "Unité"), ("quantite", "Qté"),
     ]
-    widths = [27, 65, 18, 17, 32, 31]  # somme = 190 mm
+    if not logistical:
+        columns.extend((("prix_unitaire", f"P.U. {currency}"),
+                        ("total_ht", f"Total HT {currency}")))
+    # Ne pas réserver de colonne pour une information absente de toute la pièce.
+    columns = [(key, label) for key, label in columns
+               if key in ("reference", "designation", "quantite")
+               or any(has_value(row.get(key)) for row in snapshot["lines"])]
+    fixed = {"reference": 38, "unite": 18, "quantite": 19,
+             "prix_unitaire": 27, "total_ht": 31}
+    designation_width = 190 - sum(fixed[key] for key, _ in columns
+                                  if key != "designation")
+    widths = [designation_width if key == "designation" else fixed[key]
+              for key, _ in columns]
+    headings = [label for _, label in columns]
 
     def table_header() -> None:
         ensure_height(9)
@@ -387,15 +417,17 @@ def render_operation_pdf(snapshot: dict) -> bytes:
     for index, item in enumerate(snapshot["lines"]):
         if not isinstance(item, dict):
             raise OperationPrintError("Ligne d'impression invalide")
-        values = [
-            item.get("reference", ""), item.get("designation", ""),
-            item.get("unite", ""), item.get("quantite", ""),
-            item.get("prix_unitaire", ""), item.get("total_ht", ""),
-        ]
+        values = []
+        for key, _ in columns:
+            value = item.get(key, "")
+            if has_value(value) and key in ("prix_unitaire", "total_ht"):
+                value = format_money(value)
+            elif has_value(value) and key == "quantite":
+                value = format_quantity(value)
+            values.append(value)
         pdf.set_font("Helvetica", "", 7.5)
-        wrapped = [
-            wrap_pdf_text(pdf, v, width - 3) for width, v in zip(widths, values)
-        ]
+        wrapped = [wrap_pdf_text(pdf, v, width - 3)
+                   for width, v in zip(widths, values)]
         row_height = max(8, max(len(lines) for lines in wrapped) * 4.1 + 2)
         if row_height > 185:
             raise OperationPrintError("Ligne trop longue pour l'impression A4")
@@ -413,7 +445,7 @@ def render_operation_pdf(snapshot: dict) -> bytes:
             pdf.rect(x, row_y, width, row_height, style="DF" if fill else "D")
             pdf.set_xy(x + 1.5, row_y + 1.0)
             pdf.multi_cell(width - 3, 4.1, "\n".join(lines),
-                           align="R" if col >= 3 else "L")
+                           align="R" if columns[col][0] in ("quantite", "prix_unitaire", "total_ht") else "L")
             x += width
         pdf.set_xy(10, row_y + row_height)
         if item.get("lot"):
@@ -427,21 +459,52 @@ def render_operation_pdf(snapshot: dict) -> bytes:
     pdf.ln(4)
     pdf.set_text_color(*NAVY)
     for label, value in snapshot["totals"]:
-        ensure_height(9)
-        text = f"{label} : {value} DZD" if value else f"{label} : NON RENSEIGNÉ"
+        if not has_value(value):
+            continue
+        formatted = format_money(value) + " " + currency
+        line_text = f"{label} : {formatted}"
+        pdf.set_font("Helvetica", "B", 8.5)
+        prepared = wrap_pdf_text(pdf, line_text, 115)
+        height = max(8, 4.6 * len(prepared) + 2)
+        ensure_height(height + 1)
         pdf.set_x(82)
-        pdf.set_font("Helvetica", "B", 8.7)
+        x, y = pdf.get_x(), pdf.get_y()
         pdf.set_fill_color(*PALE)
-        pdf.cell(118, 8, pdf_safe(text), fill=True, align="R",
-                 new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.rect(x, y, 118, height, style="F")
+        pdf.set_xy(x + 2, y + 1)
+        pdf.multi_cell(114, 4.6, "\n".join(prepared), align="R")
+        pdf.set_y(y + height)
+    if snapshot["kind"] in ("Facture (aperçu interne)",
+                            "Facture fournisseur (aperçu interne)"):
+        ttc = next((value for label, value in snapshot["totals"]
+                    if label == "Total TTC" and has_value(value)), None)
+        if ttc is not None:
+            pdf.set_font("Helvetica", "B", 9)
+            words = "Arrêté le présent document à : " + amount_in_words(ttc)
+            wrapped_words = wrap_pdf_text(pdf, words, 184)
+            ensure_height(6 * len(wrapped_words) + 3)
+            pdf.ln(3)
+            pdf.multi_cell(190, 6, "\n".join(wrapped_words),
+                           new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    ensure_height(24)
-    pdf.ln(6)
+    # QR de repérage hors ligne (pas de données personnelles ni URL publique).
+    ensure_height(45)
+    top = pdf.get_y() + 3
+    draw_qr(pdf, qr_payload(snapshot), x=168, y=top, size=30)
+    pdf.set_xy(10, top + 5)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(*NAVY)
+    pdf.multi_cell(148, 5, "QR de repérage ERP - copie non émise",
+                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_y(top + 34)
+
+    ensure_height(19)
+    pdf.ln(3)
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(*NAVY)
     pdf.multi_cell(
-        190, 5, "Copie de consultation des données enregistrées dans l'ERP. "
-        "Aucune signature, émission, validation fiscale ou comptable produite.",
+        190, 5, "Copie de consultation issue de l'ERP. "
+        "Ce document ne vaut ni signature, ni émission fiscale ou comptable.",
         new_x=XPos.LMARGIN, new_y=YPos.NEXT,
     )
     result = pdf.output()

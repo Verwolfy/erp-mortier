@@ -7,6 +7,11 @@ import base64
 import tempfile
 import os
 
+from modules.documents.pdf_presentation import (
+    amount_in_words, draw_qr, format_money, qr_payload, has_value,
+)
+from modules.documents.party_identity import pdf_safe, wrap_pdf_text
+
 def hex_to_rgb(hex_color):
     """Convertit une couleur Hex en tuple RGB."""
     hex_color = hex_color.lstrip('#') if hex_color else "0047AB"
@@ -49,7 +54,7 @@ class ERPDocument(FPDF):
         self.set_xy(10, 35)
         self.set_font("helvetica", "B", 14)
         self.set_text_color(*self.couleur_theme)
-        self.cell(100, 6, self.params.get("entreprise_nom", "MON ENTREPRISE"), ln=True)
+        self.cell(100, 6, self.params.get("entreprise_nom", "SARL NEXT GENRATION BUILDING SOLUTIONS"), ln=True)
 
         self.set_font("helvetica", "", 10)
         self.set_text_color(0, 0, 0)
@@ -65,7 +70,8 @@ class ERPDocument(FPDF):
 
         self.set_font("helvetica", "B", 12)
         self.set_text_color(0, 0, 0)
-        self.cell(190, 8, f"N° : {self.doc_id}", align="R", ln=True)
+        self.set_x(120)
+        self.multi_cell(80, 7, pdf_safe(f"Référence : {self.doc_id}"), align="R")
         self.set_font("helvetica", "", 10)
         self.cell(190, 6, f"Date : {self.date_doc[:10]}", align="R", ln=True)
 
@@ -78,11 +84,15 @@ class ERPDocument(FPDF):
 
         self.set_x(110)
         self.set_font("helvetica", "B", 12)
-        self.cell(90, 6, f" {self.partner_info.get('nom', 'Inconnu')}", ln=True)
+        if has_value(self.partner_info.get("nom")):
+            self.multi_cell(90, 6, pdf_safe(
+                "Raison Sociale : " + str(self.partner_info["nom"])))
 
         self.set_x(110)
         self.set_font("helvetica", "", 10)
-        if self.partner_info.get("adresse"): self.cell(90, 5, f" {self.partner_info.get('adresse')}", ln=True)
+        if has_value(self.partner_info.get("adresse")):
+            self.multi_cell(90, 5, pdf_safe(
+                "Adresse de Facturation : " + str(self.partner_info["adresse"])))
         if self.partner_info.get("telephone"): self.cell(90, 5, f" Tél : {self.partner_info.get('telephone')}", ln=True)
         if self.partner_info.get("nif"): self.cell(90, 5, f" NIF : {self.partner_info.get('nif')}", ln=True)
         if self.partner_info.get("rc"): self.cell(90, 5, f" RC : {self.partner_info.get('rc')}", ln=True)
@@ -139,17 +149,33 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
     pdf.set_font("helvetica", "", 9)
 
     for ligne in lignes:
-        qte = float(ligne.get("quantite", 0))
-        prix = float(ligne.get("prix_unitaire", 0))
-        remise = float(ligne.get("remise", 0))
-        total_ht = float(ligne.get("total_ht", (qte * prix) - remise))
-
-        pdf.cell(75, 8, f" {ligne.get('nom', 'Article')}", border=1)
-        pdf.cell(20, 8, f" {qte:,.2f}", border=1, align="C")
-        pdf.cell(30, 8, f" {prix:,.2f}", border=1, align="R")
-        pdf.cell(30, 8, f" {remise:,.2f}", border=1, align="R")
-        pdf.cell(35, 8, f" {total_ht:,.2f}", border=1, align="R")
-        pdf.ln()
+        from decimal import Decimal
+        qte = Decimal(str(ligne.get("quantite", 0)))
+        prix = Decimal(str(ligne.get("prix_unitaire", 0)))
+        remise = Decimal(str(ligne.get("remise", 0)))
+        total_ht = Decimal(str(ligne.get("total_ht", (qte * prix) - remise)))
+        values = [
+            str(ligne.get("nom") or ""), f"{qte:f}",
+            format_money(prix), format_money(remise), format_money(total_ht),
+        ]
+        sizes = [75, 20, 30, 30, 35]
+        pdf.set_font("Helvetica", "", 9)
+        cells = [wrap_pdf_text(pdf, val, size - 3)
+                 for val, size in zip(values, sizes)]
+        height = max(8, 4.4 * max(len(row) for row in cells) + 2)
+        if height > 195:
+            raise ValueError("Ligne trop longue pour impression A4")
+        if pdf.get_y() + height > 264:
+            pdf.add_page()
+            pdf.set_y(93)
+        x, y = 10, pdf.get_y()
+        for idx, (size, wrapped) in enumerate(zip(sizes, cells)):
+            pdf.rect(x, y, size, height)
+            pdf.set_xy(x + 1.5, y + 1)
+            pdf.multi_cell(size - 3, 4.4, "\n".join(wrapped),
+                           align="R" if idx > 0 else "L")
+            x += size
+        pdf.set_xy(10, y + height)
 
     # --- BLOC DES TOTAUX COMPTABLES ---
     pdf.ln(5)
@@ -163,25 +189,43 @@ def generer_document_standard(doc_type: str, doc_id: str, date_doc: str, partner
         pdf.set_font("helvetica", "B" if bold else "", 10)
         pdf.set_text_color(*text_color)
         pdf.cell(w_label, 7, label, border=0)
-        pdf.cell(w_value, 7, f"{value:,.2f} {devise}", border=0, align="R", ln=True)
+        pdf.cell(w_value, 7, f"{format_money(value)} {devise}", border=0, align="R", ln=True)
 
-    print_total_line("Total HT :", float(totaux.get('total_ht', 0)))
-    print_total_line("Total Remise :", float(totaux.get('total_remise', 0)))
-    print_total_line("Net à Payer HT :", float(totaux.get('net_a_payer', 0)), bold=True)
-    print_total_line("Total TVA :", float(totaux.get('total_tva', 0)))
-    print_total_line("Timbre Fiscal :", float(totaux.get('timbre_fiscal', 0)))
-
-    pdf.ln(2)
-    print_total_line("TOTAL TTC :", float(totaux.get('total_ttc', 0)), bold=True, text_color=pdf.couleur_theme)
+    for key, label, bold in (
+            ("total_ht", "Total HT :", False),
+            ("total_remise", "Remise :", False),
+            ("net_a_payer", "Net à payer HT :", True),
+            ("total_tva", "TVA :", False),
+            ("timbre_fiscal", "Timbre fiscal :", False),
+            ("total_ttc", "TOTAL TTC :", True)):
+        if has_value(totaux.get(key)):
+            if pdf.get_y() > 260:
+                pdf.add_page()
+            print_total_line(label, float(totaux[key]), bold=bold,
+                             text_color=pdf.couleur_theme if key == "total_ttc" else (0, 0, 0))
 
     # --- MONTANT EN LETTRES ---
     pdf.ln(10)
     pdf.set_font("helvetica", "B", 10)
     pdf.set_text_color(0, 0, 0)
-    montant_lettres = totaux.get('montant_lettres', '')
-    if montant_lettres:
-        pdf.multi_cell(0, 6, f"Arrêté le présent document à la somme de : {montant_lettres}")
+    montant_lettres = totaux.get("montant_lettres")
+    if not has_value(montant_lettres) and has_value(totaux.get("total_ttc")):
+        montant_lettres = amount_in_words(totaux["total_ttc"])
+    if has_value(montant_lettres):
+        pdf.multi_cell(0, 6, pdf_safe(
+            f"Arrêté le présent document à la somme de : {montant_lettres}"))
 
+    if pdf.get_y() > 220:
+        pdf.add_page()
+    mark_y = pdf.get_y() + 4
+    draw_qr(pdf, qr_payload({
+        "kind": doc_type, "id": doc_id, "date": date_doc,
+        "lines": lignes, "totals": totaux,
+        "statut": "COPIE NON ÉMISE",
+    }), x=166, y=mark_y, size=30)
+    pdf.set_xy(10, mark_y + 7)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.multi_cell(145, 5, "QR de repérage ERP - copie non émise")
     pdf.cleanup()
     # Retourne les bytes directement compatibles avec Streamlit
     return bytes(pdf.output())

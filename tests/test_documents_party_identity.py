@@ -101,12 +101,12 @@ def test_all_partner_identifiers_copied_from_actual_referential(kind):
     snapshot = load_operation_snapshot(doc, ref, reader=_reader(data))
     fields = dict(snapshot["party_fields"])
     for label, value in (
-        ("Nom / raison sociale", PARTNER["nom"]),
-        ("Adresse", PARTNER["adresse"]),
+        ("Raison Sociale", PARTNER["nom"]),
+        ("Adresse de Facturation", PARTNER["adresse"]),
         ("RC", PARTNER["rc"]),
         ("NIF", PARTNER["nif"]),
         ("NIS", PARTNER["nis"]),
-        ("AI (article d'imposition)", PARTNER["ai"]),
+        ("AI", PARTNER["ai"]),
         ("Téléphone fixe", PARTNER["telephone_fixe"]),
         ("Téléphone mobile", PARTNER["mobile_contact"]),
         ("E-mail entreprise", PARTNER["email_entreprise"]),
@@ -118,9 +118,9 @@ def test_all_partner_identifiers_copied_from_actual_referential(kind):
 
 
 @pytest.mark.parametrize("kind,expected_left,expected_right", [
-    ("commande", "NEXTGEN - ÉMETTEUR", "FOURNISSEUR"),
-    ("facture", "NEXTGEN - ÉMETTEUR", "CLIENT"),
-    ("facture_fournisseur", "FOURNISSEUR - ÉMETTEUR", "NEXTGEN - DESTINATAIRE"),
+    ("commande", "NEXTGEN", "FOURNISSEUR"),
+    ("facture", "NEXTGEN", "CLIENT"),
+    ("facture_fournisseur", "FOURNISSEUR", "NEXTGEN"),
 ])
 def test_issuer_is_never_confused_with_supplier_of_original_invoice(
     kind, expected_left, expected_right, monkeypatch,
@@ -139,16 +139,16 @@ def test_issuer_is_never_confused_with_supplier_of_original_invoice(
     assert titles == [(expected_left, expected_right)]
 
 
-def test_unknown_ai_nis_explicitly_missing_never_derived_from_nif():
+def test_unknown_ai_nis_omitted_never_derived_from_nif():
     fields = dict(normalize_party({
         "nom": "Client", "adresse": "Adresse", "rc": "RC-1", "nif": "NIF-1",
     }))
-    assert fields["AI (article d'imposition)"] == MISSING
-    assert fields["NIS"] == MISSING
+    assert "AI" not in fields
+    assert "NIS" not in fields
     issuer = dict(configured_company())
     assert issuer["RC"] and issuer["NIF"]
-    assert issuer["AI (article d'imposition)"] == MISSING
-    assert issuer["NIS"] == MISSING
+    assert "AI" not in issuer
+    assert "NIS" not in issuer
 
 
 def test_very_long_address_and_designation_generate_pages_without_truncation():

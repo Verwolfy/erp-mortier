@@ -173,7 +173,8 @@ def export_excel(
 
 
 def _latin(value: object) -> str:
-    return _text(value).encode("latin-1", "replace").decode("latin-1")
+    from modules.documents.party_identity import pdf_safe
+    return pdf_safe(_text(value))
 
 
 def _wrap(pdf, text: str, width: float, *, max_lines: int = 3) -> list[str]:
@@ -264,6 +265,31 @@ def export_pdf(
                     pdf.set_xy(x + 1, pdf.get_y() + 4.2)
                 x += width
             pdf.set_xy(10, y + height)
+
+    # QR du rapport : recherche par titre/date/empreinte, aucune donnée en clair.
+    from hashlib import sha256
+    import json
+    from modules.documents.pdf_presentation import draw_qr, qr_payload
+    digest = sha256()
+    for record in table:
+        digest.update(json.dumps(
+            [_text(v) for v in record], ensure_ascii=False,
+            separators=(",", ":")).encode("utf-8"))
+        digest.update(b"\\n")
+    snapshot = {
+        "kind": "Rapport ERP", "id": _text(title).strip()[:128] or "Rapport ERP",
+        "date": date.today().isoformat(), "source": "export_formats",
+        "columns": list(columns), "row_count": len(table),
+        "digest_source": digest.hexdigest(), "statut": "CONSULTATION",
+    }
+    if pdf.get_y() > 212:
+        pdf.add_page()
+        pdf.set_y(51)
+    qr_y = pdf.get_y() + 5
+    draw_qr(pdf, qr_payload(snapshot), x=168, y=qr_y, size=30)
+    pdf.set_xy(10, qr_y + 5)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.multi_cell(150, 5, "QR de repérage de rapport - copie interne non émise")
     return bytes(pdf.output())
 
 
