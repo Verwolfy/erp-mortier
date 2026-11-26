@@ -242,42 +242,33 @@ def render_internal_pdf(snapshot: dict) -> bytes:
             " enregistrée", "").replace(" enregistré", "")
         if " (DZD)" in label:
             value = format_money(value) + " DZD"
-        # Mesurer l'espace avant d'écrire : aucune deuxième page ni coupe.
+        # Ligne compacte et intégrale « libellé : valeur ».
+        # L'ancienne présentation sur deux blocs consommait 13 mm par champ.
         text_limit = 1500 if "Motivation" in label else 2000
         prepared = safe(value, text_limit)
-        pdf.set_font("Helvetica", "B", 9)
-        title_lines = wrap_pdf_text(pdf, safe(label) + " :", 188)
-        pdf.set_font("Helvetica", "", 9)
-        value_lines = wrap_pdf_text(pdf, prepared, 188)
-        required = 5 * len(title_lines) + 6 * len(value_lines) + 2
-        if pdf.get_y() + required > 207:
+        pdf.set_font("Helvetica", "", 8.3)
+        wrapped = wrap_pdf_text(pdf, safe(label) + " : " + prepared, 188)
+        line_height = 4.3
+        required = line_height * len(wrapped) + 1.0
+        if pdf.get_y() + required > 219:
             raise InternalPrintError(
                 "Copie interne trop volumineuse pour une seule page A4"
             )
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.multi_cell(190, 5, "\n".join(title_lines),
+        pdf.multi_cell(190, line_height, "\n".join(wrapped),
                        new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(190, 6, "\n".join(value_lines),
-                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-        pdf.ln(2)
-    if pdf.get_y() > 207:
+        pdf.ln(1.0)
+    if pdf.get_y() > 219:
         raise InternalPrintError(
             "Espace QR insuffisant pour une seule page A4"
         )
-    qr_y = pdf.get_y() + 3
+    qr_y = pdf.get_y() + 2
     draw_qr(pdf, qr_payload(snapshot), x=168, y=qr_y, size=30)
     pdf.set_xy(10, qr_y + 5)
     pdf.set_font("Helvetica", "", 8)
     pdf.multi_cell(146, 5, "QR de repérage ERP - copie non émise",
                    new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    pdf.set_y(qr_y + 34)
-    pdf.ln(4)
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.multi_cell(
-        190, 5, "Lecture seule issue de l'ERP. "
-        "Aucune émission officielle, approbation, transaction ni signature.",
-    )
+    pdf.set_y(qr_y + 32)
+    # Le bandeau rouge en tête porte déjà l'avertissement complet.
     if pdf.page_no() != 1 or pdf.get_y() > 258:
         raise InternalPrintError(
             "Copie interne trop volumineuse pour une seule page A4"
