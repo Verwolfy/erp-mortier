@@ -123,7 +123,7 @@ def branded_images(logo_path: str | bytes | None = None) -> tuple[bytes, bytes]:
     fd.line((951, 65, 973, 49), fill=NAVY, width=2)
     title = _font(24, True)
     body = _font(20)
-    fd.text((112, 36), "Adresse de facturation :", fill=NAVY, font=title)
+    fd.text((112, 36), "Adresse de Facturation :", fill=NAVY, font=title)
     fd.text((112, 75), "ERRICH Bt N°3, BLOC N°3, Et N°2,", fill=NAVY, font=body)
     fd.text((112, 105), "SECTION N° 7, ILOT N°48, BOUIRA", fill=NAVY, font=body)
     fd.text((583, 46), "RC: " + RC, fill=NAVY, font=_font(21))
