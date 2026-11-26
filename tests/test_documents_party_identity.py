@@ -165,11 +165,11 @@ def test_very_long_address_and_designation_generate_pages_without_truncation():
     data[("matieres_premieres", "mp_id", "MP-1")][0]["nom"] = (
         "Produit technique en poudre pour formulation industrielle " * 3
     )
-    pdf = render_operation_pdf(
-        load_operation_snapshot(doc, ref, reader=_reader(data))
-    )
-    assert pdf.startswith(b"%PDF")
-    assert pdf.count(b"/Type /Page") > 2
+    from modules.documents.erp_print import OperationPrintError
+    with pytest.raises(OperationPrintError, match="une seule page"):
+        render_operation_pdf(
+            load_operation_snapshot(doc, ref, reader=_reader(data))
+        )
 
 
 def test_draft_prefill_preserves_all_party_legal_fields_in_pdf_docx_and_json():
