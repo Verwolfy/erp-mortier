@@ -180,6 +180,7 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
     pdf.ln(2)
     from modules.documents.party_identity import (
         PARTY_LABELS, draw_party_panels, normalize_party,
+        wrap_table_cell_text, draw_table_cell_text,
     )
     from modules.documents.prefill import CLIENT_TYPES, SUPPLIER_TYPES
     if kind in CLIENT_TYPES or kind in SUPPLIER_TYPES:
@@ -222,7 +223,7 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
         if not any(str(v).strip() for v in item.values() if v is not None):
             continue
         pdf.set_font("Helvetica", "", 8)
-        lines_by_cell = [_fit_text(pdf, item.get(key, ""), width - 3)
+        lines_by_cell = [wrap_table_cell_text(pdf, item.get(key, ""), width)
                          for (key, _), width in zip(cols, col_width)]
         height = max(7, max(len(lines) for lines in lines_by_cell) * 4.4 + 2)
         if height > 185:
@@ -239,8 +240,10 @@ def render_pdf(doc, logo_path, *, company, address, rc, nif, email,
         for width, lines in zip(col_width, lines_by_cell):
             x = pdf.get_x()
             pdf.rect(x, y, width, height, style="DF" if fill else "D")
-            pdf.set_xy(x + 1.5, y + 1.0)
-            pdf.multi_cell(width - 3, 4.4, "\n".join(lines))
+            draw_table_cell_text(
+                pdf, lines, x=x, y=y, width=width, height=height,
+                line_height=4.4,
+            )
             pdf.set_xy(x + width, y)
         pdf.set_xy(10, y + height)
     pdf.ln(5)
