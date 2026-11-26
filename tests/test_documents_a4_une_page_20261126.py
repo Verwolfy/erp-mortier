@@ -120,3 +120,30 @@ def test_brouillon_trop_long_refuse():
     } for i in range(70)]
     with pytest.raises(ValueError, match="une seule page"):
         export_pdf(draft)
+
+
+def test_legacy_document_pdf_une_page_qr_et_montant_en_lettres():
+    from core.pdf_generator import generer_document_standard
+    pdf = generer_document_standard(
+        "FACTURE", "FAC-TEST-01", "2026-11-26",
+        {"nom": "Client ERP", "adresse": "Bouira, Algérie"},
+        [{"nom": "Mortier colle 25 kg", "quantite": "1",
+          "prix_unitaire": "1250", "remise": "0", "total_ht": "1250"}],
+        {"total_ht": "1250", "total_tva": "237.5", "total_ttc": "1487.5"},
+        {"entreprise_nom": "SARL NEXT GENRATION BUILDING SOLUTIONS"},
+    )
+    assert page_count(pdf) == 1
+
+
+def test_legacy_document_trop_long_refuse():
+    from core.pdf_generator import generer_document_standard
+    with pytest.raises(ValueError, match="une seule page"):
+        generer_document_standard(
+            "COMMANDE", "CA-TEST-01", "2026-11-26",
+            {"nom": "Fournisseur ERP"},
+            [{"nom": "Article industriel", "quantite": "1",
+              "prix_unitaire": "10", "total_ht": "10"}
+             for _ in range(80)],
+            {"total_ht": "800", "total_ttc": "800"},
+            {},
+        )
