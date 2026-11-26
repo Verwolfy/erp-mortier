@@ -1,5 +1,8 @@
 # Sofiane ERP — étude de sauvegarde PostgreSQL hors Supabase (26 novembre 2026)
 
+
+> **STATUT AU 26/11/2026 : EN PAUSE — DÉCISION UTILISATEUR.** Projet de sauvegarde externe R2/B2 gelé jusqu'à la **fin de la phase de tests ERP**. Ne créer ni bucket, ni secret, ni workflow de sauvegarde externe ; ne pas activer la facturation R2 ; ne pas exécuter d'export. Reprise uniquement après constat de clôture de la phase de tests et décision explicite de relancer ce chantier. Le fonctionnement existant de Supabase, Google Sheets, Streamlit et du workflow keepalive est conservé. Les analyses ci-dessous restent une étude, non une sauvegarde opérationnelle.
+
 ## Mission et statut
 
 **Étude réalisée ; aucune sauvegarde cloud n'a été créée, aucun bucket R2 activé, aucun nouveau secret ni accès SQL modifié.** Recommandation : **GitHub Actions + pg_dump PostgreSQL 17 sans Docker + chiffrement client (age) + bucket privé Cloudflare R2 Standard situé dans la juridiction UE**, après activation R2 et validation des nouveaux secrets/coûts. Backblaze B2 est la solution de repli.
