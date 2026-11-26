@@ -1,0 +1,56 @@
+name: ERP - Supabase principal keepalive (read-only)
+
+on:
+  schedule:
+    # Three times daily (UTC), away from the start of the hour.
+    - cron: '17 7,15,23 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/supabase-keepalive.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-keepalive-production
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read one reference ID from Supabase production
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          set -euo pipefail
+          expected_url='https://wenydirqtmkywbxbxfal.supabase.co'
+          if [[ "${SUPABASE_URL%/}" != "$expected_url" ]]; then
+            echo '::error::SUPABASE_URL absent ou different du projet principal attendu'
+            exit 1
+          fi
+          if [[ -z "$SUPABASE_KEY" ]]; then
+            echo '::error::SUPABASE_KEY absent des secrets GitHub Actions'
+            exit 1
+          fi
+
+          # A genuine PostgREST database SELECT; no business data in logs.
+          # Uses only secrets already referenced in recalcul_stock.yml.
+          status="$(curl --silent --show-error --retry 2 --retry-delay 2 \
+            --connect-timeout 10 --max-time 25 --output /dev/null \
+            --write-out '%{http_code}' \
+            --header "apikey: $SUPABASE_KEY" \
+            --header "Authorization: Bearer $SUPABASE_KEY" \
+            --header 'Accept: application/json' \
+            "$expected_url/rest/v1/listes_reference?select=id&limit=1")"
+
+          if [[ "$status" != '200' ]]; then
+            echo "::error::Lecture Supabase non confirmee (HTTP $status)"
+            exit 1
+          fi
+          echo 'Supabase principal: SELECT en lecture seule confirme (HTTP 200)'
