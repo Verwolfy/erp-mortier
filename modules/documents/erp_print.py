@@ -294,7 +294,7 @@ def render_operation_pdf(snapshot: dict) -> bytes:
     from modules.documents.branding_images import branded_images
     from modules.documents.party_identity import (
         NAVY, GREEN, PALE, configured_company, draw_party_panels,
-        pdf_safe, wrap_pdf_text,
+        pdf_safe, wrap_pdf_text, wrap_table_cell_text, draw_table_cell_text,
     )
 
     if not isinstance(snapshot, dict) or snapshot.get("kind") not in KINDS:
@@ -435,7 +435,7 @@ def render_operation_pdf(snapshot: dict) -> bytes:
                 value = format_quantity(value)
             values.append(value)
         pdf.set_font("Helvetica", "", 7.5)
-        wrapped = [wrap_pdf_text(pdf, v, width - 3)
+        wrapped = [wrap_table_cell_text(pdf, v, width)
                    for width, v in zip(widths, values)]
         row_height = max(8, max(len(lines) for lines in wrapped) * 4.1 + 2)
         if row_height > 185:
@@ -452,9 +452,12 @@ def render_operation_pdf(snapshot: dict) -> bytes:
         x = 10
         for col, (width, lines) in enumerate(zip(widths, wrapped)):
             pdf.rect(x, row_y, width, row_height, style="DF" if fill else "D")
-            pdf.set_xy(x + 1.5, row_y + 1.0)
-            pdf.multi_cell(width - 3, 4.1, "\n".join(lines),
-                           align="R" if columns[col][0] in ("quantite", "prix_unitaire", "total_ht") else "L")
+            draw_table_cell_text(
+                pdf, lines, x=x, y=row_y, width=width,
+                height=row_height, line_height=4.1,
+                align="R" if columns[col][0] in (
+                    "quantite", "prix_unitaire", "total_ht") else "L",
+            )
             x += width
         pdf.set_xy(10, row_y + row_height)
         if item.get("lot"):
