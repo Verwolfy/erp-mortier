@@ -103,13 +103,18 @@ def validate_product_sheet(sheet: dict) -> None:
 
 
 def sheet_tracking_payload(sheet: dict) -> str:
-    """Identification interne, sans URL ni promesse de suivi public."""
+    """Identification interne sans NIF en clair, ni URL de suivi publique."""
+    from hashlib import sha256
     validate_product_sheet(sheet)
-    return json.dumps(
-        {"issuer": NIF, "id": sheet["trace_id"], "type": sheet["type"],
-         "reference": sheet["reference"], "revision": sheet["version"]},
-        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-    )
+    canonical = json.dumps(sheet, ensure_ascii=False, sort_keys=True,
+                           default=str, separators=(",", ":"))
+    return json.dumps({
+        "v": 1, "erp": "NEXTGEN", "id": sheet["trace_id"],
+        "type": sheet["type"], "reference": sheet["reference"],
+        "revision": sheet["version"], "empreinte": sha256(
+            canonical.encode("utf-8")).hexdigest()[:32],
+        "statut": "BROUILLON",
+    }, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
 
 def _latin(value: object, limit: int = 10000) -> str:
@@ -175,7 +180,8 @@ def export_product_sheet_pdf(sheet: dict, logo_path: str | None = None) -> bytes
                 self.set_xy(10, 86)
                 self.set_font("Helvetica", "B", 11)
                 self.set_text_color(*NAVY)
-                self.multi_cell(190, 6, _latin("PRODUIT : " + (sheet["produit"] or "NON RENSEIGNÉ"), 200))
+                if sheet["produit"]:
+                    self.multi_cell(190, 6, _latin("PRODUIT : " + sheet["produit"]))
                 self.set_font("Helvetica", "B", 9)
                 self.set_text_color(171, 35, 37)
                 self.set_x(10)
@@ -208,13 +214,18 @@ def export_product_sheet_pdf(sheet: dict, logo_path: str | None = None) -> bytes
     pdf.add_page()
     pdf.set_text_color(*NAVY)
     pdf.set_font("Helvetica", "", 9)
-    pdf.multi_cell(190, 5, _latin(
-        "Conditionnement : " + (sheet["conditionnement"] or "Non renseigné") +
-        "    |    Responsable : " + (sheet["responsable"] or "Non renseigné"),
-        250))
+    metadata = []
+    if sheet.get("conditionnement"):
+        metadata.append("Conditionnement : " + sheet["conditionnement"])
+    if sheet.get("responsable"):
+        metadata.append("Responsable : " + sheet["responsable"])
+    if metadata:
+        pdf.multi_cell(190, 5, _latin("    |    ".join(metadata)))
     pdf.ln(2)
 
     for key, heading in sections_for(sheet["type"]):
+        if not sheet["sections"][key].strip():
+            continue
         if pdf.get_y() > 245:
             pdf.add_page()
         pdf.set_x(10)
@@ -226,7 +237,7 @@ def export_product_sheet_pdf(sheet: dict, logo_path: str | None = None) -> bytes
         value = sheet["sections"][key].strip()
         pdf.set_font("Helvetica", "" if value else "I", 9)
         pdf.set_x(12)
-        pdf.multi_cell(185, 5, _latin(value) if value else "Non renseigné - données à vérifier avant validation")
+        pdf.multi_cell(185, 5, _latin(value))
         pdf.ln(4)
 
     if pdf.get_y() > 222:
@@ -288,14 +299,17 @@ def export_product_sheet_docx(sheet: dict, logo_path: str | None = None) -> byte
     ):
         cells = table.add_row().cells
         cells[0].text, cells[1].text = left, right
-    document.add_paragraph("Responsable : " + sheet["responsable"])
+    if sheet.get("responsable"):
+        document.add_paragraph("Responsable : " + sheet["responsable"])
 
     for key, heading in sections_for(sheet["type"]):
+        if not sheet["sections"][key].strip():
+            continue
         h = document.add_heading(heading, level=2)
         for run in h.runs:
             run.font.color.rgb = RGBColor(*NAVY)
         value = sheet["sections"][key].strip()
-        paragraph = document.add_paragraph(value or "Non renseigné - données à vérifier avant validation")
+        paragraph = document.add_paragraph(value)
         if not value:
             paragraph.runs[0].italic = True
     document.add_paragraph("Rédaction : __________________    Vérification : __________________")
