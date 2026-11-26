@@ -96,6 +96,41 @@ def wrap_pdf_text(pdf, value: object, width: float) -> list[str]:
     return result or [""]
 
 
+
+def wrap_table_cell_text(pdf, value: object, width: float,
+                         *, inset: float = 1.5) -> list[str]:
+    """Mesure la largeur *utile* dans une cellule FPDF, marges incluses.
+
+    pdf.multi_cell retranchait ensuite 2*c_margin aux lignes déjà préparées,
+    ce qui ajoutait une ligne hors du rectangle (ex.: « Sac 25kg »).
+    """
+    available = width - 2 * inset - 2 * pdf.c_margin - 0.4
+    if available <= 0:
+        raise ValueError("Colonne PDF trop étroite pour un texte lisible")
+    return wrap_pdf_text(pdf, value, available)
+
+
+def draw_table_cell_text(pdf, lines: list[str], *, x: float, y: float,
+                         width: float, height: float,
+                         line_height: float = 4.1, inset: float = 1.5,
+                         align: str = "L") -> None:
+    """Dessine ligne par ligne sans que multi_cell puisse replier le texte.
+
+    Les positions du texte sont contrôlées dans les limites du rectangle.
+    La fonction ne trace pas la bordure, qui reste à la charge de l'appelant.
+    """
+    if not lines or line_height <= 0 or 2 + len(lines) * line_height > height + 0.01:
+        raise ValueError("Hauteur de cellule insuffisante pour le texte complet")
+    inside = width - 2 * inset
+    available = inside - 2 * pdf.c_margin - 0.1
+    for index, line in enumerate(lines):
+        text = pdf_safe(line)
+        if pdf.get_string_width(text) > available:
+            raise ValueError("Texte plus large que la cellule PDF")
+        pdf.set_xy(x + inset, y + 1 + index * line_height)
+        pdf.cell(inside, line_height, text, align=align)
+
+
 def draw_party_panels(pdf, left_title: str, left_fields: list,
                       right_title: str, right_fields: list) -> None:
     """Deux blocs A4 de largeur identique, contenus sans couper les valeurs.
