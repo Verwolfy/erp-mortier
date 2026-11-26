@@ -1,3 +1,14 @@
+## 26 novembre 2026 — ERP-065 : DOCUMENTS OPÉRATIONNELS UNE PAGE A4 — FUSIONNÉ
+
+- **Exemple utilisateur** : facture `FAC-2026-000001` (PDF du 26/11, 2 pages) ; QR isolé sur une deuxième page alors que les données étaient toutes sur la première.
+- **Correction** : [PR #95](https://github.com/Verwolfy/erp-mortier/pull/95) fusionnée, SHA `d040a3490035d7e04b088925f1c7922375fa91c3`. QR placé à côté des totaux, mentions dupliquées supprimées, champs/QR/signatures compactés sur **une seule page** dans les générateurs opérationnels, brouillons, copies internes et moteur historique. En cas de dépassement réel, l'export est refusé plutôt que tronqué.
+- **Tests CI PR** : [audit #45849187480](https://github.com/Verwolfy/erp-mortier/actions/runs/45849187480) et [facturation #45849187493](https://github.com/Verwolfy/erp-mortier/actions/runs/45849187493) **success, 3597 tests chacun (12 avertissements)** au dernier SHA PR. Vérifier séparément les pipelines du `main` documentaire.
+- **Prochaine recette obligatoire** : régénérer la facture sur Streamlit après mise à jour, contrôler Page **1/1**, QR réellement scannable, TTC en lettres, absence de débordement, puis étendre aux autres pièces. Les tests GitHub ne démontrent pas à eux seuls la version de l'application déployée.
+- **Limites** : rapports volumineux et FT/FDS réglementaires non réduits artificiellement à une page ; sécurité et intégrité préservées.
+- **Suivi** : `docs/ERP_065_PDF_UNE_PAGE_20261126.md` ; **sauvegarde externe R2 toujours EN PAUSE**.
+
+---
+
 ## 26 novembre 2026 — Anomalie Streamlit : nouveau PDF toujours à l'ancienne maquette
 
 - **STATUT : déploiement effectif NON VÉRIFIÉ, recette PDF non réussie sur l'application hébergée**.
