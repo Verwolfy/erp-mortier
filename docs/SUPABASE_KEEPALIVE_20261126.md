@@ -43,3 +43,11 @@ Fichier `.github/workflows/supabase-keepalive.yml` :
 
 - https://supabase.com/docs/guides/platform/free-project-pausing
 - https://docs.github.com/en/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows
+
+## Déploiement et preuve du 26 novembre 2026
+
+- Commit workflow sur `main` : `a15a6bbb3745b08b70448cea8a3edc7e593a0eea` ; fichier relu sur le dépôt après push.
+- GitHub Actions : [run #45796762601](https://github.com/Verwolfy/erp-mortier/actions/runs/45796762601), déclenché par le push du workflow ; conclusion **success**, job `ping` **success**.
+- Log horodaté à `2026-11-26T09:57:25Z` : `Supabase principal: SELECT en lecture seule confirme (HTTP 200)`.
+- Ce succès confirme les secrets déjà existants suffisent **pour cette lecture** et que l'URL a été validée. Il **ne prouve pas encore les exécutions futures planifiées** ni la prévention garantie de la veille au-delà de sept jours.
+- Aucun commit vide, aucun changement de configuration de Supabase ni déploiement Streamlit.
