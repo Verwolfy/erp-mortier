@@ -317,6 +317,7 @@ def render_operation_pdf(snapshot: dict) -> bytes:
             self.cell(190, 5, f"Page {self.page_no()}/{{nb}}", align="R")
 
     pdf = OperationPDF(format="A4", unit="mm")
+    pdf.single_page = True
     pdf.alias_nb_pages()
     # Une pièce opérationnelle doit être intégralement imprimable sur une
     # seule page A4 : jamais de nouvelle page silencieuse.
