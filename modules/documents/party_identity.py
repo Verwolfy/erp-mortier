@@ -16,14 +16,14 @@ MISSING = "Non renseigné"
 
 LEGAL_KEYS = ("nom", "adresse", "rc", "nif", "nis", "ai")
 PARTY_LABELS = (
-    ("Nom / raison sociale", "nom", True),
-    ("Adresse", "adresse", True),
+    ("Raison Sociale", "nom", True),
+    ("Adresse de Facturation", "adresse", True),
     ("Wilaya", "wilaya", False),
     ("Pays", "pays", False),
     ("RC", "rc", True),
     ("NIF", "nif", True),
     ("NIS", "nis", True),
-    ("AI (article d'imposition)", "ai", True),
+    ("AI", "ai", True),
     ("Contact", "nom_contact", False),
     ("Fonction du contact", "poste_contact", False),
     ("Téléphone fixe", "telephone_fixe", False),
@@ -48,8 +48,8 @@ def normalize_party(source: Mapping | None, *, issuer: bool = False) -> list[tup
     entries = []
     for label, field, required in PARTY_LABELS:
         value = _clean(source.get(field))
-        if value or required:
-            entries.append((label, value or MISSING))
+        if value and value.casefold() not in {"non renseigné", "non renseigne", "non renseignée", "non renseignee"}:
+            entries.append((label, value))
     return entries
 
 
@@ -63,8 +63,10 @@ def configured_company() -> list[tuple[str, str]]:
 
 def pdf_safe(value: object) -> str:
     """Compatible Helvetica latin-1 : jamais de troncature silencieuse."""
-    return str(value if value is not None else "").encode(
-        "latin-1", "replace").decode("latin-1")
+    text = str(value if value is not None else "")
+    for original, replacement in (("—", " - "), ("–", "-"), ("’", "'"), ("“", '"' ), ("”", '"' ), ("•", "-")):
+        text = text.replace(original, replacement)
+    return text.encode("latin-1", "replace").decode("latin-1")
 
 
 def wrap_pdf_text(pdf, value: object, width: float) -> list[str]:
