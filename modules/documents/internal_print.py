@@ -12,6 +12,10 @@ from io import BytesIO
 from pathlib import Path
 import re
 
+from modules.documents.pdf_presentation import (
+    draw_qr, format_money, has_value, qr_payload,
+)
+
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 
 # (table, clé primaire, libellé)
@@ -40,7 +44,7 @@ def _required(row: dict, field: str) -> str:
 
 def _optional(row: dict, field: str) -> str:
     value = row.get(field)
-    return "Non renseigné" if value is None or value == "" else str(value)
+    return "" if value is None or value == "" else str(value)
 
 
 def _day(value: object) -> str:
@@ -84,7 +88,7 @@ def load_internal_snapshot(kind: str, identifier: str, *, reader=None) -> dict:
             not isinstance(rows[0], dict) or rows[0].get(pk) != identifier):
         raise InternalPrintError("Dossier absent ou ambigu")
     row = rows[0]
-    date_label = "Date enregistrée"
+    date_label = "Date"
 
     if kind == "Accusé interne d'encaissement":
         if (_required(row, "statut") != "INTERNE_NON_FISCAL"
@@ -183,11 +187,12 @@ def render_internal_pdf(snapshot: dict) -> bytes:
         if not isinstance(snapshot.get(required), str) or not snapshot[required]:
             raise InternalPrintError("Métadonnées incomplètes")
 
-    def safe(value: object, limit: int = 230) -> str:
-        # Le moteur PDF actuel utilise les polices de base latin-1 ; les caractères
-        # incompatibles sont substitués plutôt que de casser l'impression.
-        return str(value if value is not None else "").encode(
-            "latin-1", "replace").decode("latin-1")[:limit]
+    def safe(value: object, limit: int = 2000) -> str:
+        from modules.documents.party_identity import pdf_safe
+        text = pdf_safe(value)
+        if len(text) > limit:
+            raise InternalPrintError("Texte trop long pour une impression non tronquée")
+        return text
 
     logo = Path("assets/nextgen_logo_hd.jpg")
     header, footer = branded_images(str(logo) if logo.is_file() else None)
@@ -221,26 +226,43 @@ def render_internal_pdf(snapshot: dict) -> bytes:
     pdf.set_text_color(0, 0, 0)
     for label, value in [
         ("Référence ERP", snapshot["id"]),
-        (snapshot.get("date_label", "Date enregistrée"), snapshot["date"]),
+        (snapshot.get("date_label", "Date"), snapshot["date"]),
         ("Registre source", snapshot["source"]),
         *snapshot["fields"],
     ]:
         if not isinstance(label, str):
             raise InternalPrintError("Libellé interne invalide")
+        if not has_value(value) or (
+                label == snapshot.get("date_label")
+                and str(value).startswith("NON ENREGISTRÉE")):
+            continue
+        label = label.replace(" enregistrées", "").replace(
+            " enregistrée", "").replace(" enregistré", "")
+        if " (DZD)" in label:
+            value = format_money(value) + " DZD"
         pdf.set_font("Helvetica", "B", 9)
         pdf.multi_cell(190, 5, safe(label) + " :", new_x=XPos.LMARGIN,
                        new_y=YPos.NEXT)
         pdf.set_font("Helvetica", "", 9)
-        # Les motivations DA (jusqu'à 1500 caractères) doivent être imprimées
-        # intégralement : aucune troncature silencieuse d'une justification.
-        text_limit = 1500 if label == "Motivation enregistrée (intégrale)" else 230
+        # Motivation complète, y compris dans les demandes d'achat.
+        text_limit = 1500 if "Motivation" in label else 2000
         pdf.multi_cell(190, 6, safe(value, text_limit), new_x=XPos.LMARGIN,
                        new_y=YPos.NEXT)
         pdf.ln(2)
-    pdf.ln(6)
+    if pdf.get_y() > 203:
+        pdf.add_page()
+        pdf.set_y(51)
+    qr_y = pdf.get_y() + 3
+    draw_qr(pdf, qr_payload(snapshot), x=168, y=qr_y, size=30)
+    pdf.set_xy(10, qr_y + 5)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.multi_cell(146, 5, "QR de repérage ERP - copie non émise",
+                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_y(qr_y + 34)
+    pdf.ln(4)
     pdf.set_font("Helvetica", "I", 8)
     pdf.multi_cell(
-        190, 5, "Lecture seule d'un enregistrement ERP. "
-        "Aucune emission officielle, approbation, transaction ni signature.",
+        190, 5, "Lecture seule issue de l'ERP. "
+        "Aucune émission officielle, approbation, transaction ni signature.",
     )
     return bytes(pdf.output())
