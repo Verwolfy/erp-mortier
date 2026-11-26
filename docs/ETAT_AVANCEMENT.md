@@ -1,3 +1,13 @@
+## 26 novembre 2026 — Anomalie Streamlit : nouveau PDF toujours à l'ancienne maquette
+
+- **STATUT : déploiement effectif NON VÉRIFIÉ, recette PDF non réussie sur l'application hébergée**.
+- Facture `FAC-2026-000001` exportée une nouvelle fois le **26/11 à 14h59 UTC**. Le flux graphique et tout le texte de la page sont identiques à l'export précédent de 12h33 UTC : ancienne version du moteur (Émetteur, Nom/raison sociale, non renseigné, ancien libellé TVA, pas de QR ni TTC en lettres).
+- **Code GitHub correct sur main** depuis PR #94 : les CI passent. Cette preuve **ne signifie pas que Streamlit utilise main**.
+- **Action suivante : consulter `app.py` → barre latérale « Version ERP » (SHA du checkout local), comparer au merge `280f9e7…` et au main actuel, vérifier les coordonnées du déploiement Streamlit (`Verwolfy/erp-mortier / main / app.py`). Si obsolète, reboot contrôlé depuis Streamlit Cloud, puis nouvel export PDF et recette. Ne pas toucher à la BDD.
+- **Diagnostic complet** : `docs/DIAGNOSTIC_DEPLOIEMENT_STREAMLIT_PDF_20261126.md`. Le chantier backup externe R2 reste **EN PAUSE**.
+
+---
+
 ## 26 novembre 2026 — ERP-064 : harmonisation PDF/DOCX — CODE FUSIONNÉ
 
 - **PR #94 fusionnée sur main** : commit `280f9e7087e16f0e0d8d241f03decc7f6b74fd1a`. Nom légal exact conservé : **SARL NEXT GENRATION BUILDING SOLUTIONS**.
