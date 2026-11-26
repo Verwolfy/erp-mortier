@@ -1,3 +1,12 @@
+## 26 novembre 2026 — étude de backup PostgreSQL externe (NON ACTIVÉ)
+
+- **Mesure SQL principale en lecture seule** : PostgreSQL 17.6, 17 Mo (`pg_database_size` = 18 205 843 octets), 101 tables publiques, 5 vues, Supabase Storage 0 bucket/0 objet, 0 compte `auth.users` et 1 compte ERP `public.users`.
+- **État actuel** : Google Sheets est une réplication partielle ; `scripts/sauvegarder_supabase_pg.ps1` permet des dumps manuels sans Docker mais aucune archive externe n'a été créée ou testée dans cette étude.
+- **Recommandation** : sauvegarde quotidienne chiffrée par GitHub Actions / `pg_dump` 17 vers Cloudflare R2 **Standard privé, juridiction UE**, 10 GB-mois mensuels gratuits sous limites ; Backblaze B2 (10 Go) en alternative ; AWS S3 nouveau compte non gratuit à durée indéfinie.
+- **Blocage critique** : compte Cloudflare R2 **non activé**, réponse API HTTP 403 code 10042 ; activation/facturation et nouveaux secrets SQL/R2 nécessitent validation avant mise en œuvre. Aucune modification Supabase, RLS, secrets, facture ou stockage.
+- **Suivi complet** : `docs/ETUDE_SAUVEGARDE_SUPABASE_R2_20261126.md`. Prochaine étape uniquement après validation : qualifier secrets, implémenter, mesurer et tester une restauration en environnement isolé, puis planifier.
+
+---
 ## 23 novembre 2026 — ERP-063 : contrôle fournisseur 3 voies et visa BC préparé
 
 - **Ajout actif dans le code Achats → Historique & Suivi** : outils à ouverture explicite, téléchargement direct de la copie PDF de commande fournisseur (NON ÉMISE), rapprochement lecture seule **BC/BR conforme/facture**, contrôle cumulatif de toutes les factures liées, matières/quantités/prix DZD/HT/TVA/TTC et exports Excel/CSV/PDF. **Jamais de validation fiscale, paiement ni sortie stock** par ce rapport.
