@@ -287,7 +287,7 @@ def show_documents_page():
         for widget_key in list(st.session_state):
             if widget_key.startswith("ng_line_") or widget_key in (
                 "doc_number", "doc_date", "doc_tiers", "doc_address",
-                "doc_subject", "doc_lines", "ng_doc_taxes",
+                "doc_subject", "doc_lines", "ng_doc_taxes", "ng_doc_apply_vat_19", "ng_doc_auto_vat_19",
                 "ng_party_choice", "ng_sku_choice", "ng_material_choice",
             ):
                 st.session_state.pop(widget_key, None)
@@ -313,7 +313,7 @@ def show_documents_page():
             for state_key in list(st.session_state):
                 if state_key.startswith("ng_line_") or state_key in (
                     "doc_number", "doc_date", "doc_tiers", "doc_address",
-                    "doc_subject", "doc_lines", "ng_doc_taxes",
+                    "doc_subject", "doc_lines", "ng_doc_taxes", "ng_doc_apply_vat_19", "ng_doc_auto_vat_19",
                 ):
                     st.session_state.pop(state_key, None)
             st.session_state[doc_key] = imported
@@ -494,8 +494,16 @@ def show_documents_page():
                 doc["total_taxes"] = format(
                     (Decimal(preview["total_ht"]) * Decimal("0.19")).quantize(
                         Decimal("0.01"), rounding=ROUND_HALF_UP), "f")
+                st.session_state["ng_doc_taxes"] = doc["total_taxes"]
+                st.session_state["ng_doc_auto_vat_19"] = True
             else:
                 st.warning("TVA à 19 % non calculable sans lignes HT valides.")
+        elif kind in FISCAL and st.session_state.get("ng_doc_auto_vat_19"):
+            # Ne jamais laisser une simulation fiscale implicite après
+            # désactivation explicite du taux standard.
+            doc["total_taxes"] = ""
+            st.session_state["ng_doc_taxes"] = ""
+            st.session_state["ng_doc_auto_vat_19"] = False
         doc["total_taxes"] = st.text_input(
             "Montant des taxes validé, en DZD (laisser vide si inconnu)",
             value=str(doc.get("total_taxes") or ""), key="ng_doc_taxes",
