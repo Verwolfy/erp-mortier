@@ -209,8 +209,9 @@ def render_internal_pdf(snapshot: dict) -> bytes:
             self.cell(190, 5, f"Page {self.page_no()}/{{nb}}", align="R")
 
     pdf = InternalPDF(format="A4", unit="mm")
+    pdf.single_page = True
     pdf.alias_nb_pages()
-    pdf.set_auto_page_break(auto=True, margin=36)
+    pdf.set_auto_page_break(auto=False)
     pdf.add_page()
     pdf.set_y(49)
     pdf.set_text_color(14, 43, 79)
@@ -224,6 +225,7 @@ def render_internal_pdf(snapshot: dict) -> bytes:
     pdf.ln(3)
     pdf.set_font("Helvetica", "", 9)
     pdf.set_text_color(0, 0, 0)
+    from modules.documents.party_identity import wrap_pdf_text
     for label, value in [
         ("Référence ERP", snapshot["id"]),
         (snapshot.get("date_label", "Date"), snapshot["date"]),
@@ -240,18 +242,29 @@ def render_internal_pdf(snapshot: dict) -> bytes:
             " enregistrée", "").replace(" enregistré", "")
         if " (DZD)" in label:
             value = format_money(value) + " DZD"
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.multi_cell(190, 5, safe(label) + " :", new_x=XPos.LMARGIN,
-                       new_y=YPos.NEXT)
-        pdf.set_font("Helvetica", "", 9)
-        # Motivation complète, y compris dans les demandes d'achat.
+        # Mesurer l'espace avant d'écrire : aucune deuxième page ni coupe.
         text_limit = 1500 if "Motivation" in label else 2000
-        pdf.multi_cell(190, 6, safe(value, text_limit), new_x=XPos.LMARGIN,
-                       new_y=YPos.NEXT)
+        prepared = safe(value, text_limit)
+        pdf.set_font("Helvetica", "B", 9)
+        title_lines = wrap_pdf_text(pdf, safe(label) + " :", 188)
+        pdf.set_font("Helvetica", "", 9)
+        value_lines = wrap_pdf_text(pdf, prepared, 188)
+        required = 5 * len(title_lines) + 6 * len(value_lines) + 2
+        if pdf.get_y() + required > 207:
+            raise InternalPrintError(
+                "Copie interne trop volumineuse pour une seule page A4"
+            )
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.multi_cell(190, 5, "\n".join(title_lines),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(190, 6, "\n".join(value_lines),
+                       new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(2)
-    if pdf.get_y() > 203:
-        pdf.add_page()
-        pdf.set_y(51)
+    if pdf.get_y() > 207:
+        raise InternalPrintError(
+            "Espace QR insuffisant pour une seule page A4"
+        )
     qr_y = pdf.get_y() + 3
     draw_qr(pdf, qr_payload(snapshot), x=168, y=qr_y, size=30)
     pdf.set_xy(10, qr_y + 5)
@@ -265,4 +278,8 @@ def render_internal_pdf(snapshot: dict) -> bytes:
         190, 5, "Lecture seule issue de l'ERP. "
         "Aucune émission officielle, approbation, transaction ni signature.",
     )
+    if pdf.page_no() != 1 or pdf.get_y() > 258:
+        raise InternalPrintError(
+            "Copie interne trop volumineuse pour une seule page A4"
+        )
     return bytes(pdf.output())
