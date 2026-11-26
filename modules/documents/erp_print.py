@@ -515,16 +515,10 @@ def render_operation_pdf(snapshot: dict) -> bytes:
             pdf.multi_cell(190, 6, "\n".join(wrapped_words),
                            new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-    ensure_height(19)
-    pdf.ln(3)
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.set_text_color(*NAVY)
-    pdf.multi_cell(
-        190, 5, "Copie de consultation issue de l'ERP. "
-        "Ce document ne vaut ni signature, ni émission fiscale ou comptable.",
-        new_x=XPos.LMARGIN, new_y=YPos.NEXT,
-    )
-    if pdf.page_no() != 1:
+    # La mise en garde NON ÉMIS / NON VALABLE est déjà clairement inscrite
+    # sous le titre. Ne pas répéter cette mention en pied de corps :
+    # elle créait la page 2 pour une facture pourtant lisible sur une page.
+    if pdf.get_y() > 257 or pdf.page_no() != 1:
         raise OperationPrintError("La pièce doit tenir sur une seule page A4")
     result = pdf.output()
     return bytes(result) if not isinstance(result, str) else result.encode("latin-1")
